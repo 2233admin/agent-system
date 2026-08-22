@@ -1,5 +1,7 @@
 # 当前权威总图
 
+> **权威变更（2026-08-22，负责人确认，被替代）：** 本目录（`00-map.md` 至 `11-execution-state.md`）此前是产品政策根，现全部降级为历史资产，只作证据参考，不再定义当前需求、架构、方法或授权。当前唯一权威来源是 BMad 工作流产出：`_bmad-output/specs/spec-agent-system/SPEC.md`（含 companions）、`_bmad-output/planning-artifacts/epics.md`、`_bmad-output/planning-artifacts/architecture/**/ARCHITECTURE-SPINE.md`、`_bmad-output/implementation-artifacts/sprint-status.yaml`。详见 [`AGENTS.md` 的同名章节](../AGENTS.md#当前权威声明2026-08-22负责人确认)。下表与下方各文件的产品政策正文均按此变更失效，仅保留作历史索引。
+>
 > 状态：2026-08-15 clean-slate 迁入的产品政策快照；正文按公开 Issue 逐项复核。
 > 权威地位：本文件是 `authority/` 的公共路由索引；它不保存当前工作，也不自行产生实施授权。
 > 历史来源：私有 `Eridanus117/agent-control` Issue／评论只作可选证据；当前公共规则必须在本仓自足表达。

@@ -26,7 +26,9 @@
 
 ## 开始工作
 
-每个新的 Session 先读取 [`authority/00-map.md`](./authority/00-map.md)，再按本次请求分流：
+> **权威变更（2026-08-22，负责人确认）：** `authority/`（含 `00-map.md`）、`src/agent_system/`（Python 实现）、`docs/`、`knowledge/` 均已降级为历史资产，只作证据参考，不再定义当前产品政策、需求、架构或范围。当前唯一权威来源是 BMad 工作流产出：[`_bmad-output/specs/spec-agent-system/SPEC.md`](./_bmad-output/specs/spec-agent-system/SPEC.md)（含 companions）、[`_bmad-output/planning-artifacts/epics.md`](./_bmad-output/planning-artifacts/epics.md)、`_bmad-output/planning-artifacts/architecture/**/ARCHITECTURE-SPINE.md`、[`_bmad-output/implementation-artifacts/sprint-status.yaml`](./_bmad-output/implementation-artifacts/sprint-status.yaml)。详见 [`AGENTS.md` 的同名章节](./AGENTS.md#当前权威声明2026-08-22负责人确认)。下方"读取 `authority/00-map.md` 再分流"的流程本身（GitHub Issue 授权边界、避免恢复迁移事项等）仍然适用，只是不再从 `authority/00-map.md` 加载产品政策正文。
+
+每个新的 Session 先读取 [`authority/00-map.md`](./authority/00-map.md)（现仅作历史索引，产品政策正文改读上方 BMad 产出），再按本次请求分流：
 
 1. **负责人明确激活一个公开、自足的 Issue**：重新读取该 Issue 当前正文与状态，只加载它明确链接的政策和证据；授权、写入所有权和验收均以远端当前内容为准。
 2. **Issue 带 `迁移索引/待分诊` 标签**：默认只允许分诊和只读核验；不能从旧正文、私有评论或开放状态恢复实施授权。
@@ -52,16 +54,16 @@ Session 的职责由负责人当前明确指令、公开自足的 Issue 合同�
 
 ## 文件职责
 
-- `authority/`：保存版本化产品政策；正文必须自足，私有历史链接只能作可选来源。迁移内容在公开 Issue 重新确认前不产生实施授权；
-- `knowledge/`：通过价值门与可信门的当前公共知识包与检索卡，覆盖 Windows 运维（长路径、文件锁）、GitHub 引用与 PowerShell 多行正文等已验证陷阱；入口表见 [`knowledge/README.md`](./knowledge/README.md)；
+- `authority/`：**历史资产（2026-08-22 起降级，见上方"开始工作"的权威变更）**，曾保存版本化产品政策；正文不再是当前产品政策来源，只作历史证据；当前产品政策见 BMad 产出（`_bmad-output/`）；
+- `knowledge/`：**历史资产（2026-08-22 起降级）**，通过价值门与可信门的公共知识包与检索卡，覆盖 Windows 运维（长路径、文件锁）、GitHub 引用与 PowerShell 多行正文等已验证陷阱；技术性内容仍可参考，但不再作为产品政策或流程权威；入口表见 [`knowledge/README.md`](./knowledge/README.md)；
 - `work/records/`：保存非权威、可追溯的研发过程；默认不读取，只在当前任务明确链接时按需读取；
 - `work/history/`：首次归档已完成任务时再创建；历史记录不是当前指令；
 - `work/` 根目录下的其余 Markdown（`configuration-inventory.md`、`current-monitoring-directive.md`、`knowledge-mvp-proposal.md`、`knowledge-mvp-boundary-candidate.md`、`knowledge-mvp-decision.md`、`permission-strategy-research.md`）与 `work/knowledge-trial/`：具名的调研、清单与候选，非权威；默认不读取，只在当前任务明确链接时按需读取。新增同类内容优先进 `work/records/<日期>-<主题>/`，不再往根目录堆放；已退出当前工作面的旧候选移入 `work/history/` 并明确标出被替代入口。
 - `entrypoints/agent-system.md`：本仓项目级 Agent 行为入口；不作为用户级全局提示词安装源；
 - `AGENTS.md`：Codex 的最小仓库入口，只保留仓库增量并回指 `entrypoints/agent-system.md`；公共系统规则的唯一版本化正文由后者承载；
 - `CLAUDE.md`：Claude Code 导入同一份入口规则，并在本仓内加载 `entrypoints/agent-system.md`；用户级入口只保留与任务无关的锚点，本仓正文不进全局常驻面；
-- [`src/agent_system/`](./src/agent_system/):唯一的 profile、CAP、OMP 与 Claude Python 实现；用户统一通过 `uv run cap` 使用，profile engine 仅作为 CAP 的内部执行层；接口边界见 [`docs/profile.md`](./docs/profile.md) 和 [`docs/maintenance.zh-CN.md`](./docs/maintenance.zh-CN.md)。
-- `docs/cap-guide.zh-CN.md`：面向使用者的 CAP 中文入门、日常命令、资产范围和故障排查路径。
+- [`src/agent_system/`](./src/agent_system/)：**历史资产（2026-08-22 起降级）**，此前的 profile、CAP、OMP 与 Claude Python 实现；不再是新开发的基线或约定来源（BMad 架构已 `[ADOPTED]` 外部 TypeScript/Bun control plane，见 `_bmad-output/planning-artifacts/architecture/**/ARCHITECTURE-SPINE.md` AD-2），仅作 Bad Case 证据保留；接口边界历史记录见 [`docs/profile.md`](./docs/profile.md) 和 [`docs/maintenance.zh-CN.md`](./docs/maintenance.zh-CN.md)（同为历史资产）。
+- `docs/cap-guide.zh-CN.md`：**历史资产（2026-08-22 起降级）**，此前面向使用者的 CAP 中文入门、日常命令、资产范围和故障排查路径；当前实现基线见 `packages/control-plane/`。
 
 私有旧仓、迁移索引、历史记录、分析和实验只提供来源；公共产品政策必须在本仓自足表达，历史材料不能反向产生当前授权。
 
