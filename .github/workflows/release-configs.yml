@@ -1,0 +1,100 @@
+name: Release configs CLI
+
+# 只在推送 configs-v* tag 时触发——不在普通 push/PR 到 main 时触发，匹配
+# AD-15"安装/升级是低频显式操作"。普通 CI（control-plane-checks.yml 等）
+# 不受影响，bun-version 仍是 latest；只有这个发布 job 精确钉版本。
+on:
+  push:
+    tags:
+      - 'configs-v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packages/control-plane
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Type check
+        run: bunx tsc --noEmit
+
+      - name: Run tests
+        # Gate before cross-compiling/publishing -- a tagged commit that
+        # was never actually verified by control-plane-checks.yml (or a
+        # broken build) must never ship as a public release.
+        run: bun test
+
+      - name: Inject version from tag
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME#configs-v}"
+          [ -n "$VERSION" ] || { echo "::error::empty version derived from tag $GITHUB_REF_NAME" >&2; exit 1; }
+          # Tag names can contain single quotes, backticks, `$()`, etc. --
+          # never interpolate the raw value into a string literal. Let
+          # `JSON.stringify` produce a properly escaped, syntactically
+          # valid TS string literal regardless of what characters
+          # `$VERSION` contains.
+          VERSION_LITERAL="$(bun -e 'console.log(JSON.stringify(process.argv[1]))' "$VERSION")"
+          printf 'export const CONFIGS_VERSION = %s;\n' "$VERSION_LITERAL" > src/cli/version.ts
+          cat src/cli/version.ts
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+
+      - name: Cross-compile standalone binaries
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          declare -A targets=(
+            [bun-windows-x64]=configs-windows-x64.exe
+            [bun-linux-x64]=configs-linux-x64
+            [bun-darwin-x64]=configs-darwin-x64
+            [bun-darwin-arm64]=configs-darwin-arm64
+          )
+          for target in "${!targets[@]}"; do
+            outfile="dist/${targets[$target]}"
+            bun build ./src/cli/index.ts --compile --target="$target" --outfile "$outfile"
+          done
+
+      - name: Smoke-test compiled binary
+        # The ubuntu-latest runner can natively execute the bun-linux-x64
+        # target (it's the host platform) -- actually run it rather than
+        # just trusting the version injection worked.
+        run: |
+          set -euo pipefail
+          actual="$(./dist/configs-linux-x64 --version)"
+          if [ "$actual" != "$VERSION" ]; then
+            echo "::error::compiled binary reported version '$actual', expected '$VERSION'" >&2
+            exit 1
+          fi
+          echo "smoke test OK: $actual"
+
+      - name: Generate SHA256SUMS.txt
+        run: |
+          cd dist
+          sha256sum * > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - name: Publish GitHub Release
+        # Overrides the job-level `working-directory: packages/control-plane`
+        # default (see above) back to the repo root -- this step's asset
+        # glob is intentionally the full `packages/control-plane/dist/*`
+        # path, not a path relative to that default.
+        working-directory: ${{ github.workspace }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          gh release create "$GITHUB_REF_NAME" packages/control-plane/dist/*
+          --title "$GITHUB_REF_NAME" --generate-notes --clobber

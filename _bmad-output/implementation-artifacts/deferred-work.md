@@ -46,3 +46,23 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-cli-ux-delta.md`
   summary: `tests/cli/tui.test.tsx` 里的 `FakeConfigRevisionRepository`/`FakeLaunchPlanRepository`/`FakeOmpProcessPort` 等一整套 fake 实现与 `tests/application/launch.test.ts` 里已有的 fake 几乎逐字重复，两处未来任一接口变化都要同步改两份，否则会有一份悄悄过期。
   evidence: /code-review skill 独立审查发现，真实的测试维护性问题，但不影响当前正确性，属于测试基础设施重构（抽取共享 fake 模块），本次不顺手做，留待后续测试整理时处理。
+
+- source_spec: none
+  summary: configs 自更新客户端（Epic 2 / Story 2.2）——进程启动时后台检查、下载、完整性校验并原地替换本地二进制，接入 src/cli/index.ts 的启动路径。
+  evidence: 本次意图（Epic 2：控制面发布与自更新）被判定为多目标，与"打包并发布 release 二进制"（Story 2.1）拆分——后者独立交付即有价值（哪怕没有自动更新，用户也能手动下载装，兑现 AD-2/AD-15 的分发要求），前者依赖后者先发布出真实、带版本号和 checksum 的 release 才能做端到端验证；负责人已确认按 [S] 拆分，Story 2.2 紧跟 Story 2.1 之后做，两者可按 Story 2.1 定的发布契约（release 资产命名/版本号来源/checksum 格式）部分并行开发。
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-1-打包与发布流水线.md`
+  summary: `--version` 没有 `-v`/`-V` 短别名，且出现在子命令之后（如 `configs status --version`）或带多余尾随参数时行为未特别处理，只是落进既有的 `parseCommand`/子命令自身参数解析逻辑。
+  evidence: blind-hunter 与 edge-case-hunter 审查层发现；都是低影响的边缘用法，不影响 I/O 矩阵定义的四个核心场景，本次不顺手扩展 `--version` 的解析面。
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-1-打包与发布流水线.md`
+  summary: 没有任何机制（git hook、CI 检查）防止有人不小心把 `src/cli/version.ts` 里的 `CONFIGS_VERSION` 提交成非 `'dev'` 的值，尽管整套版本注入方案依赖这个文件在仓库里永远是 `'dev'`。
+  evidence: blind-hunter 审查层发现，真实的防呆缺口，但成本收益上属于可选加固，不阻塞本次交付。
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-1-打包与发布流水线.md`
+  summary: 发布 job 在 `gh release create` 之前没有把 `dist/*` 上传为 workflow artifact，也没有依赖缓存；如果发布步骤失败，交叉编译出的二进制直接丢失，只能整个 job 重跑。
+  evidence: blind-hunter 审查层发现，真实的运维便利性缺口，但对个人项目的低频发布节奏影响很小，本次不处理。
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-1-打包与发布流水线.md`
+  summary: `gh release create` 只用 `--generate-notes`，没有 changelog 文件、没有区分正式版和预发布 tag（例如 `configs-v1.2.3-beta.1` 仍会被发成正式 Release），也没有更新任何 README/文档说明 `--version` 或如何获取发布的二进制。
+  evidence: blind-hunter 审查层发现，均为 spec 明确范围之外的产品/文档细节，不是本次 Story 2.1 的验收要求。
