@@ -191,7 +191,7 @@
     },
     "AGENTS.md": {
       "mode": "0644",
-      "sha256": "0535a512da2614f6d0b9b60e504dce62de8cf66326d34e6aa150e6ebe663b3cb",
+      "sha256": "d96f13b1f5e73b7cc34b4f1c7758b44fca87e8b1329f2ffe48b8eec3e4a83caa",
       "type": "file"
     },
     "plugins/grilling/skills/grilling": {

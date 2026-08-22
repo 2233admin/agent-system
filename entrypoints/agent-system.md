@@ -10,7 +10,9 @@
 
 ## Agent 系统任务路由
 
-当任务落在本仓时，先读取仓库根 `README.md` 与 `authority/00-map.md`，再按模式继续：
+> **权威变更（2026-08-22，负责人确认）：** 下一句"读取 `authority/00-map.md`"已不再产生产品政策——`authority/`、`src/agent_system/`、`docs/`、`knowledge/` 全部降级为历史资产。当前产品政策、需求、架构与范围的唯一权威来源改为 BMad 工作流产出（`_bmad-output/specs/spec-agent-system/SPEC.md`、`_bmad-output/planning-artifacts/epics.md`、`_bmad-output/planning-artifacts/architecture/**/ARCHITECTURE-SPINE.md`、`_bmad-output/implementation-artifacts/sprint-status.yaml`），详见 [`AGENTS.md` 的同名章节](../AGENTS.md#当前权威声明2026-08-22负责人确认)。以下 GitHub Issue 授权边界、迁移标签处理等流程规则本身不受影响，仍然适用。
+
+当任务落在本仓时，先读取仓库根 `README.md` 与（现仅作历史索引的）`authority/00-map.md`，再按模式继续：
 
 1. 负责人明确激活公开、自足的 GitHub Issue：读取远端当前正文、状态、标签和明确引用，只在合同授权范围内实施并验证。版本化变更通过可核验 PR 交付；只读研究通过自足证据评论交付。
 2. Issue 带 `迁移索引/待分诊` 标签：默认只分诊和只读核验，不从旧正文、私有评论或开放状态恢复授权。
