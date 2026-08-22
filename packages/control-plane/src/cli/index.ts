@@ -41,6 +41,7 @@ import {
 import { readYesNo } from './confirm-prompt';
 import { defaultDbPath } from './db-path';
 import { t } from './i18n';
+import { CONFIGS_VERSION } from './version';
 import {
   renderCompareResult,
   renderConfirmationSummary,
@@ -357,6 +358,14 @@ export async function main(argv: readonly string[], overrides: CliOverrides = {}
   // database.
   if (argv.length === 0) {
     console.log(usageLine());
+    return 0;
+  }
+
+  // `--version` is intercepted here, before `parseCommand`/`openDeps`, so
+  // it never opens the SQLite repositories or touches the database file --
+  // same convention as the zero-arg/usage-error paths above and below.
+  if (argv[0] === '--version') {
+    console.log(CONFIGS_VERSION);
     return 0;
   }
 
