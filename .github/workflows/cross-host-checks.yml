@@ -4,9 +4,21 @@ on:
   pull_request:
     branches:
       - main
+    paths-ignore:
+      - "packages/**"
+      - "_bmad-output/**"
+      - "package.json"
+      - "bun.lock"
+      - ".github/workflows/control-plane-checks.yml"
   push:
     branches:
       - main
+    paths-ignore:
+      - "packages/**"
+      - "_bmad-output/**"
+      - "package.json"
+      - "bun.lock"
+      - ".github/workflows/control-plane-checks.yml"
 
 permissions:
   contents: read
