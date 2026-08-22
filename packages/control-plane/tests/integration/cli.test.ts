@@ -36,6 +36,10 @@ beforeEach(() => {
   tmpDir = mkdtempSync(path.join(os.tmpdir(), 'control-plane-cli-'));
   dbPath = path.join(tmpDir, 'db.sqlite3');
   process.env.CONTROL_PLANE_DB_PATH = dbPath;
+  // `[DELTA]` default output language is now `zh`; these assertions were
+  // written against the (unchanged) English strings, so pin the language
+  // explicitly rather than rewrite every assertion.
+  process.env.CONFIGS_LANG = 'en';
 
   logs = [];
   errors = [];
@@ -53,6 +57,7 @@ afterEach(() => {
   console.log = originalLog;
   console.error = originalError;
   delete process.env.CONTROL_PLANE_DB_PATH;
+  delete process.env.CONFIGS_LANG;
   rmSync(tmpDir, { recursive: true, force: true });
 });
 
@@ -321,10 +326,15 @@ describe('configs compare', () => {
 });
 
 describe('configs usage errors', () => {
-  test('no command: exits 2, prints usage, never touches the database file', async () => {
+  // `[DELTA]` IA first layer (spec-cli-ux-delta.md): `configs` with no
+  // subcommand at all is no longer a usage error -- it now prints usage
+  // text and exits 0, same as a successful help request. The
+  // interactive-TTY case (which instead enters the TUI) is handled at the
+  // `import.meta.main` dispatch layer, not inside `main()` itself.
+  test('no command: prints usage text and exits 0, never touches the database file', async () => {
     const code = await main([]);
-    expect(code).toBe(2);
-    expect(errors.join('\n')).toContain('unknown command');
+    expect(code).toBe(0);
+    expect(logs.join('\n')).toContain('usage: configs');
     expect(existsSync(dbPath)).toBe(false);
   });
 
