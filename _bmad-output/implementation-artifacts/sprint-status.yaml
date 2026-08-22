@@ -40,7 +40,7 @@ development_status:
   1-2-选择配置并使用-omp: done
   epic-1-retrospective: done
   epic-2: in-progress
-  2-1-打包与发布流水线: review
+  2-1-打包与发布流水线: done
 action_items:
   - id: "epic-1-retro-item-1-launchomp-packages-control-plane-src-app"
     epic: 1
