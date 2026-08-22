@@ -274,7 +274,21 @@ export async function launchOmp(
     );
   }
 
-  const revision = await getConfigRevisionDetail(deps.configRepository, plan.revisionId);
+  let revision: StableConfigRevision;
+  try {
+    revision = await getConfigRevisionDetail(deps.configRepository, plan.revisionId);
+  } catch (error) {
+    if (error instanceof ConfigNotFoundError || error instanceof ConfigUnsupportedError) {
+      // The revision became unavailable (deleted/unsupported) sometime
+      // between the user's one-time confirmation and this re-fetch -- go
+      // through the same typed-failure path as every other failure mode in
+      // this function instead of letting the error escape unhandled.
+      plan = applyFailure(plan, `revision-lookup: ${error.message}`);
+      await deps.launchPlanRepository.save(plan);
+      return plan;
+    }
+    throw error;
+  }
   const knownDifferences = computeKnownDifferences(revision);
   const applyResult: 'applied' | 'degraded' = knownDifferences.length === 0 ? 'applied' : 'degraded';
 

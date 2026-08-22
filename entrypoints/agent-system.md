@@ -24,6 +24,10 @@ Session 职责由负责人当前指令、公开自足合同和写入所有权决
 
 需要 Windows／GitHub 多行 Markdown 或长路径／文件锁知识时，可在仓库根运行 `python tools/knowledge_action_trigger/action_trigger.py --action github-multiline-markdown` 或 `--action windows-path-or-file-lock`，再按输出读取来源。这是问路查询，不扩大合同、权限或产品决定。
 
+## BMad 下一步推荐规范
+
+本仓内任何 BMad 技能／workflow 给出"下一步用哪个技能"的推荐时（例如 Finalize 阶段的 Common next、`bmad-help` 的建议），必须同时明确说明该下一步应该开新 session 还是可以接着当前 session 继续，不能只报技能名、把 session 连续性留空。
+
 ## GitHub 安全引用
 
 发布 GitHub 文本前，不使用会意外改变 Issue 生命周期的关闭关键词；跨对象引用使用完整仓库 URL 或不会触发关闭的普通链接。写后回读远端实际内容。

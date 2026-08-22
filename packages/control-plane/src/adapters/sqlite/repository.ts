@@ -52,10 +52,36 @@ function factColumnToFact<T>(
   return unknown(reason ?? 'unspecified', observedAt ?? new Date(0).toISOString());
 }
 
+/**
+ * Every parsed entry must carry a non-empty string `name` -- this is the
+ * only field of a `CapabilityReference` that ever flows verbatim into a
+ * real subprocess argv (`buildOmpArgv` joins `skill.name` into the real
+ * `omp --skills` value). Applied uniformly to every capability column
+ * (instructions/skills/mcp/hooks/plugins) rather than special-cased to
+ * skills alone, since this function is the single choke point all five
+ * groups parse through and a future caller could start reading `name` from
+ * any of them the same way. A throw here is caught by both of this
+ * module's callers (`mapRowStrict` wraps it into `ConfigUnsupportedError`;
+ * `mapRowLenient`'s `parseLenient` degrades the affected group to `[]`) --
+ * so untrusted stored data is never silently passed through as-is.
+ */
+function validateCapabilityEntry(entry: unknown): asserts entry is CapabilityReference {
+  if (entry === null || typeof entry !== 'object') {
+    throw new Error('capability entry is not an object');
+  }
+  const name = (entry as { name?: unknown }).name;
+  if (typeof name !== 'string' || name.trim().length === 0) {
+    throw new Error('capability entry has a missing or empty "name" field');
+  }
+}
+
 function parseCapabilityJson(raw: string): CapabilityReference[] {
   const parsed = JSON.parse(raw) as unknown;
   if (!Array.isArray(parsed)) {
     throw new Error('capability column did not contain a JSON array');
+  }
+  for (const entry of parsed) {
+    validateCapabilityEntry(entry);
   }
   return parsed as CapabilityReference[];
 }
