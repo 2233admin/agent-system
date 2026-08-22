@@ -6,6 +6,7 @@ import path from 'node:path';
 
 import { main } from '../../src/cli/index';
 import { SqliteConfigRevisionRepository } from '../../src/adapters/sqlite/repository';
+import { t } from '../../src/cli/i18n';
 import { known } from '../../src/domain/facts';
 import type { StableConfigRevision } from '../../src/domain/config';
 import type {
@@ -80,6 +81,10 @@ beforeEach(() => {
   tmpDir = mkdtempSync(path.join(os.tmpdir(), 'control-plane-cli-launch-'));
   dbPath = path.join(tmpDir, 'db.sqlite3');
   process.env.CONTROL_PLANE_DB_PATH = dbPath;
+  // `[DELTA]` default output language is now `zh`; these assertions were
+  // written against the (unchanged) English strings, so pin the language
+  // explicitly rather than rewrite every assertion.
+  process.env.CONFIGS_LANG = 'en';
 
   logs = [];
   errors = [];
@@ -101,6 +106,7 @@ afterEach(() => {
   console.log = originalLog;
   console.error = originalError;
   delete process.env.CONTROL_PLANE_DB_PATH;
+  delete process.env.CONFIGS_LANG;
   rmSync(tmpDir, { recursive: true, force: true });
 });
 
@@ -129,6 +135,20 @@ describe('configs use', () => {
     expect(output).toContain('Phase: succeeded');
     expect(output).toContain('Apply result: applied');
     expect(ompPort.lastSpawnParams).not.toBeNull();
+
+    // The handoff line (DESIGN.md `{components.handoff-line}`) is printed
+    // exactly once, after confirmation is granted (i.e. after the
+    // confirmation summary's closing sentence) and before `omp` "takes
+    // over" -- which here means before the final status block, since the
+    // final status can only be known once `launchOmp` has returned.
+    const handoffLine = t('handoffLine');
+    const handoffMatches = output.split(handoffLine).length - 1;
+    expect(handoffMatches).toBe(1);
+    const confirmationIndex = output.indexOf('one-time confirmation');
+    const handoffIndex = output.indexOf(handoffLine);
+    const finalStatusIndex = output.indexOf('Phase: succeeded');
+    expect(handoffIndex).toBeGreaterThan(confirmationIndex);
+    expect(handoffIndex).toBeLessThan(finalStatusIndex);
   });
 
   test('不支持的客户端: claude-code returns immediately, no confirmation, no db file ever created', async () => {

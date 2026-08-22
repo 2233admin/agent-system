@@ -29,7 +29,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 # - Retrospective appends its action items to action_items; the status view surfaces open ones
 generated: 08-22-2026 00:00
-last_updated: 08-22-2026 00:00
+last_updated: 08-22-2026 14:19
 project: agent-system
 project_key: NOKEY
 tracking_system: file-system
@@ -38,4 +38,90 @@ development_status:
   epic-1: in-progress
   1-1-查看与比较配置内容: done
   1-2-选择配置并使用-omp: done
-  epic-1-retrospective: optional
+  epic-1-retrospective: done
+action_items:
+  - id: "epic-1-retro-item-1-launchomp-packages-control-plane-src-app"
+    epic: 1
+    action: "launchOmp (packages/control-plane/src/application/launch.ts) re-fetches
+      the config revision after user confirmation without catching ConfigNotFoundError/ConfigUnsupportedError,
+      unlike prepareLaunchPlan/getLaunchStatus in the same file -- wrap it in the
+      same try/catch -> applyFailure pattern so it goes through renderLaunchFailure
+      instead of an unhandled throw. Confirmed by 3 independent review lenses (adversarial,
+      edge-case-hunter, verification-gap) with no existing test coverage."
+    owner: "control-plane maintainer"
+    status: done
+    ref: "_bmad-output/implementation-artifacts/epic-1-retro-2026-08-22.md"
+  - id: "epic-1-retro-item-2-parsecapabilityjson-src-adapters-sqlite"
+    epic: 1
+    action: "parseCapabilityJson (src/adapters/sqlite/repository.ts) never validates
+      skill.name is a non-empty string before buildOmpArgv (src/adapters/omp/process-port.ts)
+      joins it into the real omp --skills argv; add field validation routed through
+      the existing ConfigUnsupportedError/degrade path, and add an integration test
+      that drives buildOmpArgv/BunOmpProcessPort from a revision actually round-tripped
+      through SqliteConfigRevisionRepository (current tests only hand-build CapabilityReference
+      objects or always substitute FakeOmpProcessPort). Confirmed by 3 independent
+      review lenses."
+    owner: "control-plane maintainer"
+    status: done
+    ref: "_bmad-output/implementation-artifacts/epic-1-retro-2026-08-22.md"
+  - id: "epic-1-retro-item-3-readyesno-s-readline-packages-control-pl"
+    epic: 1
+    action: "readYesNo's readLine() (packages/control-plane/src/cli/confirm-prompt.ts)
+      only registers stdin.once('data', ...) with no 'end'/'error' handler, so configs
+      use/switch hangs forever on premature stdin EOF (e.g. piped from /dev/null,
+      non-interactive invocation without --yes) instead of failing fast. Verified
+      directly by reading the source. Add stdin.once('end'/'error', ...) resolving
+      to an empty (rejecting) answer."
+    owner: "control-plane maintainer"
+    status: done
+    ref: "_bmad-output/implementation-artifacts/epic-1-retro-2026-08-22.md"
+  - id: "epic-1-retro-item-4-repository-ts-and-launch-repository-ts-p"
+    epic: 1
+    action: "repository.ts and launch-repository.ts (packages/control-plane/src/adapters/sqlite/)
+      each independently implement the same Fact<T> column serialization (factColumns/factColumnToFact),
+      written in separate Story 1.1/1.2 build sessions. Extract a shared src/adapters/sqlite/fact-columns.ts
+      and have both repositories import it, so a future serialization fix cannot land
+      in only one copy."
+    owner: "control-plane maintainer"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-1-retro-2026-08-22.md"
+  - id: "epic-1-retro-item-5-sprint_status-py-s-update-command-has-no"
+    epic: 1
+    action: "sprint_status.py's update command has no --set-epic-status (or equivalent)
+      capability, and sprint-status.yaml's own WORKFLOW NOTES only document an automatic
+      epic transition to in-progress, never one to done -- so epic-1 stays in-progress
+      even though both its stories are done and this retrospective ran. Either add
+      a validated --set-epic-status write path to sprint_status.py (same read-modify-validate-write-or-rollback
+      pattern as the rest of the script), or explicitly document that epic-level status
+      is intentionally a manual, human-confirmed field rather than a gap."
+    owner: "repo owner / next tooling iteration"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-1-retro-2026-08-22.md"
+  - id: "epic-1-retro-item-6-unverified-process-input-no-git-pr-sessi"
+    epic: 1
+    action: "Unverified process input (no git/PR/session-log evidence available to
+      confirm or refute, both story branches squash to a single commit with no PR
+      review threads): if a build session was initially briefed toward src/agent_system's
+      legacy Python conventions before self-correcting toward the locked TypeScript/Bun
+      architecture (Story 1.1), and/or a spawned sub-agent's patch-application report
+      never reached its parent session due to a wrong/unreachable agent address requiring
+      manual resumption (Story 1.2), consider (a) leaving a one-line traceable record
+      (commit message or PR body) at cross-session/cross-agent decision points that
+      conflict with locked architecture, and (b) adding clearer timeout/retry signaling
+      for sub-agent reporting so a parent session does not wait indefinitely on a
+      notification that will never arrive."
+    owner: "repo owner"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-1-retro-2026-08-22.md"
+  - id: "epic-1-retro-item-7-forward-looking-risk-out-of-this-epic-s"
+    epic: 1
+    action: "Forward-looking risk, out of this epic's scope: CAP (.cap/manifest.toml)
+      still does double duty as (a) OMP config management -- now superseded by packages/control-plane
+      -- and (b) Claude Code/Codex agent-capability assembly (skills/profile/instructions
+      via .cap/runtime/claude.toml), and only (a) has been replaced. epics.md's current
+      MVP scope explicitly excludes Claude Code/Codex CLI (MVP-FR10/AR2) and no epic
+      yet covers replacing CAP's role (b). Decide whether a future epic should cover
+      this, or explicitly accept CAP continuing in this role for now."
+    owner: "repo owner"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-1-retro-2026-08-22.md"

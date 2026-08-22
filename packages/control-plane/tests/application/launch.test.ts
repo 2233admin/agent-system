@@ -57,6 +57,11 @@ class FakeConfigRevisionRepository implements ConfigRevisionRepository {
     this.revisions.set(revision.revisionId, revision);
   }
 
+  /** Simulates the revision becoming unavailable (e.g. deleted) after it was already read once. */
+  remove(revisionId: string): void {
+    this.revisions.delete(revisionId);
+  }
+
   async listAll(): Promise<readonly StableConfigRevision[]> {
     return [...this.revisions.values()];
   }
@@ -286,6 +291,21 @@ describe('launchOmp', () => {
     await launchOmp(deps, { planId: confirmed.planId, extensionPath: weirdExt, forwardedArgs: [], cwd: weirdCwd });
     expect(ompPort.lastSpawnParams!.cwd).toBe(weirdCwd);
     expect(ompPort.lastSpawnParams!.extensionPath).toBe(weirdExt);
+  });
+
+  test('修订在确认后、启动前被删除: launchOmp catches the re-fetch\'s ConfigNotFoundError and produces a typed failure instead of an unhandled throw', async () => {
+    const { deps, configRepository } = buildDeps();
+    const confirmed = await preparedAndConfirmed(deps, configRepository, revision({ configName: 'general', revisionId: 'rev-1' }));
+
+    // The revision was resolvable at prepare-time (and at confirmation) but
+    // becomes unavailable in the window between the user's one-time
+    // confirmation and launchOmp's own re-fetch of the revision.
+    configRepository.remove('rev-1');
+
+    const final = await launchOmp(deps, { planId: confirmed.planId, extensionPath: '/ext.ts', forwardedArgs: [], cwd: '/cwd' });
+    expect(final.phase).toBe('failed');
+    expect(isKnown(final.failureReason) && final.failureReason.value).toContain('revision-lookup');
+    expect(isKnown(final.failureReason) && final.failureReason.value).toContain('configuration revision not found');
   });
 
   test('launchOmp requires the plan to already be in the "applying" phase', async () => {

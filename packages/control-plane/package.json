@@ -11,8 +11,14 @@
     "typecheck": "tsc --noEmit",
     "seed": "bun scripts/seed-from-cap.ts"
   },
+  "dependencies": {
+    "ink": "^5.0.1",
+    "react": "^18.3.1"
+  },
   "devDependencies": {
     "@types/bun": "^1.1.6",
+    "@types/react": "^18.3.3",
+    "ink-testing-library": "4.0.0",
     "typescript": "^5.6.0"
   }
 }

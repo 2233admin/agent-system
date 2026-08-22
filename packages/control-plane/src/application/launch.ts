@@ -259,6 +259,16 @@ export async function launchOmp(
     readonly extensionPath: string;
     readonly forwardedArgs: readonly string[];
     readonly cwd: string;
+    /**
+     * Invoked exactly once, synchronously, immediately before `omp` is
+     * actually spawned -- i.e. the true moment stdio control transfers.
+     * Every earlier failure path (revision re-fetch, capability probe,
+     * context-writer) returns a `failed` plan without ever reaching this
+     * point, so a caller printing a "handing off to omp" line from this
+     * callback (rather than unconditionally before calling `launchOmp`)
+     * never prints it for a launch that never actually spawned `omp`.
+     */
+    readonly onSpawning?: () => void;
   },
 ): Promise<LaunchPlan> {
   let plan = await deps.launchPlanRepository.findById(params.planId);
@@ -274,7 +284,21 @@ export async function launchOmp(
     );
   }
 
-  const revision = await getConfigRevisionDetail(deps.configRepository, plan.revisionId);
+  let revision: StableConfigRevision;
+  try {
+    revision = await getConfigRevisionDetail(deps.configRepository, plan.revisionId);
+  } catch (error) {
+    if (error instanceof ConfigNotFoundError || error instanceof ConfigUnsupportedError) {
+      // The revision became unavailable (deleted/unsupported) sometime
+      // between the user's one-time confirmation and this re-fetch -- go
+      // through the same typed-failure path as every other failure mode in
+      // this function instead of letting the error escape unhandled.
+      plan = applyFailure(plan, `revision-lookup: ${error.message}`);
+      await deps.launchPlanRepository.save(plan);
+      return plan;
+    }
+    throw error;
+  }
   const knownDifferences = computeKnownDifferences(revision);
   const applyResult: 'applied' | 'degraded' = knownDifferences.length === 0 ? 'applied' : 'degraded';
 
@@ -301,6 +325,7 @@ export async function launchOmp(
 
   let spawnResult: OmpSpawnResult;
   try {
+    params.onSpawning?.();
     spawnResult = await deps.ompPort.spawn({
       revision,
       launchContextPath,

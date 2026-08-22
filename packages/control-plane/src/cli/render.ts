@@ -4,6 +4,16 @@
  * string-building functions over domain/application types so list, show
  * and compare can share the exact same formatting for common fields
  * (Code Map: "公共可导出视图共用同一渲染路径").
+ *
+ * `[DELTA]` Every user-readable string routes through `i18n.t()` (zh
+ * default, `CONFIGS_LANG=en`); `LaunchPlan.phase`/`ComparisonStatus`/
+ * `SourceCategory` values and `computeKnownDifferences` reason codes are
+ * never translated. Only the four functions the Code Map calls out
+ * (`renderLaunchStatus`, `renderLaunchFailure`, `renderSwitchAccepted`,
+ * `renderConfirmationSummary`) plus `renderHandoffLine` apply `colors.ts`
+ * semantic color -- `renderList`/`renderDetail`/`renderComparison`/
+ * `renderQueryFailure` stay uncolored, matching the Code Map's scoped
+ * color rollout.
  */
 
 import { isKnown } from '../domain/facts';
@@ -19,51 +29,63 @@ import type {
 } from '../domain/config';
 import type { LaunchPlan, LaunchStatus } from '../domain/activation';
 import type { CompareConfigRevisionsResult, ConfigQueryError } from '../application/queries';
+import { attention, colorForPhase, dim } from './colors';
+import { t } from './i18n';
 
-const CAPABILITY_GROUP_LABELS: Record<CapabilityKind, string> = {
-  instruction: 'Instructions',
-  skill: 'Skills',
-  mcp: 'MCP',
-  hook: 'Hooks',
-  plugin: 'Plugins',
-};
-
-function formatFact<T>(fact: Fact<T>, format: (value: T) => string = String): string {
-  return isKnown(fact) ? format(fact.value) : `Unknown (${fact.reason}, observed ${fact.observedAt})`;
+/**
+ * `[DELTA]` Replaces the old static `CAPABILITY_GROUP_LABELS` constant --
+ * labels are now language-dependent (`i18n.t()` reads `CONFIGS_LANG` fresh
+ * on every call), so this must be a function rather than a value computed
+ * once at import time. Exported for the TUI (Code Map: "既有私有 helper 供
+ * TUI 复用（避免重复格式化逻辑）").
+ */
+export function capabilityGroupLabel(kind: CapabilityKind): string {
+  switch (kind) {
+    case 'instruction':
+      return t('capabilityGroup.instruction');
+    case 'skill':
+      return t('capabilityGroup.skill');
+    case 'mcp':
+      return t('capabilityGroup.mcp');
+    case 'hook':
+      return t('capabilityGroup.hook');
+    case 'plugin':
+      return t('capabilityGroup.plugin');
+  }
 }
 
-function formatAvailability(revision: StableConfigRevision): string {
-  return isKnown(revision.availability) ? 'available' : formatFact(revision.availability);
+export function formatFact<T>(fact: Fact<T>, format: (value: T) => string = String): string {
+  return isKnown(fact) ? format(fact.value) : t('fact.unknown', { reason: fact.reason, observedAt: fact.observedAt });
 }
 
-function formatDefaultMarker(revision: StableConfigRevision): string {
+export function formatAvailability(revision: StableConfigRevision): string {
+  return isKnown(revision.availability) ? t('fact.available') : formatFact(revision.availability);
+}
+
+export function formatDefaultMarker(revision: StableConfigRevision): string {
   if (!isKnown(revision.defaultMarker)) {
     return formatFact(revision.defaultMarker);
   }
-  return revision.defaultMarker.value ? 'default' : 'generic';
+  return revision.defaultMarker.value ? t('marker.default') : t('marker.generic');
 }
 
 function formatCapabilityRef(ref: CapabilityReference): string {
   const source = formatFact(ref.sourceCategory);
   const summary = formatFact(ref.summary);
-  return `    - ${ref.name} [source: ${source}] ${summary}`;
+  return `    - ${ref.name} [${t('capabilityRef.source')}: ${source}] ${summary}`;
 }
 
-function formatCapabilityGroup(kind: CapabilityKind, refs: readonly CapabilityReference[]): string {
-  const label = CAPABILITY_GROUP_LABELS[kind];
+export function formatCapabilityGroup(kind: CapabilityKind, refs: readonly CapabilityReference[]): string {
+  const label = capabilityGroupLabel(kind);
   if (refs.length === 0) {
-    return `  ${label}: (none configured)`;
+    return `  ${label} ${t('capabilityGroup.emptySingle')}`;
   }
-  return [`  ${label}:`, ...refs.map(formatCapabilityRef)].join('\n');
+  return [`  ${label}`, ...refs.map(formatCapabilityRef)].join('\n');
 }
 
 /** MVP-FR1 empty state: honest, not a product failure. */
 export function renderEmptyList(): string {
-  return [
-    'No saved configuration revisions found.',
-    'This CLI only reads configuration revisions already stored in SQLite;',
-    'it does not create, import or supply configuration on its own.',
-  ].join('\n');
+  return [t('emptyList.line1'), t('emptyList.line2'), t('emptyList.line3')].join('\n');
 }
 
 export function renderList(revisions: readonly StableConfigRevision[]): string {
@@ -73,7 +95,7 @@ export function renderList(revisions: readonly StableConfigRevision[]): string {
   const lines = revisions.map((revision) => {
     const marker = formatDefaultMarker(revision);
     const boundary = formatFact(revision.scopeBoundary);
-    return `- ${revision.configName}  revision=${revision.revisionId}  [${marker}]  status=${formatAvailability(revision)}\n    boundary: ${boundary}`;
+    return `- ${revision.configName}  ${t('list.revisionLabel')}=${revision.revisionId}  [${marker}]  ${t('list.statusLabel')}=${formatAvailability(revision)}\n    ${t('list.boundaryLabel')}: ${boundary}`;
   });
   return lines.join('\n');
 }
@@ -81,10 +103,10 @@ export function renderList(revisions: readonly StableConfigRevision[]): string {
 export function renderDetail(revision: StableConfigRevision): string {
   const marker = formatDefaultMarker(revision);
   const lines = [
-    `Configuration: ${revision.configName}`,
-    `Revision: ${revision.revisionId}  [${marker}]`,
-    `Status: ${formatAvailability(revision)}`,
-    `Boundary: ${formatFact(revision.scopeBoundary)}`,
+    `${t('detail.configuration')} ${revision.configName}`,
+    `${t('detail.revision')} ${revision.revisionId}  [${marker}]`,
+    `${t('detail.status')} ${formatAvailability(revision)}`,
+    `${t('detail.boundary')} ${formatFact(revision.scopeBoundary)}`,
     '',
     formatCapabilityGroup('instruction', revision.instructions),
     formatCapabilityGroup('skill', revision.skills),
@@ -101,14 +123,14 @@ export function renderDetail(revision: StableConfigRevision): string {
 
 function formatErrorReason(error: ConfigQueryError): string {
   if (error.kind === 'config-not-found') {
-    return `not found. Recovery: run \`configs list\` to see available revision ids.`;
+    return t('queryFailure.notFound');
   }
-  return `unsupported (${error.reason}). Recovery: re-seed this revision or inspect its stored data; other configurations are unaffected.`;
+  return t('queryFailure.unsupported', { reason: error.reason });
 }
 
 /** Shared failure rendering for `show`/`compare`: identifier + typed reason + recovery entry. */
 export function renderQueryFailure(revisionId: string, error: ConfigQueryError): string {
-  return `Configuration "${revisionId}": ${formatErrorReason(error)}`;
+  return t('queryFailure.prefix', { revisionId, reason: formatErrorReason(error) });
 }
 
 function formatScalarField(field: ScalarFieldComparison): string {
@@ -133,20 +155,20 @@ function formatSourceCategoryBreakdown(entry: CapabilityComparisonEntry): string
 }
 
 function formatCapabilityGroupComparison(group: CapabilityGroupComparison): string {
-  const label = CAPABILITY_GROUP_LABELS[group.kind];
+  const label = capabilityGroupLabel(group.kind);
   if (group.entries.length === 0) {
-    return `${label}: (none in any compared revision)`;
+    return `${label} ${t('capabilityGroup.emptyCompare')}`;
   }
   const rows = group.entries.flatMap((entry) => {
-    const missing = entry.missingIn.length > 0 ? ` missing in: ${entry.missingIn.join(', ')}` : '';
-    return [`    - ${entry.name} [source: ${entry.sourceCategoryStatus}]${missing}`, ...formatSourceCategoryBreakdown(entry)];
+    const missing = entry.missingIn.length > 0 ? ` ${t('comparison.missingIn', { ids: entry.missingIn.join(', ') })}` : '';
+    return [`    - ${entry.name} [${t('capabilityRef.source')}: ${entry.sourceCategoryStatus}]${missing}`, ...formatSourceCategoryBreakdown(entry)];
   });
-  return [`${label}:`, ...rows].join('\n');
+  return [label, ...rows].join('\n');
 }
 
 export function renderComparison(result: ComparisonResult): string {
   const lines = [
-    `Comparing ${result.revisionIds.length} revision(s): ${result.revisionIds.join(', ')}`,
+    t('comparison.header', { count: result.revisionIds.length, ids: result.revisionIds.join(', ') }),
     '',
     ...result.scalarFields.map(formatScalarField),
     '',
@@ -161,12 +183,12 @@ export function renderCompareResult(result: CompareConfigRevisionsResult): strin
   if (result.comparison !== null) {
     sections.push(renderComparison(result.comparison));
   } else {
-    sections.push('No valid configuration revisions were resolved to compare.');
+    sections.push(t('comparison.noValid'));
   }
 
   if (result.failed.length > 0) {
     sections.push('');
-    sections.push('Unresolved ids:');
+    sections.push(t('comparison.unresolvedTitle'));
     for (const failure of result.failed) {
       sections.push(`  ${renderQueryFailure(failure.revisionId, failure.error)}`);
     }
@@ -185,6 +207,10 @@ export function renderCompareResult(result: CompareConfigRevisionsResult): strin
  * not just after. Forwarded args are echoed opaquely (never parsed or
  * classified, per Boundaries & Constraints) -- nothing about tasks/
  * prompts/conversation content is shown beyond the raw tokens themselves.
+ *
+ * `[DELTA]` DESIGN.md `{components.confirmation-summary}`: the "Known
+ * differences" title is colored `attention`; the closing one-time-
+ * confirmation sentence is `dim`; everything else stays neutral.
  */
 export function renderConfirmationSummary(
   plan: LaunchPlan,
@@ -194,23 +220,23 @@ export function renderConfirmationSummary(
   forwardedArgs: readonly string[],
 ): string {
   const lines = [
-    `About to launch OMP with configuration "${revision.configName}" (revision ${revision.revisionId}).`,
-    `Client: ${plan.client}  version: ${formatFact(clientVersion)}`,
+    t('confirmation.lead', { configName: revision.configName, revisionId: revision.revisionId }),
+    t('confirmation.client', { client: plan.client, version: formatFact(clientVersion) }),
     '',
     formatCapabilityGroup('instruction', revision.instructions),
     formatCapabilityGroup('skill', revision.skills),
     formatCapabilityGroup('mcp', revision.mcp),
   ];
   if (knownDifferences.length > 0) {
-    lines.push('', 'Known differences (will not be fully applied in this MVP):');
+    lines.push('', attention(t('confirmation.knownDifferencesTitle')));
     for (const reason of knownDifferences) {
       lines.push(`  - ${reason}`);
     }
   }
   if (forwardedArgs.length > 0) {
-    lines.push('', 'Forwarded to `omp` verbatim after `--`:', `  ${forwardedArgs.join(' ')}`);
+    lines.push('', t('confirmation.forwardedTitle'), `  ${forwardedArgs.join(' ')}`);
   }
-  lines.push('', 'This is a one-time confirmation for this launch plan -- nothing else will ask again.');
+  lines.push('', dim(t('confirmation.closing')));
   return lines.join('\n');
 }
 
@@ -218,29 +244,33 @@ export function renderConfirmationSummary(
  * MVP-FR6: launch status view. Only revision/client/version/phase/apply
  * result/known differences -- never task goals, conversation, tool calls,
  * task progress or results (Boundaries & Constraints).
+ *
+ * `[DELTA]` DESIGN.md `{components.status-line}`: only the phase *value*
+ * is colored, and only once the phase has settled (`colorForPhase` returns
+ * the text unwrapped for the in-flight phases).
  */
 export function renderLaunchStatus(status: LaunchStatus): string {
   const lines = [
-    `Revision: ${status.revisionId}`,
-    `Client: ${status.client}`,
-    `Client version: ${formatFact(status.clientVersion)}`,
-    `Phase: ${status.phase}`,
-    `Apply result: ${formatFact(status.applyResult)}`,
+    t('launchStatus.revision', { revisionId: status.revisionId }),
+    t('launchStatus.client', { client: status.client }),
+    t('launchStatus.clientVersion', { version: formatFact(status.clientVersion) }),
+    t('launchStatus.phase', { phase: colorForPhase(status.phase, status.phase) }),
+    t('launchStatus.applyResult', { result: formatFact(status.applyResult) }),
   ];
   if (status.knownDifferences.length > 0) {
-    lines.push('Known differences:');
+    lines.push(t('launchStatus.knownDifferencesTitle'));
     for (const reason of status.knownDifferences) {
       lines.push(`  - ${reason}`);
     }
   } else {
-    lines.push('Known differences: (none)');
+    lines.push(t('launchStatus.knownDifferencesNone'));
   }
   return lines.join('\n');
 }
 
 /** MVP-FR10: immediate, typed "not supported yet" response -- no placeholder, translation or shim. */
 export function renderUnsupportedClient(clientId: string, reason: string): string {
-  return `Client "${clientId}" is not supported yet: ${reason}`;
+  return t('unsupportedClient', { clientId, reason });
 }
 
 /**
@@ -248,12 +278,18 @@ export function renderUnsupportedClient(clientId: string, reason: string): strin
  * covers both `cancelled` (user rejected the confirmation) and any other
  * failure phase (`failed`/`incomplete`). Never fabricates success and
  * never hides which phase the plan stopped in.
+ *
+ * `[DELTA]` DESIGN.md `{components.failure-block}`: the first sentence is
+ * colored per `colorForPhase` (`failed`/`incomplete` -> failure red,
+ * `cancelled` -> attention yellow -- the user's own choice, not a fault);
+ * "Phase:"/"Reason:" stay neutral; "Recovery:" is `dim`.
  */
 export function renderLaunchFailure(plan: LaunchPlan): string {
   const reason = isKnown(plan.failureReason) ? plan.failureReason.value : formatFact(plan.failureReason);
 
   if (plan.phase === 'cancelled') {
-    return [`Launch plan ${plan.planId} was cancelled: ${reason}.`, 'OMP was not started.'].join('\n');
+    const lead = colorForPhase(plan.phase, t('failure.cancelled', { planId: plan.planId, reason }));
+    return [lead, t('failure.notStarted')].join('\n');
   }
 
   // `incomplete` is a domain-distinct terminal state from `failed`
@@ -261,22 +297,37 @@ export function renderLaunchFailure(plan: LaunchPlan): string {
   // without a determinable exit code, e.g. killed by a signal) -- it must
   // not be reported with the same "failed" wording as an actual non-zero
   // exit.
-  const leadingSentence =
-    plan.phase === 'incomplete' ? `Launch plan ${plan.planId} did not complete.` : `Launch plan ${plan.planId} failed.`;
+  const leadingText = plan.phase === 'incomplete' ? t('failure.incomplete', { planId: plan.planId }) : t('failure.failed', { planId: plan.planId });
 
   return [
-    leadingSentence,
-    `Phase: ${plan.phase}`,
-    `Reason: ${reason}`,
-    `Recovery: inspect the reason above; run \`configs show ${plan.revisionId}\` to re-check the configuration, then \`configs use ${plan.revisionId}\` to retry once resolved.`,
+    colorForPhase(plan.phase, leadingText),
+    t('failure.phase', { phase: plan.phase }),
+    t('failure.reason', { reason }),
+    dim(t('failure.recovery', { revisionId: plan.revisionId })),
   ].join('\n');
 }
 
-/** MVP-FR8: switching never hot-reloads the current process -- it requires a restart and a fresh confirmation. */
+/**
+ * MVP-FR8: switching never hot-reloads the current process -- it requires a
+ * restart and a fresh confirmation.
+ *
+ * `[DELTA]` DESIGN.md `{components.switch-accepted-block}`: the "requires a
+ * restart" sentence is colored `attention`; the rest stays neutral.
+ */
 export function renderSwitchAccepted(previousPlan: LaunchPlan, newPlan: LaunchPlan): string {
   return [
-    `Current OMP process (plan ${previousPlan.planId}) now requires a restart to use a new configuration.`,
-    `A new launch plan (${newPlan.planId}) was created for revision ${newPlan.revisionId} and awaits a fresh confirmation.`,
-    'The current process is not modified in place and will not auto-resume.',
+    attention(t('switchAccepted.requiresRestart', { previousPlanId: previousPlan.planId })),
+    t('switchAccepted.newPlan', { planId: newPlan.planId, revisionId: newPlan.revisionId }),
+    t('switchAccepted.noAutoResume'),
   ].join('\n');
+}
+
+/**
+ * `[DELTA]` New in this Story: the terminal-handoff line (DESIGN.md
+ * `{components.handoff-line}`). Printed exactly once, by both interfaces,
+ * immediately after confirmation and immediately before `omp` takes over
+ * stdio -- always `dim`, never anything else.
+ */
+export function renderHandoffLine(): string {
+  return dim(t('handoffLine'));
 }

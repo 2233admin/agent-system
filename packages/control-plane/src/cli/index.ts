@@ -15,7 +15,7 @@ import { SqliteLaunchPlanRepository } from '../adapters/sqlite/launch-repository
 import { BunOmpProcessPort, defaultExtensionPath, findDenylistedForwardedArg } from '../adapters/omp/process-port';
 import { BunOmpCapabilityProbe } from '../adapters/omp/capability-probe';
 import { FsLaunchContextWriter } from '../adapters/launch-context/fs-launch-context-writer';
-import type { OmpCapabilityProbePort, OmpProcessPort, LaunchContextWriter } from '../application/ports';
+import type { ConfigRevisionRepository, LaunchPlanRepository, OmpCapabilityProbePort, OmpProcessPort, LaunchContextWriter } from '../application/ports';
 import {
   ConfigNotFoundError,
   ConfigUnsupportedError,
@@ -40,10 +40,12 @@ import {
 } from '../application/launch';
 import { readYesNo } from './confirm-prompt';
 import { defaultDbPath } from './db-path';
+import { t } from './i18n';
 import {
   renderCompareResult,
   renderConfirmationSummary,
   renderDetail,
+  renderHandoffLine,
   renderLaunchFailure,
   renderLaunchStatus,
   renderList,
@@ -51,9 +53,19 @@ import {
   renderSwitchAccepted,
   renderUnsupportedClient,
 } from './render';
+import { runTui } from './tui';
 
-const USAGE =
-  'usage: configs <list|show <id>|compare <id> <id> [...ids]|use <id> [--client <id>] [--yes] [-- ...args]|status [<planId>]|switch <id> [--client <id>] [--yes] [-- ...args]>';
+// The syntax portion never translates (command/subcommand/flag names are
+// stable, `grep`-matched identifiers -- same convention as everywhere
+// else in this file); only the leading "usage:"/"用法：" word is
+// language-dependent, so this is composed via `usageLine()` rather than
+// being a static constant.
+const USAGE_SYNTAX =
+  'configs <list|show <id>|compare <id> <id> [...ids]|use <id> [--client <id>] [--yes] [-- ...args]|status [<planId>]|switch <id> [--client <id>] [--yes] [-- ...args]>';
+
+function usageLine(): string {
+  return `${t('usage.prefix')} ${USAGE_SYNTAX}`;
+}
 
 const KNOWN_CLIENT_IDS: readonly ClientId[] = ['omp', 'claude-code', 'codex-cli'];
 
@@ -83,7 +95,7 @@ function parseUseOrSwitch(kind: 'use' | 'switch', rest: readonly string[]): Pars
 
   const id = head[0];
   if (id === undefined || id.startsWith('--')) {
-    return { kind: 'usage-error', message: `configs ${kind} <id>: missing <id>\n${USAGE}` };
+    return { kind: 'usage-error', message: `${t('parseError.missingId', { command: kind })}\n${usageLine()}` };
   }
 
   let clientRaw = 'omp';
@@ -97,18 +109,21 @@ function parseUseOrSwitch(kind: 'use' | 'switch', rest: readonly string[]): Pars
     if (token === '--client') {
       const value = head[i + 1];
       if (value === undefined) {
-        return { kind: 'usage-error', message: `--client requires a value\n${USAGE}` };
+        return { kind: 'usage-error', message: `${t('parseError.clientRequiresValue')}\n${usageLine()}` };
       }
       clientRaw = value;
       i += 1;
       continue;
     }
-    return { kind: 'usage-error', message: `unknown flag: ${token}\n${USAGE}` };
+    // `token` is defined here -- the loop bound (`i < head.length`)
+    // guarantees it; only `noUncheckedIndexedAccess` widens its static
+    // type to include `undefined`.
+    return { kind: 'usage-error', message: `${t('parseError.unknownFlag', { flag: token! })}\n${usageLine()}` };
   }
 
   if (clientRaw !== 'omp') {
     if (!KNOWN_CLIENT_IDS.includes(clientRaw as ClientId)) {
-      return { kind: 'usage-error', message: `unknown client: ${clientRaw}\n${USAGE}` };
+      return { kind: 'usage-error', message: `${t('parseError.unknownClient', { client: clientRaw })}\n${usageLine()}` };
     }
     const support = resolveClientSupport(clientRaw as ClientId);
     if (!support.supported) {
@@ -126,7 +141,7 @@ function parseUseOrSwitch(kind: 'use' | 'switch', rest: readonly string[]): Pars
   if (denylisted !== null) {
     return {
       kind: 'usage-error',
-      message: `configs ${kind}: forwarded argument "${denylisted}" is not allowed -- it would defeat this Story's single-extension-source/isolated-profile/no-auto-resume guarantees when passed through to the real \`omp\` binary\n${USAGE}`,
+      message: `${t('parseError.denylistedForwardedArg', { command: kind, arg: denylisted })}\n${usageLine()}`,
     };
   }
 
@@ -141,13 +156,13 @@ function parseCommand(argv: readonly string[]): ParsedCommand {
     case 'show': {
       const id = rest[0];
       if (id === undefined) {
-        return { kind: 'usage-error', message: `configs show <id>: missing <id>\n${USAGE}` };
+        return { kind: 'usage-error', message: `${t('parseError.missingId', { command: 'show' })}\n${usageLine()}` };
       }
       return { kind: 'show', id };
     }
     case 'compare':
       if (rest.length < 2) {
-        return { kind: 'usage-error', message: `configs compare <id> <id> [...ids]: requires at least 2 ids\n${USAGE}` };
+        return { kind: 'usage-error', message: `${t('parseError.compareMinIds')}\n${usageLine()}` };
       }
       return { kind: 'compare', ids: rest };
     case 'use':
@@ -157,7 +172,12 @@ function parseCommand(argv: readonly string[]): ParsedCommand {
     case 'status':
       return { kind: 'status', planId: rest[0] ?? null };
     default:
-      return { kind: 'usage-error', message: `unknown command: ${command ?? '(none)'}\n${USAGE}` };
+      // `command` is always defined here: `main()` intercepts `argv.length
+      // === 0` before `parseCommand` is ever called, so this `default`
+      // branch is only reached for an actual unrecognized subcommand
+      // string. (`command!` -- TypeScript can't see that caller guarantee
+      // through the `switch`, but it holds for every reachable call site.)
+      return { kind: 'usage-error', message: `${t('parseError.unknownCommand', { command: command! })}\n${usageLine()}` };
   }
 }
 
@@ -167,10 +187,61 @@ export interface CliOverrides {
   readonly contextWriter?: LaunchContextWriter;
 }
 
-interface FullDeps extends LaunchDeps {
+/**
+ * `configRepository`/`launchPlanRepository` only need to be *closable*
+ * versions of the read-only application-layer repository ports -- not
+ * literally the concrete SQLite classes. Narrowing it to a structural
+ * interface (rather than `SqliteConfigRevisionRepository`/
+ * `SqliteLaunchPlanRepository`) is what lets `runTuiWithDeps()`'s tests
+ * (`tests/cli/tui.test.tsx`) construct a `FullDeps` out of in-memory
+ * fakes instead of a real SQLite file.
+ */
+export interface ClosableConfigRevisionRepository extends ConfigRevisionRepository {
+  close(): void;
+}
+export interface ClosableLaunchPlanRepository extends LaunchPlanRepository {
+  close(): void;
+}
+
+export interface FullDeps extends LaunchDeps {
+  readonly configRepository: ClosableConfigRevisionRepository;
+  readonly launchPlanRepository: ClosableLaunchPlanRepository;
   readonly ompPort: OmpProcessPort;
   readonly capabilityProbe: OmpCapabilityProbePort;
   readonly contextWriter: LaunchContextWriter;
+}
+
+/**
+ * Opens the SQLite-backed repositories and assembles the full dependency
+ * bag shared by `main()`'s subcommand dispatch and `runTui()`. Extracted
+ * verbatim from `main()`'s prior inline construction (Design Notes: "只是
+ * 把 main() 现有...行原样搬到一个可复用函数,不改变其错误处理/close顺序") --
+ * on failure it prints the same typed error and returns `null` rather than
+ * throwing, so callers just check for `null` and exit 1.
+ */
+export async function openDeps(overrides: CliOverrides): Promise<FullDeps | null> {
+  let configRepository: SqliteConfigRevisionRepository | undefined;
+  let launchPlanRepository: SqliteLaunchPlanRepository;
+  try {
+    const dbPath = defaultDbPath();
+    configRepository = new SqliteConfigRevisionRepository(dbPath);
+    launchPlanRepository = new SqliteLaunchPlanRepository(dbPath);
+  } catch (error) {
+    // `configRepository` may have already opened successfully before
+    // `launchPlanRepository`'s construction threw -- never leak that
+    // handle.
+    configRepository?.close();
+    console.error(t('openDeps.failed', { message: (error as Error).message }));
+    return null;
+  }
+
+  return {
+    configRepository,
+    launchPlanRepository,
+    ompPort: overrides.ompPort ?? new BunOmpProcessPort(),
+    capabilityProbe: overrides.capabilityProbe ?? new BunOmpCapabilityProbe(),
+    contextWriter: overrides.contextWriter ?? new FsLaunchContextWriter(),
+  };
 }
 
 /**
@@ -246,7 +317,7 @@ async function runLaunchFlow(
   const clientVersion = await deps.ompPort.detectVersion();
   console.log(renderConfirmationSummary(plan, revision, clientVersion, knownDifferences, params.forwardedArgs));
 
-  const confirmed = params.yes || (await readYesNo('Proceed with this launch? [y/N] '));
+  const confirmed = params.yes || (await readYesNo(t('confirmation.prompt')));
   if (!confirmed) {
     const rejectedPlan = await rejectLaunchPlan(deps, plan.planId);
     console.log(renderLaunchFailure(rejectedPlan));
@@ -254,11 +325,16 @@ async function runLaunchFlow(
   }
 
   await confirmLaunchPlan(deps, plan.planId);
+  // `[DELTA]` The handoff line prints from `onSpawning` -- i.e. only once
+  // `launchOmp` is actually about to spawn `omp` -- not unconditionally
+  // here, so a launch that fails before ever spawning (revision-lookup,
+  // capability-probe) never claims a handoff that didn't happen.
   const finalPlan = await launchOmp(deps, {
     planId: plan.planId,
     extensionPath: defaultExtensionPath(),
     forwardedArgs: params.forwardedArgs,
     cwd: process.cwd(),
+    onSpawning: () => console.log(renderHandoffLine()),
   });
 
   if (finalPlan.phase === 'succeeded' || finalPlan.phase === 'degraded') {
@@ -272,6 +348,18 @@ async function runLaunchFlow(
 }
 
 export async function main(argv: readonly string[], overrides: CliOverrides = {}): Promise<number> {
+  // `[DELTA]` IA first layer: `configs` with no subcommand at all is no
+  // longer a usage error -- it prints the same usage text as a normal,
+  // successful help request (exit 0). Only reached for genuinely
+  // non-interactive/non-TTY zero-arg invocations -- the interactive-TTY
+  // zero-arg case is intercepted before `main()` is ever called (see the
+  // `import.meta.main` dispatch below), and this path never touches the
+  // database.
+  if (argv.length === 0) {
+    console.log(usageLine());
+    return 0;
+  }
+
   const parsed = parseCommand(argv);
   if (parsed.kind === 'usage-error') {
     console.error(parsed.message);
@@ -282,40 +370,22 @@ export async function main(argv: readonly string[], overrides: CliOverrides = {}
     return 1;
   }
 
-  let configRepository: SqliteConfigRevisionRepository | undefined;
-  let launchPlanRepository: SqliteLaunchPlanRepository;
-  try {
-    const dbPath = defaultDbPath();
-    configRepository = new SqliteConfigRevisionRepository(dbPath);
-    launchPlanRepository = new SqliteLaunchPlanRepository(dbPath);
-  } catch (error) {
-    // `configRepository` may have already opened successfully before
-    // `launchPlanRepository`'s construction threw -- never leak that
-    // handle.
-    configRepository?.close();
-    console.error(`configs: could not open configuration storage: ${(error as Error).message}`);
+  const deps = await openDeps(overrides);
+  if (deps === null) {
     return 1;
   }
-
-  const deps: FullDeps = {
-    configRepository,
-    launchPlanRepository,
-    ompPort: overrides.ompPort ?? new BunOmpProcessPort(),
-    capabilityProbe: overrides.capabilityProbe ?? new BunOmpCapabilityProbe(),
-    contextWriter: overrides.contextWriter ?? new FsLaunchContextWriter(),
-  };
 
   try {
     switch (parsed.kind) {
       case 'list': {
-        const revisions = await listConfigRevisions(configRepository);
+        const revisions = await listConfigRevisions(deps.configRepository);
         console.log(renderList(revisions));
         return 0;
       }
 
       case 'show': {
         try {
-          const revision = await getConfigRevisionDetail(configRepository, parsed.id);
+          const revision = await getConfigRevisionDetail(deps.configRepository, parsed.id);
           console.log(renderDetail(revision));
           return 0;
         } catch (error) {
@@ -328,7 +398,7 @@ export async function main(argv: readonly string[], overrides: CliOverrides = {}
       }
 
       case 'compare': {
-        const result = await compareConfigRevisions(configRepository, parsed.ids);
+        const result = await compareConfigRevisions(deps.configRepository, parsed.ids);
         console.log(renderCompareResult(result));
         return result.resolved.length > 0 ? 0 : 1;
       }
@@ -350,8 +420,9 @@ export async function main(argv: readonly string[], overrides: CliOverrides = {}
           return 0;
         } catch (error) {
           if (error instanceof LaunchPlanNotFoundError) {
-            const target = parsed.planId !== null ? `for id "${parsed.planId}"` : '(no active plan for client "omp")';
-            console.log(`No launch plan found ${target}. Run \`configs use <id>\` first.`);
+            const target =
+              parsed.planId !== null ? t('launchPlan.notFoundTargetForId', { planId: parsed.planId }) : t('launchPlan.notFoundTargetNoActive');
+            console.log(t('launchPlan.notFound', { target }));
             return 1;
           }
           throw error;
@@ -359,8 +430,8 @@ export async function main(argv: readonly string[], overrides: CliOverrides = {}
       }
     }
   } finally {
-    configRepository.close();
-    launchPlanRepository.close();
+    deps.configRepository.close();
+    deps.launchPlanRepository.close();
   }
 }
 
@@ -370,10 +441,16 @@ export { InvalidTransitionError, LaunchPlanNotFoundError, StaleConfirmationError
 
 if (import.meta.main) {
   try {
-    const exitCode = await main(process.argv.slice(2));
+    const argv = process.argv.slice(2);
+    // `[DELTA]` IA first layer: zero-arg + interactive TTY (both stdin and
+    // stdout) enters the TUI and never touches the pure-text dispatch
+    // logic below; any explicit subcommand, or a non-interactive/non-TTY
+    // zero-arg invocation, goes through `main()` exactly as before.
+    const enterTui = argv.length === 0 && process.stdin.isTTY === true && process.stdout.isTTY === true;
+    const exitCode = enterTui ? await runTui({}) : await main(argv);
     process.exit(exitCode);
   } catch (error) {
-    console.error(`configs: unexpected failure: ${(error as Error).message}`);
+    console.error(t('unexpectedFailure', { message: (error as Error).message }));
     process.exit(1);
   }
 }
