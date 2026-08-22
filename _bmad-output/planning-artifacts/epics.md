@@ -111,6 +111,12 @@ MVP-FR10：Epic 1 / Story 1.2 — OMP-only 与未来 adapter 边界。
 
 **实现与交互约束：** 外部 CLI 是唯一主入口；OMP 内能力 native-first，缺口才由薄扩展补齐。产品不创建/编辑配置、不生成候选/推荐、不分析或观察任务。SQLite、versioned manifest/plan/receipt、invocation 隔离和失败协调只服务两项核心能力，不扩成额外用户流程。
 
+### Epic 2：控制面发布与自更新
+
+`configs` 以 Bun 编译的独立可执行文件分平台发布；进程启动时后台静默检查新版本，通过固定发布端点 + 完整性校验后原地自更新，失败静默降级不阻塞本次启动，不上报任何遥测。具体 Story 与验收标准由后续细化产出。
+
+**覆盖 AD：** AD-15（2026-08-22 修订，见 `sprint-change-proposal-2026-08-22-configs-self-update.md`）
+
 ## Epic 1：查看、选择并使用 OMP 配置
 
 用户可以看清一个配置包含什么，必要时并列比较多个配置，然后亲自选择一个具体修订，经一次确认 fresh 启动 OMP；进入 OMP 后使用原生 resume，并只查看配置应用与客户端启动状态。
