@@ -23,6 +23,21 @@ const YELLOW = '\x1b[33m';
 const RED = '\x1b[31m';
 const DIM = '\x1b[2m';
 
+/**
+ * `ink`'s `<Text color="...">` prop takes a chalk-style color *name*, not
+ * an ANSI escape sequence, so the TUI (`tui.tsx`) cannot reuse the `wrap()`
+ * -based helpers below directly. This is the single source of truth for
+ * "which named color each semantic role maps to" that both the ANSI
+ * wrappers here and the TUI's `color` props read from, so the two never
+ * drift independently out of sync.
+ */
+export const ROLE_COLOR_NAMES = {
+  success: 'green',
+  degraded: 'yellow',
+  attention: 'yellow',
+  failure: 'red',
+} as const;
+
 export function shouldColor(): boolean {
   if (process.env.NO_COLOR !== undefined) {
     return false;

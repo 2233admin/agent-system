@@ -259,6 +259,16 @@ export async function launchOmp(
     readonly extensionPath: string;
     readonly forwardedArgs: readonly string[];
     readonly cwd: string;
+    /**
+     * Invoked exactly once, synchronously, immediately before `omp` is
+     * actually spawned -- i.e. the true moment stdio control transfers.
+     * Every earlier failure path (revision re-fetch, capability probe,
+     * context-writer) returns a `failed` plan without ever reaching this
+     * point, so a caller printing a "handing off to omp" line from this
+     * callback (rather than unconditionally before calling `launchOmp`)
+     * never prints it for a launch that never actually spawned `omp`.
+     */
+    readonly onSpawning?: () => void;
   },
 ): Promise<LaunchPlan> {
   let plan = await deps.launchPlanRepository.findById(params.planId);
@@ -315,6 +325,7 @@ export async function launchOmp(
 
   let spawnResult: OmpSpawnResult;
   try {
+    params.onSpawning?.();
     spawnResult = await deps.ompPort.spawn({
       revision,
       launchContextPath,

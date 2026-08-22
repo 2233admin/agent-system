@@ -325,12 +325,16 @@ async function runLaunchFlow(
   }
 
   await confirmLaunchPlan(deps, plan.planId);
-  console.log(renderHandoffLine());
+  // `[DELTA]` The handoff line prints from `onSpawning` -- i.e. only once
+  // `launchOmp` is actually about to spawn `omp` -- not unconditionally
+  // here, so a launch that fails before ever spawning (revision-lookup,
+  // capability-probe) never claims a handoff that didn't happen.
   const finalPlan = await launchOmp(deps, {
     planId: plan.planId,
     extensionPath: defaultExtensionPath(),
     forwardedArgs: params.forwardedArgs,
     cwd: process.cwd(),
+    onSpawning: () => console.log(renderHandoffLine()),
   });
 
   if (finalPlan.phase === 'succeeded' || finalPlan.phase === 'degraded') {

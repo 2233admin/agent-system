@@ -28,6 +28,7 @@ import type { StableConfigRevision } from '../domain/config';
 import { computeKnownDifferences, confirmLaunchPlan, getLaunchStatus, launchOmp, prepareLaunchPlan, type LaunchDeps } from '../application/launch';
 import { listConfigRevisions } from '../application/queries';
 import { defaultExtensionPath } from '../adapters/omp/process-port';
+import { ROLE_COLOR_NAMES } from './colors';
 import { t } from './i18n';
 import { formatAvailability, formatDefaultMarker, renderDetail, renderHandoffLine, renderLaunchFailure, renderLaunchStatus } from './render';
 import { openDeps, type CliOverrides, type FullDeps } from './index';
@@ -136,7 +137,7 @@ export function TuiApp({ revisions, knownDifferencesByRevision, onLaunch, onQuit
           return (
             <Text key={revision.revisionId} inverse={index === screen.selectedIndex}>
               {label}
-              {hasKnownDifferences ? <Text color="yellow"> {t('tui.knownDifferencesMarker')}</Text> : null}
+              {hasKnownDifferences ? <Text color={ROLE_COLOR_NAMES.attention}> {t('tui.knownDifferencesMarker')}</Text> : null}
             </Text>
           );
         })}
@@ -159,7 +160,7 @@ export function TuiApp({ revisions, knownDifferencesByRevision, onLaunch, onQuit
       {diffs.length > 0 ? (
         <Box flexDirection="column">
           <Text> </Text>
-          <Text color="yellow">{t('confirmation.knownDifferencesTitle')}</Text>
+          <Text color={ROLE_COLOR_NAMES.attention}>{t('confirmation.knownDifferencesTitle')}</Text>
           {diffs.map((reason) => (
             <Text key={reason}>{`  - ${reason}`}</Text>
           ))}
@@ -297,12 +298,15 @@ export async function runTuiWithDeps(deps: FullDeps, hooks: RunTuiHooks = {}): P
       return 1;
     }
 
-    console.log(renderHandoffLine());
+    // `[DELTA]` Same ordering fix as the pure-text CLI path: the handoff
+    // line only prints once `launchOmp` is actually about to spawn `omp`,
+    // not unconditionally before calling it.
     const finalPlan = await launchOmp(deps, {
       planId: plan.planId,
       extensionPath: defaultExtensionPath(),
       forwardedArgs: [],
       cwd: process.cwd(),
+      onSpawning: () => console.log(renderHandoffLine()),
     });
 
     if (finalPlan.phase === 'succeeded' || finalPlan.phase === 'degraded') {

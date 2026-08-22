@@ -227,14 +227,21 @@ function otherLang(lang: Lang): Lang {
  * before falling back to the raw key -- a gap in one dictionary degrades to
  * a real, readable sentence in the other language rather than a raw
  * `dot.separated.key` leaking into user-facing output.
+ *
+ * Substitution is a single pass over the *template* (`String.replace` with
+ * a global regex never rescans text it just inserted) rather than N
+ * sequential passes -- sequential passes let one param's value, if it
+ * happens to contain another param's `{name}` token (e.g. an untrusted
+ * `configName` literally containing the text `{revisionId}`), get
+ * re-substituted by a later param.
  */
 export function t(key: TranslationKey, params?: Readonly<Record<string, string | number>>): string {
   const lang = resolveLang();
-  let template = DICTS[lang][key] ?? DICTS[otherLang(lang)][key] ?? key;
-  if (params !== undefined) {
-    for (const [name, value] of Object.entries(params)) {
-      template = template.split(`{${name}}`).join(String(value));
-    }
+  const template = DICTS[lang][key] ?? DICTS[otherLang(lang)][key] ?? key;
+  if (params === undefined) {
+    return template;
   }
-  return template;
+  return template.replace(/\{(\w+)\}/g, (match, name: string) =>
+    Object.prototype.hasOwnProperty.call(params, name) ? String(params[name]) : match,
+  );
 }

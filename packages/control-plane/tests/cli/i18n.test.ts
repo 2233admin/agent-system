@@ -79,6 +79,18 @@ describe('t()', () => {
     expect(t('failure.failed', { planId: '{planId}' })).toBe('Launch plan {planId} failed.');
   });
 
+  test('a param value containing a *different* param\'s placeholder token is not re-substituted by that other param (cross-param, not just self-reference)', () => {
+    process.env.CONFIGS_LANG = 'en';
+    // If `configName` were substituted first and its literal `{revisionId}`
+    // text then got caught by the later `revisionId` substitution, this
+    // would incorrectly become "About to launch OMP with configuration
+    // \"see rev-1\" (revision rev-1)." instead of leaving the operator's
+    // literal config name untouched.
+    expect(t('confirmation.lead', { configName: 'see {revisionId}', revisionId: 'rev-1' })).toBe(
+      'About to launch OMP with configuration "see {revisionId}" (revision rev-1).',
+    );
+  });
+
   test('closed enum values (LaunchPlan.phase) are always passed through as raw params, never looked up in the dictionary', () => {
     process.env.CONFIGS_LANG = 'zh';
     // The phase word itself must appear verbatim (English identifier),
