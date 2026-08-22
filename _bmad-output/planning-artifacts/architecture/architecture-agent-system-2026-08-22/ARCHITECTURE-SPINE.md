@@ -155,8 +155,8 @@ flowchart LR
 ### AD-15 — 控制面发布、客户端升级与高频激活分离
 
 - **Binds:** WF-1、WF-2、NFR-8、NFR-9
-- **Prevents:** 每次激活安装/升级，以及客户端 contract churn 无门进入。
-- **Rule:** 外部 CLI 以 Bun standalone artifact 分平台发布；OMP 薄扩展通过 Marketplace、Git 或本地 link 分发，但必须与 CLI protocol version 显式兼容。安装/升级是低频显式操作，普通激活不得安装依赖、改插件或联网更新。每个支持客户端的实际版本升级先运行 capability probe、adapter fixtures 与 fresh→locator→explicit resume 目标 smoke，再更新兼容 snapshot。文档声称但 release-pinned CLI/help/source 或 smoke 未证实的能力保持 Unknown。
+- **Prevents:** 每次激活安装/升级依赖或插件、OMP 客户端 contract churn 无门进入，以及外部 CLI 自更新引入未经完整性校验的供应链风险或阻塞正常激活。
+- **Rule:** 外部 CLI 以 Bun standalone artifact 分平台发布；OMP 薄扩展通过 Marketplace、Git 或本地 link 分发，但必须与 CLI protocol version 显式兼容。安装/升级默认是低频显式操作，普通激活不得安装依赖、改插件或为 OMP/薄扩展联网更新。**唯一例外：外部 CLI 自身版本可以在进程启动时后台静默检查并原地自更新**——这是本架构唯一允许发生在普通激活路径上的联网行为，且必须同时满足：只读 GET 一个固定、版本化的发布端点（不得从用户可控或运行时派生的 URL 拉取）；下载工件必须先通过完整性校验（签名或已知哈希）才允许替换本地二进制；替换前保留可回滚的旧二进制（如 `.bak`）；检查、下载或校验的任一步骤失败一律静默降级为"本次不更新、继续用当前版本完成本次启动"，不得阻塞或使当前激活失败；更新检查/下载过程不得携带或上报任何遥测、使用数据或产品状态。OMP 自身的版本升级不受本条例外覆盖，继续是低频显式操作：每个支持客户端的实际版本升级先运行 capability probe、adapter fixtures 与 fresh→locator→explicit resume 目标 smoke，再更新兼容 snapshot。文档声称但 release-pinned CLI/help/source 或 smoke 未证实的能力保持 Unknown。
 
 ### AD-16 — 候选、推荐与用户裁决可追溯 [ADOPTED]
 
