@@ -416,12 +416,11 @@ export class SqliteConfigRevisionRepository implements ConfigRevisionRepository 
       mkdirSync(path.dirname(dbPath), { recursive: true });
     }
     this.db = new Database(dbPath, { create: true });
-    this.db.exec('PRAGMA journal_mode = WAL;');
-    // `[Review fix]` Root-cause mitigation for concurrent migrations (see
-    // `runConfigRevisionMigrations`'s docstring): make SQLite itself wait
-    // out short-lived lock contention instead of failing immediately with
-    // `SQLITE_BUSY`/`"database is locked"`.
+    // Install the wait policy before changing the database journal mode:
+    // `PRAGMA journal_mode = WAL` itself can contend when two fresh
+    // processes open the same database concurrently.
     this.db.exec('PRAGMA busy_timeout = 5000;');
+    this.db.exec('PRAGMA journal_mode = WAL;');
     // SQLite disables foreign key enforcement by default per connection --
     // without this, `stable_config_revision`'s `REFERENCES stable_config`
     // is decorative only.
