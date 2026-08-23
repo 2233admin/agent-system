@@ -12,9 +12,9 @@ baseline_commit: 'ec5f8206225a7e06c0bfd90db47ea5eeb1647e1c'
 
 ## Intent
 
-**Problem:** `configs` 编译后的独立可执行文件目前发布后不会自我更新——用户装上某个版本就永久停留在那个版本，直到手动重新下载。参照物 `omp` 已有进程启动时静默检测新版本并原地替换二进制的机制（`~/.bun/bin/omp.exe` 旁的 `.bak` 文件为证），负责人已明确要求 `configs` 具备同等能力，`ARCHITECTURE-SPINE.md` AD-15 也已修订出对应的窄范围联网例外。
+**Problem:** `configs` 编译后的独立可执行文件目前发布后不会自我更新——用户装上某个版本就永久停留在那个版本，直到手动重新下载。负责人已明确要求 `configs` 具备启动时自动更新的能力，`ARCHITECTURE-SPINE.md` AD-15 已修订出对应的窄范围联网例外。此前误以为参照物 `omp` 也是"进程启动时静默检测并原地替换二进制"（`~/.bun/bin/omp.exe` 旁的 `.bak` 文件曾被当作证据）——经核实，`omp` 实际提供的是显式的 `omp update` 子命令，内部用 `bun add` 重装 npm 包，全程可见输出（当前版本→发现新版本→安装进度→"已更新到 X.X.X"）；`.bak` 文件更可能是 `bun` 包管理器重装时 Windows bin shim 机制的副产物，不是"静默自更新"的证据。本次修正这个前提：成功更新时也需要给出可见提示（见 `sprint-change-proposal-2026-08-23-configs-self-update-visible-success.md`）。
 
-**Approach:** 新增一个只在编译后的发布二进制上运行的自更新组件：进程启动时只读 GET 一次固定的 GitHub Releases `latest` 端点，若 tag 版本与当前版本不同就下载对应平台资产与 `SHA256SUMS.txt`、校验哈希，通过后把旧二进制重命名为 `.bak` 并原地写入新二进制。整条链路任一步失败都静默降级为"本次不更新，继续用当前版本完成启动"，不产生任何可见输出，也不阻塞或拖慢当前命令。
+**Approach:** 新增一个只在编译后的发布二进制上运行的自更新组件：进程启动时只读 GET 一次固定的 GitHub Releases `latest` 端点，若 tag 版本与当前版本不同就下载对应平台资产与 `SHA256SUMS.txt`、校验哈希，通过后把旧二进制重命名为 `.bak` 并原地写入新二进制。整条链路任一步失败都静默降级为"本次不更新，继续用当前版本完成启动"，不阻塞或拖慢当前命令；成功替换后打印一行简洁提示（如"已更新到 X.X.X"），不需要额外确认。
 
 ## Boundaries & Constraints
 
@@ -22,13 +22,14 @@ baseline_commit: 'ec5f8206225a7e06c0bfd90db47ea5eeb1647e1c'
 - 只读 GET 固定端点 `https://api.github.com/repos/zaurakworks/agent-system/releases/latest`；不得从用户可控或运行时派生的 URL 拉取（AD-15）。
 - 下载的二进制资产必须先用同一 release 里的 `SHA256SUMS.txt`（Story 2.1 定的标准 `sha256sum` 格式：`<hash>  <filename>`）逐字节校验通过，才允许替换本地文件；校验失败一律放弃本次更新，不写入任何文件。
 - 替换前把旧二进制重命名为 `<execPath>.<当前版本号>.bak` 保留可回滚版本，与 `omp` 参照物的 `.bak` 模式一致。
-- 检查/下载/校验/替换整条链路必须整体 try/catch，任一步失败都不得抛出、不得输出到 stdout/stderr/TUI，也不得阻塞或延迟当前命令的执行与退出码；网络请求必须带边界超时，不得无限等待。
+- 检查/下载/校验/替换整条链路必须整体 try/catch，任一步失败都不得抛出、不得阻塞或延迟当前命令的执行与退出码，也不得输出到 stdout/stderr/TUI（失败静默降级，同 AD-15）；网络请求必须带边界超时，不得无限等待。
+- 替换成功后（旧二进制已重命名为 `.bak`、新二进制已写入原路径）打印一行简洁提示到 stdout，说明已更新到的新版本号（如 `configs: 已更新到 vX.X.X`）；这行提示本身的输出/格式化失败不得影响命令继续执行或退出码。
 - 只在编译后的发布二进制上运行：`CONFIGS_VERSION === 'dev'`（源码/测试运行）时整体跳过，不发起任何网络请求。
 - 不采集、不携带、不上报任何遥测、使用数据或产品状态；请求不携带任何认证 token 或用户标识。
 
 **Ask First:** 实现与单元测试全部完成后，若要用一次真实的 `configs-v*` tag 推送做端到端验证（下载并替换真实二进制）——这会在仓库公开创建一次 GitHub Release，是可见、不易撤销的动作——必须先问负责人确认，不主动推送（沿用 Story 2.1 同款约束；截至本次规划仓库尚无任何已发布 Release）。
 
-**Never:** 不做代码签名/公证校验（沿用 Story 2.1 对 AD-15"签名或哈希二选一"选哈希的裁决）；不触碰或影响 OMP 自身版本升级路径（capability probe/adapter fixtures/smoke 门不变）；不引入 daemon、常驻进程或轮询定时器——检查只在进程启动这一次性时点内联发生；不持久化更新历史或版本决定到 SQLite 或磁盘（`.bak` 文件本身除外）；成功和失败都不在正常输出中提示"发现新版本/已更新"。
+**Never:** 不做代码签名/公证校验（沿用 Story 2.1 对 AD-15"签名或哈希二选一"选哈希的裁决）；不触碰或影响 OMP 自身版本升级路径（capability probe/adapter fixtures/smoke 门不变）；不引入 daemon、常驻进程或轮询定时器——检查只在进程启动这一次性时点内联发生；不持久化更新历史或版本决定到 SQLite 或磁盘（`.bak` 文件本身除外）。
 
 ## I/O & Edge-Case Matrix
 
@@ -37,7 +38,7 @@ baseline_commit: 'ec5f8206225a7e06c0bfd90db47ea5eeb1647e1c'
 | 源码运行 | `bun src/cli/index.ts <cmd>`，`CONFIGS_VERSION === 'dev'` | 完全跳过自更新，不发起任何网络请求 | N/A |
 | 已是最新版本 | 编译二进制运行，release tag（去 `configs-v` 前缀）等于 `CONFIGS_VERSION` | 不下载、不替换，命令正常继续 | N/A |
 | 仓库无任何 Release | GET `/releases/latest` 返回 404 | 视为无更新可用，命令正常继续 | 静默丢弃，不重试 |
-| 有新版本、平台受支持、校验通过 | tag 版本不同；`process.platform`/`arch` 匹配四个已发布资产之一；下载字节 SHA256 与 `SHA256SUMS.txt` 一致 | 旧二进制重命名为 `.bak`，新二进制写入原路径，命令正常继续（本次仍用旧版本完成） | N/A |
+| 有新版本、平台受支持、校验通过 | tag 版本不同；`process.platform`/`arch` 匹配四个已发布资产之一；下载字节 SHA256 与 `SHA256SUMS.txt` 一致 | 旧二进制重命名为 `.bak`，新二进制写入原路径，打印一行"已更新到 vX.X.X"提示，命令正常继续（本次仍用旧版本完成） | N/A |
 | 校验失败 | 下载字节 SHA256 与 `SHA256SUMS.txt` 不一致 | 不替换本地文件 | 静默丢弃，不重试 |
 | 网络请求失败或超时 | release 元数据或资产下载失败/超时 | 不替换本地文件 | 静默丢弃，不重试 |
 | 平台不受支持 | `process.platform`/`arch` 不在四个已发布资产命名规则内 | 不下载、不替换 | 静默丢弃 |
