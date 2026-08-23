@@ -13,7 +13,7 @@ from typing import Iterable
 SKIP_PARTS = {".git", ".venv", "node_modules", "__pycache__"}
 NEGATIVE_FIXTURE_ROOT = Path("tests/fixtures/public-surface")
 GRADUATED_FILES = {
-    Path("authority/11-execution-state.md"),
+    Path("_archive/authority/11-execution-state.md"),
     Path("work/records/2026-08-19-agent-system-consolidation/state-lab-selection.json"),
 }
 SECRET_PATTERNS = {

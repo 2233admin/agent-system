@@ -9,8 +9,8 @@ script, schema, and Python class names are retained for compatibility.
 Two blind spots are registered initially:
 
 - Windows PowerShell plus GitHub multiline Markdown →
-  `knowledge/windows-powershell-multiline-transfer.md`;
-- Windows path-length or file-lock diagnosis → `knowledge/windows-agent-ops.md`.
+  `_archive/knowledge/windows-powershell-multiline-transfer.md`;
+- Windows path-length or file-lock diagnosis → `_archive/knowledge/windows-agent-ops.md`.
 
 The query only returns guidance. It does not monitor actions, run the proposed action,
 mutate knowledge, grant permission, or continue from an invalidated source.

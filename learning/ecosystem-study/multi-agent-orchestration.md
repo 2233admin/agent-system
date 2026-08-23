@@ -158,7 +158,7 @@ LangGraph／LangChain、CrewAI、AutoGen／Magentic-One 与 OpenAI Swarm／Agent
 
 ### 已复用的当前知识
 
-- 本仓 `authority/04-collaboration.md`：GitHub／Orca 真相源分层、当前 MVP 与长期依赖边界。【E1】
+- 本仓 `_archive/authority/04-collaboration.md`：GitHub／Orca 真相源分层、当前 MVP 与长期依赖边界。【E1】
 - [关联 #172（协调者操作模式收敛）](https://github.com/Eridanus117/agent-control/issues/172)：Mode A 已采纳的控制边界。【E1】
 - `orchestrated-collaboration` 0.2.3 与 CF-6：排他所有权、结构化派发、运行事实和三方审阅协议。【E1】
 - [`capability-gaps.md` 固定 commit 的 A2-1／A2-3／A2-6／A2-7](https://github.com/Eridanus117/agent-control/blob/36c9393147dc2701c32e4259121f9aee60422222/learning/ecosystem-study/capability-gaps.md#L36-L42) 与 [`context-engineering.md` 固定 commit 的 A5-C6](https://github.com/Eridanus117/agent-control/blob/7b982e2e07f6979a4a7eab294c3bd291f3c60fd6/learning/ecosystem-study/context-engineering.md#L211-L219)：A2／A5 已有候选与门；本格不把研究文件当权威。【E1：已合并研究交付】

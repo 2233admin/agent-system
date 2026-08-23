@@ -1,6 +1,6 @@
 # 当前权威总图
 
-> **权威变更（2026-08-22，负责人确认，被替代）：** 本目录（`00-map.md` 至 `11-execution-state.md`）此前是产品政策根，现全部降级为历史资产，只作证据参考，不再定义当前需求、架构、方法或授权。当前唯一权威来源是 BMad 工作流产出：`_bmad-output/specs/spec-agent-system/SPEC.md`（含 companions）、`_bmad-output/planning-artifacts/epics.md`、`_bmad-output/planning-artifacts/architecture/**/ARCHITECTURE-SPINE.md`、`_bmad-output/implementation-artifacts/sprint-status.yaml`。详见 [`AGENTS.md` 的同名章节](../AGENTS.md#当前权威声明2026-08-22负责人确认)。下表与下方各文件的产品政策正文均按此变更失效，仅保留作历史索引。
+> **权威变更（2026-08-22，负责人确认，被替代）：** 本目录（`00-map.md` 至 `11-execution-state.md`）此前是产品政策根，现全部降级为历史资产，只作证据参考，不再定义当前需求、架构、方法或授权。当前唯一权威来源是 BMad 工作流产出：`_bmad-output/specs/spec-agent-system/SPEC.md`（含 companions）、`_bmad-output/planning-artifacts/epics.md`、`_bmad-output/planning-artifacts/architecture/**/ARCHITECTURE-SPINE.md`、`_bmad-output/implementation-artifacts/sprint-status.yaml`。详见 [`AGENTS.md` 的同名章节](../../AGENTS.md#当前权威声明2026-08-22负责人确认)。下表与下方各文件的产品政策正文均按此变更失效，仅保留作历史索引。
 >
 > 状态：2026-08-15 clean-slate 迁入的产品政策快照；正文按公开 Issue 逐项复核。
 > 权威地位：本文件是 `authority/` 的公共路由索引；它不保存当前工作，也不自行产生实施授权。
@@ -17,9 +17,9 @@
 
 ## 使用方式
 
-先按 [`README.md`](../README.md) 的“开始工作”判断本次是否有负责人明确激活的公开 Issue。只有公开、自足且未被迁移标签降级的当前合同才能进入实施；否则保持分诊、只读核验或自由对话。再按合同主题和显式链接读取下表最窄的一组政策。冲突时以负责人最新明确指令和更高层权限边界为先。方案、实验与历史记录保持证据角色；政策变更候选进入公开审阅面后再形成当前结论。
+先按 [`README.md`](../../README.md) 的“开始工作”判断本次是否有负责人明确激活的公开 Issue。只有公开、自足且未被迁移标签降级的当前合同才能进入实施；否则保持分诊、只读核验或自由对话。再按合同主题和显式链接读取下表最窄的一组政策。冲突时以负责人最新明确指令和更高层权限边界为先。方案、实验与历史记录保持证据角色；政策变更候选进入公开审阅面后再形成当前结论。
 
-项目级 Agent 规则的唯一版本化正文见 [`entrypoints/agent-system.md`](../entrypoints/agent-system.md)；本总图不复制。
+项目级 Agent 规则的唯一版本化正文见 [`entrypoints/agent-system.md`](../../entrypoints/agent-system.md)；本总图不复制。
 
 ## 文件路由索引
 

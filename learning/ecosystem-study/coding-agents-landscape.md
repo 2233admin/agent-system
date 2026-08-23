@@ -407,7 +407,7 @@ Kilo 的 Roo 迁移表逐项映射规则、模式、MCP、权限、checkpoint �
 
 ### 7.1 GitHub 合同真源强于本地任务板／Session 状态
 
-Cline Teams 的 JSON、Roo 的任务层级、Kilo Agent Manager 的本地状态都适合活跃协作，但默认不能证明授权、负责人决定或跨主机恢复。我方已经把意图、授权、决定和验收放在 GitHub Issue／PR，把 Orca 只当执行事实后端；这更符合长程治理。可借鉴其 UI 和事件，不应把本地任务板升级为第二合同真源。[我方协作权威（产品事实三分）](../../authority/04-collaboration.md#产品事实三分)
+Cline Teams 的 JSON、Roo 的任务层级、Kilo Agent Manager 的本地状态都适合活跃协作，但默认不能证明授权、负责人决定或跨主机恢复。我方已经把意图、授权、决定和验收放在 GitHub Issue／PR，把 Orca 只当执行事实后端；这更符合长程治理。可借鉴其 UI 和事件，不应把本地任务板升级为第二合同真源。[我方协作权威（产品事实三分）](../../_archive/authority/04-collaboration.md#产品事实三分)
 
 ### 7.2 三方审阅与当前 head 绑定强于自检／diff 面
 
@@ -415,11 +415,11 @@ Cline／Roo checkpoint、Aider lint／test、Kilo diff review、Cursor 自检都
 
 ### 7.3 知识、研发记忆、任务状态分层强于自动把摘要／Memory 当长期事实
 
-Cursor Memories、Cline Rules／Tasks、Continue／Kilo summary 都服务连续性，但容易把“值得继续提示模型”与“已经可信、仍适用”混在一起。我方知识有价值门、可信门、失效条件与最少复核；研发记忆保存过程且不自动可信。这一层级不应为追求顺滑记忆而降级。[我方知识权威（两道准入门）](../../authority/01-knowledge.md#两道准入门) [我方研发记忆权威（资产边界）](../../authority/09-rd-memory.md#与其他资产的边界)
+Cursor Memories、Cline Rules／Tasks、Continue／Kilo summary 都服务连续性，但容易把“值得继续提示模型”与“已经可信、仍适用”混在一起。我方知识有价值门、可信门、失效条件与最少复核；研发记忆保存过程且不自动可信。这一层级不应为追求顺滑记忆而降级。[我方知识权威（两道准入门）](../../_archive/authority/01-knowledge.md#两道准入门) [我方研发记忆权威（资产边界）](../../_archive/authority/09-rd-memory.md#与其他资产的边界)
 
 ### 7.4 守恒律比无限增加 Rules／Skills／Modes 更适合长期系统
 
-开源产品普遍鼓励增加 rules、skills、modes、plugins 和 MCP；Cline 的渐进加载已经明显改善上下文成本，但仍不等于“新增规则必须置换旧规则”。我方对无条件入口和 Skill 描述有体积上限与置换要求，能抑制配置单调增长。可借鉴渐进披露，不宜放弃总量治理。[我方权威总图（守恒律）](../../authority/00-map.md#守恒律与受限自清理)
+开源产品普遍鼓励增加 rules、skills、modes、plugins 和 MCP；Cline 的渐进加载已经明显改善上下文成本，但仍不等于“新增规则必须置换旧规则”。我方对无条件入口和 Skill 描述有体积上限与置换要求，能抑制配置单调增长。可借鉴渐进披露，不宜放弃总量治理。[我方权威总图（守恒律）](../../_archive/authority/00-map.md#守恒律与受限自清理)
 
 ### 7.5 不照搬 Aider 默认自动提交
 
@@ -431,7 +431,7 @@ Kilo Agent Manager 会把根级 `.env*` 复制进新 worktree，并允许各平�
 
 ### 7.7 不把 worktree 当任务所有权或完整沙箱
 
-Kilo 的工作流文档对文件隔离和并行任务选择很实用，也明确提示依赖、缓存、数据库和容器会产生额外资源；Roo 也明确 `.rooignore` 不是系统沙箱。我方已经把 worktree 只定位为文件隔离机制，并单独管理共享写入所有权、Orca 状态和外部资源，边界更完整。[我方权威总图（共享单点）](../../authority/00-map.md#共享单点清单)
+Kilo 的工作流文档对文件隔离和并行任务选择很实用，也明确提示依赖、缓存、数据库和容器会产生额外资源；Roo 也明确 `.rooignore` 不是系统沙箱。我方已经把 worktree 只定位为文件隔离机制，并单独管理共享写入所有权、Orca 状态和外部资源，边界更完整。[我方权威总图（共享单点）](../../_archive/authority/00-map.md#共享单点清单)
 
 ## 八、最大启发
 

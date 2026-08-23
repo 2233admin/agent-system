@@ -1,4 +1,4 @@
-"""解析 ``knowledge/retrieval-cards.md`` 的结构化卡片表格。"""
+"""解析 ``_archive/knowledge/retrieval-cards.md`` 的结构化卡片表格。"""
 
 from __future__ import annotations
 

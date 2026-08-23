@@ -164,11 +164,11 @@ readme = get_repository_text("README.md")
 system_entry = get_repository_text("entrypoints/agent-system.md")
 agents_entry = get_repository_text("AGENTS.md")
 claude_entry = get_repository_text("CLAUDE.md")
-collaboration_authority = get_repository_text("authority/04-collaboration.md")
-thinking_authority = get_repository_text("authority/03-thinking-methods.md")
-ledger_authority = get_repository_text("authority/10-operating-ledger.md")
-authority_map = get_repository_text("authority/00-map.md")
-execution_state_authority = get_repository_text("authority/11-execution-state.md")
+collaboration_authority = get_repository_text("_archive/authority/04-collaboration.md")
+thinking_authority = get_repository_text("_archive/authority/03-thinking-methods.md")
+ledger_authority = get_repository_text("_archive/authority/10-operating-ledger.md")
+authority_map = get_repository_text("_archive/authority/00-map.md")
+execution_state_authority = get_repository_text("_archive/authority/11-execution-state.md")
 record = get_repository_text(
     "work/records/2026-08-10-federated-session-entry/record.md"
 )
@@ -590,7 +590,7 @@ add_check_result(
 )
 test_contains_all(
     authority_map,
-    ["[`entrypoints/agent-system.md`](../entrypoints/agent-system.md)", "项目级 Agent 规则", "本总图不复制"],
+    ["[`entrypoints/agent-system.md`](../../entrypoints/agent-system.md)", "项目级 Agent 规则", "本总图不复制"],
     "权威总图回指项目级规则的唯一版本化正文",
 )
 add_check_result(
@@ -616,8 +616,8 @@ active_entry_texts = {
     "README.md": readme,
     "AGENTS.md": agents_entry,
     "entrypoints/agent-system.md": system_entry,
-    "authority/00-map.md": authority_map,
-    "authority/10-operating-ledger.md": ledger_authority,
+    "_archive/authority/00-map.md": authority_map,
+    "_archive/authority/10-operating-ledger.md": ledger_authority,
 }
 forbidden_runtime_pointer_terms = ["work/current.md", "run_65a73145f0e2", "observedAt 水位"]
 for relative_path, text in active_entry_texts.items():
@@ -771,13 +771,13 @@ test_local_markdown_links(
         "AGENTS.md",
         "work/records/2026-08-10-federated-session-entry/record.md",
         "work/records/2026-08-10-federated-session-entry/raw/index.md",
-        "authority/00-map.md",
-        "authority/02-long-horizon-work.md",
-        "authority/03-thinking-methods.md",
-        "authority/04-collaboration.md",
-        "authority/08-mvp-implementation-direction.md",
-        "authority/10-operating-ledger.md",
-        "authority/11-execution-state.md",
+        "_archive/authority/00-map.md",
+        "_archive/authority/02-long-horizon-work.md",
+        "_archive/authority/03-thinking-methods.md",
+        "_archive/authority/04-collaboration.md",
+        "_archive/authority/08-mvp-implementation-direction.md",
+        "_archive/authority/10-operating-ledger.md",
+        "_archive/authority/11-execution-state.md",
     ]
 )
 

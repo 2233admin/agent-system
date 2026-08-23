@@ -98,3 +98,7 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-3-1-建立新配置修订-configs-establish.md`
   summary: `configs establish` 在无 `--from` 时读取 stdin 只做了 TTY 快速失败判断，但对"非 TTY 但流永不关闭"（如一个打开后未写入/未关闭的管道或 socket）没有任何超时保护，理论上会无限期挂起等待 `'end'`/`'error'` 事件。
   evidence: edge-case-hunter 审查层（Story 3.1 第二轮）发现。修复需要先确定一个合理的超时时长（多短会误伤合法的大体积慢速输入，多长又不足以避免挂起观感），是需要负责人裁决的产品参数，不是可无争议机械修的 patch；spec 冻结的 Boundaries 只要求 TTY 场景快速失败，未要求覆盖这一更罕见的边缘情形。
+
+- source_spec: none
+  summary: 候选功能——`configs use`/`switch` 在真正 fresh 启动 OMP 之前，先对配置引用的 MCP 服务器做一次连通性探测（而不是只做当前已有的 schema/reachability 静态检查），避免用户确认启动后，真正开始任务时才发现某个 MCP 连不上。
+  evidence: 负责人在对话中提出该诉求并已明确确认排入候选（未指定具体 Epic/Story，留待后续排期裁决）。已就 OMP（`can1357/oh-my-pi`）原生能力做过技术查证：`docs/mcp-config.md` 明确记录的诊断能力（`/mcp list`、`/mcp test <name>`、`/mcp reconnect <name>` 等）全部是 slash command，且文档原文写明在"当前会话"（"in the current session"）中生效，即必须先有一个已经跑起来的 OMP 交互会话才能调用；OMP 未提供任何独立于会话之外的 headless/dry-run/CLI 连通性校验模式。因此 AR11 的 native-first 路径在此不可行——OMP 没有可复用的原生能力。若要落地，需要 Agent System 自行实现，评估过的两个方向：(a) 自建一套探测逻辑独立验证 MCP 连通性，与架构"不持有 OMP 连接状态、避免双事实源"的既有约束冲突；(b) 在真正启动前，临时拉起一个一次性 OMP 进程执行连通性检查后立即退出，再进入用户确认后的正式启动——更贴近诉求本意，但每次确认启动会多付出一次进程拉起/退出的延迟与开销，且需评估探测本身对有副作用的 MCP 服务器（如触发计费、外部状态变更）是否安全。是否排期、选哪个方向、归入哪个 Epic，留给后续专门的 architecture/story 细化阶段裁决。

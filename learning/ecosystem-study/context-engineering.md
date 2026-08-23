@@ -127,13 +127,13 @@ Anthropic Research 也让 lead 先把研究计划写入 Memory，subagent 执行
 
 | 我方已有能力 | 对应生态模式 | 当前证据与边界 |
 | --- | --- | --- |
-| GitHub 合同／Orca 执行事实／Provider 会话三层恢复；六项压缩存续锚点 | 外部真源、结构化 note、压缩后重新注入 | [K12 协调者压缩存续与继任协议](../../knowledge/coordinator-succession-protocol.md) [E1]。强于单一聊天摘要；但尚无真实协调者继任样本。 |
-| 意图、授权、决定、验收与过程执行态分面 | 战略状态与战术状态分离 | [协作权威的产品事实三分](../../authority/04-collaboration.md#产品事实三分) [E1]。持久真源已经分开，当前问题主要发生在单一协调 Session 的读取与注意力面。 |
-| 父／叶 Issue 联邦式推进，任务完成后退出永久协调身份 | 子 Agent／worker 卸载与局部闭环 | [协作权威的联邦式 Session 入口](../../authority/04-collaboration.md#联邦式-session-入口的后续确认) [E1]。架构已经反对永久中央协调者，但夜间运行仍形成一个长期巡检协调热点。[I] |
-| 原始研发记录／可读研发记录双层；权威、知识、任务状态另行分层 | 长期记忆分层 | [研发记忆权威](../../authority/09-rd-memory.md) [E1]。分层语义成熟，不需要再建一个混合“万能记忆”。 |
-| 当前公共知识入口；词法优先，真实改述漏检出现后才评估向量 | JIT retrieval 与渐进披露 | [公共知识检索 K14](../../knowledge/public-knowledge-retrieval-activation.md) [E1]。现有实验不支持按篇数预建向量层。 |
-| 无条件入口与 Skill description 有预算／置换约束 | 常驻上下文预算 | [权威总图的守恒律](../../authority/00-map.md#守恒律与受限自清理) [E1]。当前预算管静态资产，尚未覆盖协调会话的动态摄入。 |
-| APS 已在关键假设变化、自然波次和阶段结束做薄反思 | 事件驱动回锚 | [思考方法权威](../../authority/03-thinking-methods.md)与当前 `adaptive-problem-solving` 行为 [E1]。语义事件触发已有载体，缺的是把它与协调运行事件、上下文摄入和预算联结，而不是再建一套反思控制器。 |
+| GitHub 合同／Orca 执行事实／Provider 会话三层恢复；六项压缩存续锚点 | 外部真源、结构化 note、压缩后重新注入 | [K12 协调者压缩存续与继任协议](../../_archive/knowledge/coordinator-succession-protocol.md) [E1]。强于单一聊天摘要；但尚无真实协调者继任样本。 |
+| 意图、授权、决定、验收与过程执行态分面 | 战略状态与战术状态分离 | [协作权威的产品事实三分](../../_archive/authority/04-collaboration.md#产品事实三分) [E1]。持久真源已经分开，当前问题主要发生在单一协调 Session 的读取与注意力面。 |
+| 父／叶 Issue 联邦式推进，任务完成后退出永久协调身份 | 子 Agent／worker 卸载与局部闭环 | [协作权威的联邦式 Session 入口](../../_archive/authority/04-collaboration.md#联邦式-session-入口的后续确认) [E1]。架构已经反对永久中央协调者，但夜间运行仍形成一个长期巡检协调热点。[I] |
+| 原始研发记录／可读研发记录双层；权威、知识、任务状态另行分层 | 长期记忆分层 | [研发记忆权威](../../_archive/authority/09-rd-memory.md) [E1]。分层语义成熟，不需要再建一个混合“万能记忆”。 |
+| 当前公共知识入口；词法优先，真实改述漏检出现后才评估向量 | JIT retrieval 与渐进披露 | [公共知识检索 K14](../../_archive/knowledge/public-knowledge-retrieval-activation.md) [E1]。现有实验不支持按篇数预建向量层。 |
+| 无条件入口与 Skill description 有预算／置换约束 | 常驻上下文预算 | [权威总图的守恒律](../../_archive/authority/00-map.md#守恒律与受限自清理) [E1]。当前预算管静态资产，尚未覆盖协调会话的动态摄入。 |
+| APS 已在关键假设变化、自然波次和阶段结束做薄反思 | 事件驱动回锚 | [思考方法权威](../../_archive/authority/03-thinking-methods.md)与当前 `adaptive-problem-solving` 行为 [E1]。语义事件触发已有载体，缺的是把它与协调运行事件、上下文摄入和预算联结，而不是再建一套反思控制器。 |
 | 周期性从持久源战略回锚、去数字化派发 | 阶段回顾、effort scaling | 本次派发给定的当前运行缓解 [E1｜任务给定，worker 未独立复核]。方向正确，但仍主要在同一上下文内补救。 |
 
 ### 3.2 六项能力缺口

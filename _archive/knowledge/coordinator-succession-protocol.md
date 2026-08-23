@@ -166,7 +166,7 @@ Session 内巡检 cron 是 session 作用域：fresh 协调者看不到、也停
 
 ### 7. 只在指令仍有效时重建 Session 内存态巡检
 
-- **操作**：只从 [`work/current-monitoring-directive.md`](../work/current-monitoring-directive.md) 恢复当前巡检口径；历史评论只沿该页来源链审计，不再自行拼接节律、期限或产能数字。确认 `active`、唯一协调者前件和来源水位后，重新读取 Orca 当前运行面、Git worktree 状态及任务所需的资源观察面，再按动态指南建立本 Session 内的等待／检查循环。
+- **操作**：只从 [`work/history/current-monitoring-directive.md`](../work/history/current-monitoring-directive.md) 恢复当前巡检口径；历史评论只沿该页来源链审计，不再自行拼接节律、期限或产能数字。确认 `active`、唯一协调者前件和来源水位后，重新读取 Orca 当前运行面、Git worktree 状态及任务所需的资源观察面，再按动态指南建立本 Session 内的等待／检查循环。
 - **验证**：恢复出的目标、节律、期限／时区、候选价值门和资源来源与定位面逐项一致；首个节拍后确实重新读取消息、任务与资源面，并只在安全条件齐全时处置孤儿 worktree。当前数量与运行进度不写回定位面。
 - **停止条件**：定位面 `active` 不为 `true`、负责人来源已被更新但 `observedAt` 尚未推进、同一范围无法证明唯一协调者，或产品目标已经变化。Session 退出后循环仍会消失；本步骤不提供离线唤醒，也不因定位面存在而取得额外派发、删除或宿主环境权限。
 
