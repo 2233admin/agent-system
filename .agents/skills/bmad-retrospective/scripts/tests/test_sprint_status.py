@@ -908,6 +908,130 @@ def test_atomic_write_preserves_mode_and_leaves_no_temp_file(tmp_path):
 # --- Result-JSON precision ---------------------------------------------------
 
 
+# --- Epic-status transitions --------------------------------------------------
+
+
+def test_set_epic_status_moves_epic_to_done(tmp_path):
+    target = _write_fixture(tmp_path)
+    proc = _run(
+        ["update", "--file", str(target), "--epic", "1", "--set-epic-status", "done"]
+    )
+    assert proc.returncode == 0, proc.stderr
+    out = _json(proc)
+    assert out["ok"] is True
+    assert out["epic_key_found"] is True
+    assert out["epic_status_before"] == "backlog"
+    assert out["epic_status_after"] == "done"
+    assert _load(target)["development_status"]["epic-1"] == "done"
+
+
+def test_set_epic_status_rejects_invalid_status(tmp_path):
+    target = _write_fixture(tmp_path)
+    proc = _run(
+        ["update", "--file", str(target), "--epic", "1", "--set-epic-status", "shipped"]
+    )
+    assert proc.returncode == 1
+    out = _json(proc)
+    assert out["ok"] is False
+    assert out["restored"] is True
+    assert "shipped" in out["error"]
+    assert "backlog, in-progress, done" in out["error"]
+    assert target.read_text(encoding="utf-8") == FIXTURE
+
+
+def test_set_epic_status_rejects_unknown_epic_key(tmp_path):
+    # --epic 9 names an epic that has no epic-9 key at all in development_status:
+    # unlike --set-retro-done's tolerant no-op, this is a hard failure, since a
+    # typo'd --epic would otherwise silently do nothing.
+    target = _write_fixture(tmp_path)
+    proc = _run(
+        ["update", "--file", str(target), "--epic", "9", "--set-epic-status", "done"]
+    )
+    assert proc.returncode == 1
+    out = _json(proc)
+    assert out["ok"] is False
+    assert out["restored"] is True
+    assert "epic-9" in out["error"]
+    assert target.read_text(encoding="utf-8") == FIXTURE
+
+
+def test_set_epic_status_rejects_typed_value_before_writing(tmp_path):
+    fixture = (
+        "development_status:\n"
+        "  epic-1: 2026-01-01\n"
+        "  1-1-a: done\n"
+    )
+    target = tmp_path / "sprint-status.yaml"
+    target.write_text(fixture, encoding="utf-8")
+    proc = _run(
+        ["update", "--file", str(target), "--epic", "1", "--set-epic-status", "done"]
+    )
+    assert proc.returncode == 1
+    out = _json(proc)
+    assert out["ok"] is False
+    assert out["restored"] is True
+    assert out["error"] == "epic-1 status must be a string or null"
+    assert target.read_text(encoding="utf-8") == fixture
+
+
+def test_epic_key_found_is_null_without_the_flag(tmp_path):
+    target = _write_fixture(tmp_path)
+    proc = _run(["update", "--file", str(target), "--epic", "1"])
+    assert proc.returncode == 0, proc.stderr
+    out = _json(proc)
+    assert out["ok"] is True
+    assert out["epic_key_found"] is None
+    assert out["epic_status_before"] is None
+    assert out["epic_status_after"] is None
+    assert _load(target)["development_status"]["epic-1"] == "backlog"
+
+
+def test_set_epic_status_changes_exactly_one_line(tmp_path):
+    target = _write_fixture(tmp_path)
+    proc = _run(
+        ["update", "--file", str(target), "--epic", "1", "--date", "01-01-2026 09:00",
+         "--set-epic-status", "done"]
+    )
+    assert proc.returncode == 0, proc.stderr
+    before = FIXTURE.splitlines()
+    after = target.read_text(encoding="utf-8").splitlines()
+    assert len(before) == len(after)
+    changed = [(b, a) for b, a in zip(before, after) if b != a]
+    assert changed == [("  epic-1: backlog", "  epic-1: done")], changed
+
+
+def test_set_epic_status_composes_with_retro_done_and_action_items(tmp_path):
+    target = _write_fixture(tmp_path)
+    proc = _run(
+        ["update", "--file", str(target), "--epic", "1", "--set-retro-done",
+         "--set-epic-status", "done",
+         "--add-action", '[{"action":"Follow-up","owner":"Amelia"}]']
+    )
+    assert proc.returncode == 0, proc.stderr
+    out = _json(proc)
+    assert out["ok"] is True
+    assert out["retro_status_after"] == "done"
+    assert out["epic_status_after"] == "done"
+    assert out["action_items_added"] == 1
+
+    data = _load(target)
+    assert data["development_status"]["epic-1"] == "done"
+    assert data["development_status"]["epic-1-retrospective"] == "done"
+    assert data["action_items"][0]["action"] == "Follow-up"
+
+
+def test_set_epic_status_failure_leaves_epic_key_untouched(tmp_path):
+    # A rejected --set-epic-status must not leave a partial mutation behind even
+    # though the in-memory dev mapping was assigned before the post-write
+    # validation ran -- the write never lands because validation fails first.
+    target = _write_fixture(tmp_path)
+    proc = _run(
+        ["update", "--file", str(target), "--epic", "1", "--set-epic-status", "bogus"]
+    )
+    assert proc.returncode == 1
+    assert target.read_text(encoding="utf-8") == FIXTURE
+
+
 def test_retro_key_found_is_null_without_the_flag(tmp_path):
     # No development_status key at all: the update must not conjure one, and
     # retro_key_found must say "not asked" rather than "absent".
