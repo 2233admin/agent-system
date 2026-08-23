@@ -29,13 +29,31 @@ export type SourceCategory =
  * identifier, its source category and an allowed-public summary are ever
  * carried -- never private prompt text, credentials, transcripts or tool
  * payloads.
+ *
+ * `[Story 3.1]` `sourceRef`/`contentFingerprint` are additional Facts of the
+ * same shape as `sourceCategory`/`summary` (never a bare value -- always
+ * `Known`/`Unknown`); they carry a stronger provenance pointer and a
+ * fingerprint of the referenced content, not the content itself. There is
+ * deliberately no `evidenceRef` sibling field here -- the trigger/evidence
+ * pair for *why a revision was established* lives once on
+ * `StableConfigRevision`, not per capability reference.
  */
 export interface CapabilityReference {
   readonly kind: CapabilityKind;
   readonly name: string;
   readonly sourceCategory: Fact<SourceCategory>;
   readonly summary: Fact<string>;
+  readonly sourceRef: Fact<string>;
+  readonly contentFingerprint: Fact<string>;
 }
+
+/**
+ * `[Story 3.1]` The three trigger categories a new configuration revision
+ * can be established from (AD-16/AD-21). Closed enum -- never extended
+ * ad hoc; a value outside this set is rejected before anything is
+ * persisted (see `application/establish.ts`).
+ */
+export type TriggerCategory = 'new-scenario' | 'known-insufficiency' | 'bad-case';
 
 /**
  * Whether this revision's configuration could be mechanically resolved
@@ -60,6 +78,25 @@ export interface StableConfigRevision {
   readonly mcp: readonly CapabilityReference[];
   readonly hooks: readonly CapabilityReference[];
   readonly plugins: readonly CapabilityReference[];
+  /**
+   * `[Story 3.1]` Persisted, not just validated-and-discarded (AD-16/
+   * AD-21): the trigger category and evidence reference this revision was
+   * established from. Always a plain, always-known value -- never a
+   * `Fact` -- because `configs establish` refuses to persist anything
+   * (zero writes) unless both were already validated non-empty/in-enum
+   * before the write; there is no "this revision exists but its trigger is
+   * Unknown" state to represent.
+   */
+  readonly triggerCategory: TriggerCategory;
+  readonly evidenceRef: string;
+  /**
+   * `[Story 3.1]` Reserved for Story 3.2's supersede chain -- this Story
+   * only ever writes `null` (`configs establish` has no notion of
+   * replacing an existing revision yet). Plain nullable id, not a `Fact`:
+   * "no predecessor" is a real, known structural fact, not an unresolved
+   * one.
+   */
+  readonly supersedesRevisionId: string | null;
 }
 
 export type ScalarFieldName =

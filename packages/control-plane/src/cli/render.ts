@@ -29,6 +29,7 @@ import type {
 } from '../domain/config';
 import type { LaunchPlan, LaunchStatus } from '../domain/activation';
 import type { CompareConfigRevisionsResult, ConfigQueryError } from '../application/queries';
+import type { InvalidCandidateError, InvalidTriggerCategoryError, MissingEvidenceError, NoCandidateSourceError } from '../application/ports';
 import { attention, colorForPhase, dim } from './colors';
 import { t } from './i18n';
 
@@ -121,16 +122,64 @@ export function renderDetail(revision: StableConfigRevision): string {
   return lines.join('\n');
 }
 
-function formatErrorReason(error: ConfigQueryError): string {
-  if (error.kind === 'config-not-found') {
-    return t('queryFailure.notFound');
-  }
-  return t('queryFailure.unsupported', { reason: error.reason });
+/**
+ * `[Story 3.1]` Widened beyond `ConfigQueryError` (`show`/`compare`'s two
+ * read-path rejections) to also cover `configs establish`'s four
+ * write-path rejections, so `renderQueryFailure` stays the one shared
+ * failure-rendering path for every typed rejection in this CLI instead of
+ * `establish` inventing a parallel one.
+ */
+export type QueryOrEstablishError = ConfigQueryError | InvalidTriggerCategoryError | MissingEvidenceError | NoCandidateSourceError | InvalidCandidateError;
+
+/**
+ * `[Review fix]` Exhaustiveness guard: if `QueryOrEstablishError` ever
+ * gains a new member without a matching `case` below, TypeScript fails
+ * `bun run typecheck` right here (the call site passes a non-`never`
+ * value) -- and if that guarantee is ever bypassed at runtime (an
+ * `as any`, a value from outside the closed union), this throws instead
+ * of the switch silently falling through and rendering the literal string
+ * `"undefined"`.
+ */
+function assertNeverErrorKind(kind: never): never {
+  throw new Error(`unhandled QueryOrEstablishError kind: ${String(kind)}`);
 }
 
-/** Shared failure rendering for `show`/`compare`: identifier + typed reason + recovery entry. */
-export function renderQueryFailure(revisionId: string, error: ConfigQueryError): string {
-  return t('queryFailure.prefix', { revisionId, reason: formatErrorReason(error) });
+function formatErrorReason(error: QueryOrEstablishError): string {
+  switch (error.kind) {
+    case 'config-not-found':
+      return t('queryFailure.notFound');
+    case 'config-unsupported':
+      return t('queryFailure.unsupported', { reason: error.reason });
+    case 'invalid-trigger-category':
+      return t('establish.missingTriggerCategory');
+    case 'missing-evidence':
+      return t('establish.missingEvidence');
+    case 'no-candidate-source':
+      return t('establish.noCandidateSource');
+    case 'invalid-candidate':
+      return t('establish.invalidCandidate', { reason: error.reason });
+    default:
+      return assertNeverErrorKind(error);
+  }
+}
+
+/**
+ * Shared failure rendering for `show`/`compare`/`establish`: a label
+ * (revision id for `show`/`compare`; the candidate's `configName` once
+ * parsed, or a fixed `'establish'` fallback before that, for `establish`)
+ * + typed reason + recovery entry.
+ */
+export function renderQueryFailure(label: string, error: QueryOrEstablishError): string {
+  return t('queryFailure.prefix', { revisionId: label, reason: formatErrorReason(error) });
+}
+
+/**
+ * `[Story 3.1]` The one-line success prefix printed before `configs
+ * establish` reuses `renderDetail` for the new revision's detail block --
+ * the same view `configs show <new id>` would render.
+ */
+export function renderEstablishSuccess(revision: StableConfigRevision): string {
+  return [t('establish.successPrefix'), renderDetail(revision)].join('\n');
 }
 
 function formatScalarField(field: ScalarFieldComparison): string {

@@ -5,7 +5,14 @@ import type { CapabilityReference, StableConfigRevision } from '../../src/domain
 import { known, unknown } from '../../src/domain/facts';
 
 function ref(kind: CapabilityReference['kind'], name: string, source: CapabilityReference['sourceCategory'] = known('project-capability')): CapabilityReference {
-  return { kind, name, sourceCategory: source, summary: known(`${kind} reference: ${name}`) };
+  return {
+    kind,
+    name,
+    sourceCategory: source,
+    summary: known(`${kind} reference: ${name}`),
+    sourceRef: known(`ref/${name}`),
+    contentFingerprint: known(`fingerprint/${name}`),
+  };
 }
 
 function revision(overrides: Partial<StableConfigRevision> & { configName: string; revisionId: string }): StableConfigRevision {
@@ -20,6 +27,9 @@ function revision(overrides: Partial<StableConfigRevision> & { configName: strin
     mcp: overrides.mcp ?? [],
     hooks: overrides.hooks ?? [],
     plugins: overrides.plugins ?? [],
+    triggerCategory: overrides.triggerCategory ?? 'new-scenario',
+    evidenceRef: overrides.evidenceRef ?? 'test-evidence',
+    supersedesRevisionId: overrides.supersedesRevisionId ?? null,
   };
 }
 

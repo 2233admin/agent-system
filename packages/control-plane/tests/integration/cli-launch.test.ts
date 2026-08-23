@@ -8,7 +8,7 @@ import { main } from '../../src/cli/index';
 import { SqliteConfigRevisionRepository } from '../../src/adapters/sqlite/repository';
 import { t } from '../../src/cli/i18n';
 import { known } from '../../src/domain/facts';
-import type { StableConfigRevision } from '../../src/domain/config';
+import type { CapabilityReference, SourceCategory, StableConfigRevision } from '../../src/domain/config';
 import type {
   CapabilityProbeResult,
   LaunchContext,
@@ -20,6 +20,17 @@ import type {
 } from '../../src/application/ports';
 import type { Fact } from '../../src/domain/facts';
 
+function ref(kind: CapabilityReference['kind'], name: string, sourceCategory: SourceCategory = 'project-capability'): CapabilityReference {
+  return {
+    kind,
+    name,
+    sourceCategory: known(sourceCategory),
+    summary: known('skill'),
+    sourceRef: known(`ref/${name}`),
+    contentFingerprint: known(`fingerprint/${name}`),
+  };
+}
+
 function sampleRevision(overrides: Partial<StableConfigRevision> & { configName: string; revisionId: string }): StableConfigRevision {
   return {
     configName: overrides.configName,
@@ -28,10 +39,13 @@ function sampleRevision(overrides: Partial<StableConfigRevision> & { configName:
     scopeBoundary: overrides.scopeBoundary ?? known('a scope boundary'),
     availability: overrides.availability ?? known('resolved'),
     instructions: overrides.instructions ?? [],
-    skills: overrides.skills ?? [{ kind: 'skill', name: 'openspec-explore', sourceCategory: known('project-capability'), summary: known('skill') }],
+    skills: overrides.skills ?? [ref('skill', 'openspec-explore')],
     mcp: overrides.mcp ?? [],
     hooks: overrides.hooks ?? [],
     plugins: overrides.plugins ?? [],
+    triggerCategory: overrides.triggerCategory ?? 'new-scenario',
+    evidenceRef: overrides.evidenceRef ?? 'test-evidence',
+    supersedesRevisionId: overrides.supersedesRevisionId ?? null,
   };
 }
 
@@ -205,7 +219,7 @@ describe('configs use', () => {
       sampleRevision({
         configName: 'general',
         revisionId: 'rev-1',
-        instructions: [{ kind: 'instruction', name: 'i1', sourceCategory: known('project-prompt'), summary: known('i1') }],
+        instructions: [ref('instruction', 'i1', 'project-prompt')],
       }),
     ]);
 

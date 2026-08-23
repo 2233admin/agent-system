@@ -5,8 +5,20 @@ import path from 'node:path';
 
 import { main } from '../../src/cli/index';
 import { SqliteConfigRevisionRepository } from '../../src/adapters/sqlite/repository';
+import type { RevisionRow } from '../../src/adapters/sqlite/repository';
 import { known, unknown } from '../../src/domain/facts';
-import type { StableConfigRevision } from '../../src/domain/config';
+import type { CapabilityReference, SourceCategory, StableConfigRevision } from '../../src/domain/config';
+
+function ref(kind: CapabilityReference['kind'], name: string, sourceCategory: SourceCategory = 'project-capability'): CapabilityReference {
+  return {
+    kind,
+    name,
+    sourceCategory: known(sourceCategory),
+    summary: known(`${kind} reference: ${name}`),
+    sourceRef: known(`ref/${name}`),
+    contentFingerprint: known(`fingerprint/${name}`),
+  };
+}
 
 function sampleRevision(overrides: Partial<StableConfigRevision> & { configName: string; revisionId: string }): StableConfigRevision {
   return {
@@ -15,13 +27,41 @@ function sampleRevision(overrides: Partial<StableConfigRevision> & { configName:
     defaultMarker: overrides.defaultMarker ?? known(false),
     scopeBoundary: overrides.scopeBoundary ?? known('a scope boundary'),
     availability: overrides.availability ?? known('resolved'),
-    instructions: overrides.instructions ?? [
-      { kind: 'instruction', name: '.cap/prompts/x.md', sourceCategory: known('project-prompt'), summary: known('prompt file reference: .cap/prompts/x.md') },
-    ],
+    instructions: overrides.instructions ?? [ref('instruction', '.cap/prompts/x.md', 'project-prompt')],
     skills: overrides.skills ?? [],
     mcp: overrides.mcp ?? [],
     hooks: overrides.hooks ?? [],
     plugins: overrides.plugins ?? [],
+    triggerCategory: overrides.triggerCategory ?? 'new-scenario',
+    evidenceRef: overrides.evidenceRef ?? 'test-evidence',
+    supersedesRevisionId: overrides.supersedesRevisionId ?? null,
+  };
+}
+
+function revisionRowFixture(overrides: Partial<RevisionRow> & Pick<RevisionRow, 'revision_id' | 'config_name'>): RevisionRow {
+  return {
+    schema_version: 1,
+    default_marker_status: 'known',
+    default_marker_value: 'false',
+    default_marker_reason: null,
+    default_marker_observed_at: null,
+    scope_boundary_status: 'known',
+    scope_boundary_value: 'boundary',
+    scope_boundary_reason: null,
+    scope_boundary_observed_at: null,
+    availability_status: 'known',
+    availability_value: 'resolved',
+    availability_reason: null,
+    availability_observed_at: null,
+    instructions_json: '[]',
+    skills_json: '[]',
+    mcp_json: '[]',
+    hooks_json: '[]',
+    plugins_json: '[]',
+    trigger_category: 'new-scenario',
+    evidence_ref: 'test-evidence',
+    supersedes_revision_id: null,
+    ...overrides,
   };
 }
 
@@ -122,7 +162,7 @@ describe('configs show', () => {
       sampleRevision({
         configName: 'general',
         revisionId: 'rev-general',
-        skills: [{ kind: 'skill', name: 'openspec-explore', sourceCategory: known('project-capability'), summary: known('skill reference: openspec-explore') }],
+        skills: [ref('skill', 'openspec-explore')],
       }),
     ]);
 
@@ -141,7 +181,7 @@ describe('configs show', () => {
       sampleRevision({
         configName: 'agent-assembler',
         revisionId: 'rev-private',
-        skills: [{ kind: 'skill', name: 'private-domain-skill', sourceCategory: known('project-skill-import'), summary: known('skill reference: private-domain-skill') }],
+        skills: [ref('skill', 'private-domain-skill', 'project-skill-import')],
       }),
     ]);
 
@@ -169,28 +209,13 @@ describe('configs show', () => {
     seed([sampleRevision({ configName: 'general', revisionId: 'rev-good' })]);
     const repo = new SqliteConfigRevisionRepository(dbPath);
     try {
-      repo.insertRawRow({
-        revision_id: 'rev-bad',
-        config_name: 'general',
-        schema_version: 99,
-        default_marker_status: 'known',
-        default_marker_value: 'false',
-        default_marker_reason: null,
-        default_marker_observed_at: null,
-        scope_boundary_status: 'known',
-        scope_boundary_value: 'boundary',
-        scope_boundary_reason: null,
-        scope_boundary_observed_at: null,
-        availability_status: 'known',
-        availability_value: 'resolved',
-        availability_reason: null,
-        availability_observed_at: null,
-        instructions_json: '[]',
-        skills_json: '[]',
-        mcp_json: '[]',
-        hooks_json: '[]',
-        plugins_json: '[]',
-      });
+      repo.insertRawRow(
+        revisionRowFixture({
+          revision_id: 'rev-bad',
+          config_name: 'general',
+          schema_version: 99,
+        }),
+      );
     } finally {
       repo.close();
     }
@@ -210,7 +235,7 @@ describe('configs show', () => {
 describe('configs compare', () => {
   test('比较-多个: mechanical side-by-side composition/source/boundary/missing/differences/Unknown; no score/rank/recommendation', async () => {
     seed([
-      sampleRevision({ configName: 'general', revisionId: 'rev-a', scopeBoundary: known('boundary A'), skills: [{ kind: 'skill', name: 'shared', sourceCategory: known('project-capability'), summary: known('skill reference: shared') }] }),
+      sampleRevision({ configName: 'general', revisionId: 'rev-a', scopeBoundary: known('boundary A'), skills: [ref('skill', 'shared')] }),
       sampleRevision({ configName: 'reviewer', revisionId: 'rev-b', scopeBoundary: known('boundary B'), skills: [] }),
     ]);
 
@@ -267,28 +292,13 @@ describe('configs compare', () => {
     seed([sampleRevision({ configName: 'general', revisionId: 'rev-good' })]);
     const repo = new SqliteConfigRevisionRepository(dbPath);
     try {
-      repo.insertRawRow({
-        revision_id: 'rev-bad',
-        config_name: 'general',
-        schema_version: 99,
-        default_marker_status: 'known',
-        default_marker_value: 'false',
-        default_marker_reason: null,
-        default_marker_observed_at: null,
-        scope_boundary_status: 'known',
-        scope_boundary_value: 'boundary',
-        scope_boundary_reason: null,
-        scope_boundary_observed_at: null,
-        availability_status: 'known',
-        availability_value: 'resolved',
-        availability_reason: null,
-        availability_observed_at: null,
-        instructions_json: '[]',
-        skills_json: '[]',
-        mcp_json: '[]',
-        hooks_json: '[]',
-        plugins_json: '[]',
-      });
+      repo.insertRawRow(
+        revisionRowFixture({
+          revision_id: 'rev-bad',
+          config_name: 'general',
+          schema_version: 99,
+        }),
+      );
     } finally {
       repo.close();
     }
@@ -307,12 +317,12 @@ describe('configs compare', () => {
       sampleRevision({
         configName: 'general',
         revisionId: 'rev-a',
-        skills: [{ kind: 'skill', name: 'shared', sourceCategory: known('project-capability'), summary: known('skill reference: shared') }],
+        skills: [ref('skill', 'shared')],
       }),
       sampleRevision({
         configName: 'reviewer',
         revisionId: 'rev-b',
-        skills: [{ kind: 'skill', name: 'shared', sourceCategory: known('project-skill-import'), summary: known('skill reference: shared') }],
+        skills: [ref('skill', 'shared', 'project-skill-import')],
       }),
     ]);
 

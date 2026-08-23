@@ -1,8 +1,10 @@
 #!/usr/bin/env bun
 /**
  * `configs` CLI entry point. Dispatches the read-only subcommands from
- * Story 1.1 (`list`, `show <id>`, `compare <id...>`) plus Story 1.2's
- * activation subcommands: `use <id>`, `status [<planId>]`, `switch <id>`.
+ * Story 1.1 (`list`, `show <id>`, `compare <id...>`), Story 1.2's
+ * activation subcommands (`use <id>`, `status [<planId>]`, `switch <id>`),
+ * and Story 3.1's non-interactive write subcommand
+ * (`establish --trigger-category <cat> --evidence <ref> [--from <path>]`).
  * No other subcommand exists -- in particular there is no `configs sync`/
  * `configs import` (see `src/adapters/sources/cap-fs.ts` for why).
  */
@@ -11,6 +13,7 @@ import type { ClientId } from '../domain/client';
 import { resolveClientSupport } from '../domain/client';
 import type { LaunchPlan } from '../domain/activation';
 import { SqliteConfigRevisionRepository } from '../adapters/sqlite/repository';
+import { SqliteConfigRevisionWriter } from '../adapters/sqlite/config-revision-writer';
 import { SqliteLaunchPlanRepository } from '../adapters/sqlite/launch-repository';
 import { BunOmpProcessPort, defaultExtensionPath, findDenylistedForwardedArg } from '../adapters/omp/process-port';
 import { BunOmpCapabilityProbe } from '../adapters/omp/capability-probe';
@@ -25,6 +28,16 @@ import {
   listConfigRevisions,
   type ConfigQueryError,
 } from '../application/queries';
+import {
+  InvalidCandidateError,
+  InvalidTriggerCategoryError,
+  MissingEvidenceError,
+  NoCandidateSourceError,
+  parseCandidateRevision,
+  parseEvidenceRef,
+  parseTriggerCategory,
+} from '../application/establish';
+import { isStdinTTY, readCandidateFile, readStdinText } from './candidate-source';
 import {
   InvalidTransitionError,
   LaunchPlanNotFoundError,
@@ -47,6 +60,7 @@ import {
   renderCompareResult,
   renderConfirmationSummary,
   renderDetail,
+  renderEstablishSuccess,
   renderHandoffLine,
   renderLaunchFailure,
   renderLaunchStatus,
@@ -63,7 +77,7 @@ import { runTui } from './tui';
 // language-dependent, so this is composed via `usageLine()` rather than
 // being a static constant.
 const USAGE_SYNTAX =
-  'configs <list|show <id>|compare <id> <id> [...ids]|use <id> [--client <id>] [--yes] [-- ...args]|status [<planId>]|switch <id> [--client <id>] [--yes] [-- ...args]>';
+  'configs <list|show <id>|compare <id> <id> [...ids]|use <id> [--client <id>] [--yes] [-- ...args]|status [<planId>]|switch <id> [--client <id>] [--yes] [-- ...args]|establish --trigger-category <cat> --evidence <ref> [--from <path>]>';
 
 function usageLine(): string {
   return `${t('usage.prefix')} ${USAGE_SYNTAX}`;
@@ -88,7 +102,13 @@ type ParsedCommand =
   | { readonly kind: 'show'; readonly id: string }
   | { readonly kind: 'compare'; readonly ids: readonly string[] }
   | { readonly kind: 'use' | 'switch'; readonly id: string; readonly client: ClientId; readonly yes: boolean; readonly forwardedArgs: readonly string[] }
-  | { readonly kind: 'status'; readonly planId: string | null };
+  | { readonly kind: 'status'; readonly planId: string | null }
+  | {
+      readonly kind: 'establish';
+      readonly triggerCategoryRaw: string | undefined;
+      readonly evidenceRaw: string | undefined;
+      readonly fromPath: string | null;
+    };
 
 function parseUseOrSwitch(kind: 'use' | 'switch', rest: readonly string[]): ParsedCommand {
   const ddIndex = rest.indexOf('--');
@@ -150,6 +170,83 @@ function parseUseOrSwitch(kind: 'use' | 'switch', rest: readonly string[]): Pars
   return { kind, id, client: clientRaw as ClientId, yes, forwardedArgs };
 }
 
+/**
+ * Pure syntactic parsing only -- extracts the raw `--trigger-category`/
+ * `--evidence`/`--from` flag values without validating them (no enum
+ * check, no non-empty check, no stdin/file read). Semantic validation, in
+ * the exact order Boundaries & Constraints requires (trigger/evidence
+ * before any candidate is read, then the TTY guard, then the candidate
+ * itself), happens in `runEstablish` -- keeping it out of this function
+ * matches every other subcommand here (`parseUseOrSwitch` also only
+ * extracts/shape-checks flags, never opens anything).
+ */
+function parseEstablish(rest: readonly string[]): ParsedCommand {
+  let triggerCategoryRaw: string | undefined;
+  let evidenceRaw: string | undefined;
+  let fromPath: string | null = null;
+
+  for (let i = 0; i < rest.length; i += 1) {
+    const token = rest[i];
+    if (token === '--trigger-category') {
+      if (triggerCategoryRaw !== undefined) {
+        return {
+          kind: 'usage-error',
+          message: `${t('parseError.establishFlagRepeated', { flag: '--trigger-category' })}\n${usageLine()}`,
+        };
+      }
+      const value = rest[i + 1];
+      if (value === undefined) {
+        return {
+          kind: 'usage-error',
+          message: `${t('parseError.establishFlagRequiresValue', { flag: '--trigger-category' })}\n${usageLine()}`,
+        };
+      }
+      triggerCategoryRaw = value;
+      i += 1;
+      continue;
+    }
+    if (token === '--evidence') {
+      if (evidenceRaw !== undefined) {
+        return {
+          kind: 'usage-error',
+          message: `${t('parseError.establishFlagRepeated', { flag: '--evidence' })}\n${usageLine()}`,
+        };
+      }
+      const value = rest[i + 1];
+      if (value === undefined) {
+        return {
+          kind: 'usage-error',
+          message: `${t('parseError.establishFlagRequiresValue', { flag: '--evidence' })}\n${usageLine()}`,
+        };
+      }
+      evidenceRaw = value;
+      i += 1;
+      continue;
+    }
+    if (token === '--from') {
+      if (fromPath !== null) {
+        return {
+          kind: 'usage-error',
+          message: `${t('parseError.establishFlagRepeated', { flag: '--from' })}\n${usageLine()}`,
+        };
+      }
+      const value = rest[i + 1];
+      if (value === undefined) {
+        return {
+          kind: 'usage-error',
+          message: `${t('parseError.establishFlagRequiresValue', { flag: '--from' })}\n${usageLine()}`,
+        };
+      }
+      fromPath = value;
+      i += 1;
+      continue;
+    }
+    return { kind: 'usage-error', message: `${t('parseError.unknownFlag', { flag: token! })}\n${usageLine()}` };
+  }
+
+  return { kind: 'establish', triggerCategoryRaw, evidenceRaw, fromPath };
+}
+
 function parseCommand(argv: readonly string[]): ParsedCommand {
   const [command, ...rest] = argv;
   switch (command) {
@@ -173,6 +270,8 @@ function parseCommand(argv: readonly string[]): ParsedCommand {
       return parseUseOrSwitch('switch', rest);
     case 'status':
       return { kind: 'status', planId: rest[0] ?? null };
+    case 'establish':
+      return parseEstablish(rest);
     default:
       // `command` is always defined here: `main()` intercepts `argv.length
       // === 0` before `parseCommand` is ever called, so this `default`
@@ -349,6 +448,80 @@ async function runLaunchFlow(
   return 1;
 }
 
+/**
+ * Non-interactive `configs establish`. Boundaries & Constraints: must
+ * validate `--trigger-category`/`--evidence` (both, before reading any
+ * candidate), then the stdin-TTY guard, then parse+validate the candidate
+ * itself -- in exactly that order, so a missing flag on a non-interactive
+ * invocation never blocks on a stdin read. Never calls `openDeps()` -- it
+ * opens its own `SqliteConfigRevisionWriter` instead, since it needs
+ * neither `launchPlanRepository` nor any of the OMP-launch ports that
+ * `FullDeps` otherwise bundles together.
+ *
+ * `[Review fix]` The candidate is fully parsed+validated (`parseCandidateRevision`)
+ * *before* `SqliteConfigRevisionWriter` is ever constructed -- constructing
+ * it runs a migration against the real on-disk db file, so a rejected
+ * candidate must never reach that point. `writer.create()` re-validates
+ * the same candidate internally (cheap, and keeps the port self-sufficient
+ * for any other caller), but that redundant check is never the *first*
+ * time validation happens.
+ */
+async function runEstablish(parsed: Extract<ParsedCommand, { kind: 'establish' }>): Promise<number> {
+  let writer: SqliteConfigRevisionWriter | undefined;
+  try {
+    const triggerCategory = parseTriggerCategory(parsed.triggerCategoryRaw);
+    const evidenceRef = parseEvidenceRef(parsed.evidenceRaw);
+
+    if (parsed.fromPath === null && isStdinTTY()) {
+      throw new NoCandidateSourceError();
+    }
+
+    let rawText: string;
+    try {
+      rawText = parsed.fromPath !== null ? await readCandidateFile(parsed.fromPath) : await readStdinText();
+    } catch (error) {
+      throw new InvalidCandidateError(`candidate could not be read: ${(error as Error).message}`);
+    }
+
+    let candidate: unknown;
+    try {
+      candidate = JSON.parse(rawText);
+    } catch (error) {
+      throw new InvalidCandidateError(`candidate JSON could not be parsed: ${(error as Error).message}`);
+    }
+
+    // Validate the whole candidate before the db file is ever touched --
+    // `parseCandidateRevision` throws `InvalidCandidateError` on the first
+    // mismatch, and only once it returns successfully do we construct the
+    // writer (which runs a migration against the real file).
+    parseCandidateRevision(candidate);
+
+    writer = new SqliteConfigRevisionWriter(defaultDbPath());
+    const revision = await writer.create({ triggerCategory, evidenceRef, candidate });
+
+    console.log(renderEstablishSuccess(revision));
+    return 0;
+  } catch (error) {
+    if (
+      error instanceof InvalidTriggerCategoryError ||
+      error instanceof MissingEvidenceError ||
+      error instanceof NoCandidateSourceError ||
+      error instanceof InvalidCandidateError
+    ) {
+      // No parsed candidate (and therefore no `configName`) is available at
+      // every failure point -- e.g. a missing trigger category fails
+      // before the candidate is ever read -- so `renderQueryFailure`'s
+      // label falls back to the fixed string `'establish'` rather than
+      // trying to recover a `configName` that may not exist yet.
+      console.log(renderQueryFailure('establish', error));
+      return 1;
+    }
+    throw error;
+  } finally {
+    writer?.close();
+  }
+}
+
 export async function main(argv: readonly string[], overrides: CliOverrides = {}): Promise<number> {
   // `[DELTA]` IA first layer: `configs` with no subcommand at all is no
   // longer a usage error -- it prints the same usage text as a normal,
@@ -378,6 +551,13 @@ export async function main(argv: readonly string[], overrides: CliOverrides = {}
   if (parsed.kind === 'unsupported-client') {
     console.log(renderUnsupportedClient(parsed.clientId, parsed.reason));
     return 1;
+  }
+  // `[DELTA]` Story 3.1: `establish` never calls `openDeps()` -- it neither
+  // needs `launchPlanRepository` nor any OMP-launch port, and it must be
+  // able to fail (missing trigger/evidence, TTY guard) without ever
+  // opening the SQLite files those depend on.
+  if (parsed.kind === 'establish') {
+    return await runEstablish(parsed);
   }
 
   const deps = await openDeps(overrides);

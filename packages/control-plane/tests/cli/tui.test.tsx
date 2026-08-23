@@ -67,7 +67,14 @@ async function press(stdin: { write: (data: string) => void }, sequence: string)
 }
 
 function ref(kind: CapabilityReference['kind'], name: string): CapabilityReference {
-  return { kind, name, sourceCategory: known('project-capability'), summary: known(`${kind}: ${name}`) };
+  return {
+    kind,
+    name,
+    sourceCategory: known('project-capability'),
+    summary: known(`${kind}: ${name}`),
+    sourceRef: known(`ref/${name}`),
+    contentFingerprint: known(`fingerprint/${name}`),
+  };
 }
 
 function revision(overrides: Partial<StableConfigRevision> & { configName: string; revisionId: string }): StableConfigRevision {
@@ -82,6 +89,9 @@ function revision(overrides: Partial<StableConfigRevision> & { configName: strin
     mcp: overrides.mcp ?? [],
     hooks: overrides.hooks ?? [],
     plugins: overrides.plugins ?? [],
+    triggerCategory: overrides.triggerCategory ?? 'new-scenario',
+    evidenceRef: overrides.evidenceRef ?? 'test-evidence',
+    supersedesRevisionId: overrides.supersedesRevisionId ?? null,
   };
 }
 

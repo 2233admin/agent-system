@@ -83,6 +83,22 @@
   summary: `_bmad-output/implementation-artifacts/sprint-status.yaml` 目前没有 `2-2-...` 这个 story 条目（`development_status` 下只有 `epic-2: in-progress` 和 `2-1-打包与发布流水线: done`），因为 Story 2.2 是本次直接从空白起 spec 的新故事，未经过 `bmad-sprint-planning`/`bmad-create-epics-and-stories` 生成 story 级 sprint-status 条目。
   evidence: `bmad-build` 的 `sync-sprint-status` 子步骤在找不到匹配 story_key 时按设计静默跳过（"warn the user once... and return to caller"）；本次工作流运行期间已提示过一次。留给负责人决定是否需要单独跑一次 sprint-status 生成/修复来补上这个条目，不影响本次代码交付。
 
+- source_spec: `_bmad-output/implementation-artifacts/spec-3-1-建立新配置修订-configs-establish.md`
+  summary: `packages/control-plane/src/adapters/sqlite/repository.ts` 的读路径（`normalizeCapabilityEntry`/`factOrMissing`，以及 `validateCapabilityEntry` 不校验 `kind` 是否合法）对已存在字段的值只做"是否存在"检查，不做形状/类型校验，与本 Story 新增的写路径（`application/establish.ts` 的 `parseFact`/`parseCandidateRevision`）形成不对称——写路径严格拒绝畸形值，读路径会把畸形但存在的 `sourceCategory`/`summary`/`sourceRef`/`contentFingerprint`/`kind` 原样透传。
+  evidence: blind-hunter 与 edge-case-hunter 审查层（Story 3.1 第二轮）独立发现。这是读路径本就存在的宽松行为（Story 1.2 复盘行动项已记录过 `validateCapabilityEntry` 只查 `name` 的同类缺口），本 Story 只是新增了字段、没有改变读路径的校验松紧程度，因此不是本 Story 引入的新缺陷，但值得后续统一加固一次。
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-3-1-建立新配置修订-configs-establish.md`
+  summary: 本 Story 新持久化的 `triggerCategory`/`evidenceRef` 目前没有任何展示出口——`renderDetail`/`configs show`/`compare` 都不显示这两个字段，而 Story 3.3 现有验收标准（epics.md）只覆盖了 `supersedes`（"替代自："）与 `sourceRef`/`contentFingerprint` 的展示，未提及 trigger/evidence 的展示。
+  evidence: blind-hunter 审查层（Story 3.1 第二轮）发现。这是 Story 3.1 与 Story 3.3 之间露出的一个范围缝隙，不是 Story 3.1 自身验收标准要求的行为（AD-16/AD-21 只要求持久化，不要求本 Story 展示），留给负责人判断 Story 3.3 是否也应覆盖 trigger/evidence 的展示。
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-3-1-建立新配置修订-configs-establish.md`
+  summary: `packages/control-plane/src/adapters/sources/cap-fs.ts` 为满足新扩宽的领域类型，给每条能力引用和修订分别 stamp 了占位的 `sourceRef`/`contentFingerprint`/`triggerCategory`/`evidenceRef`/`supersedesRevisionId` 值，但 `tests/adapters/cap-fs.test.ts` 对这五个新字段没有任何断言。
+  evidence: verification-gap 审查层（Story 3.1 第二轮）发现并核实：当前没有任何下游代码读取这些字段（`renderDetail` 尚未展示它们），因此不构成可验证的回归风险，未作为 verification gap 上报；但这是全新的生产代码且完全未经测试覆盖，值得后续补测试。
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-3-1-建立新配置修订-configs-establish.md`
+  summary: `configs establish` 在无 `--from` 时读取 stdin 只做了 TTY 快速失败判断，但对"非 TTY 但流永不关闭"（如一个打开后未写入/未关闭的管道或 socket）没有任何超时保护，理论上会无限期挂起等待 `'end'`/`'error'` 事件。
+  evidence: edge-case-hunter 审查层（Story 3.1 第二轮）发现。修复需要先确定一个合理的超时时长（多短会误伤合法的大体积慢速输入，多长又不足以避免挂起观感），是需要负责人裁决的产品参数，不是可无争议机械修的 patch；spec 冻结的 Boundaries 只要求 TTY 场景快速失败，未要求覆盖这一更罕见的边缘情形。
+
 - source_spec: none
   summary: 候选功能——`configs use`/`switch` 在真正 fresh 启动 OMP 之前，先对配置引用的 MCP 服务器做一次连通性探测（而不是只做当前已有的 schema/reachability 静态检查），避免用户确认启动后，真正开始任务时才发现某个 MCP 连不上。
   evidence: 负责人在对话中提出该诉求并已明确确认排入候选（未指定具体 Epic/Story，留待后续排期裁决）。已就 OMP（`can1357/oh-my-pi`）原生能力做过技术查证：`docs/mcp-config.md` 明确记录的诊断能力（`/mcp list`、`/mcp test <name>`、`/mcp reconnect <name>` 等）全部是 slash command，且文档原文写明在"当前会话"（"in the current session"）中生效，即必须先有一个已经跑起来的 OMP 交互会话才能调用；OMP 未提供任何独立于会话之外的 headless/dry-run/CLI 连通性校验模式。因此 AR11 的 native-first 路径在此不可行——OMP 没有可复用的原生能力。若要落地，需要 Agent System 自行实现，评估过的两个方向：(a) 自建一套探测逻辑独立验证 MCP 连通性，与架构"不持有 OMP 连接状态、避免双事实源"的既有约束冲突；(b) 在真正启动前，临时拉起一个一次性 OMP 进程执行连通性检查后立即退出，再进入用户确认后的正式启动——更贴近诉求本意，但每次确认启动会多付出一次进程拉起/退出的延迟与开销，且需评估探测本身对有副作用的 MCP 服务器（如触发计费、外部状态变更）是否安全。是否排期、选哪个方向、归入哪个 Epic，留给后续专门的 architecture/story 细化阶段裁决。

@@ -1,0 +1,150 @@
+import { describe, expect, test } from 'bun:test';
+import { mkdtempSync, rmSync } from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+
+import { SqliteConfigRevisionWriter } from '../../src/adapters/sqlite/config-revision-writer';
+import { SqliteConfigRevisionRepository } from '../../src/adapters/sqlite/repository';
+import { InvalidCandidateError } from '../../src/application/establish';
+import type { ConfigRevisionWriter } from '../../src/application/ports';
+
+/**
+ * `bun:sqlite`'s `:memory:` gives every `new Database(':memory:')` call its
+ * own isolated database -- unlike a real file path, two separate
+ * connections never see the same data. A writer -> reader round trip
+ * therefore needs a real temp file, matching the convention already used
+ * by `tests/integration/cli*.test.ts`.
+ */
+function withTempDb<T>(fn: (dbPath: string) => Promise<T>): Promise<T> {
+  const tmpDir = mkdtempSync(path.join(os.tmpdir(), 'control-plane-writer-'));
+  const dbPath = path.join(tmpDir, 'db.sqlite3');
+  return fn(dbPath).finally(() => rmSync(tmpDir, { recursive: true, force: true }));
+}
+
+const VALID_CANDIDATE = {
+  configName: 'general',
+  defaultMarker: { kind: 'known', value: true },
+  scopeBoundary: { kind: 'known', value: 'a boundary' },
+  availability: { kind: 'known', value: 'resolved' },
+  skills: [
+    {
+      kind: 'skill',
+      name: 'openspec-explore',
+      sourceCategory: { kind: 'known', value: 'project-capability' },
+      summary: { kind: 'known', value: 'skill reference: openspec-explore' },
+    },
+  ],
+};
+
+describe('SqliteConfigRevisionWriter.create', () => {
+  test('inserts exactly one supersedes=null revision with persisted trigger/evidence, readable back via the read-only repository', async () => {
+    await withTempDb(async (dbPath) => {
+      const writer = new SqliteConfigRevisionWriter(dbPath);
+      try {
+        const revision = await writer.create({
+          triggerCategory: 'new-scenario',
+          evidenceRef: 'session-abc',
+          candidate: VALID_CANDIDATE,
+        });
+        expect(revision.configName).toBe('general');
+        expect(revision.triggerCategory).toBe('new-scenario');
+        expect(revision.evidenceRef).toBe('session-abc');
+        expect(revision.supersedesRevisionId).toBeNull();
+        expect(revision.revisionId.length).toBeGreaterThan(0);
+        expect(revision.skills).toHaveLength(1);
+      } finally {
+        writer.close();
+      }
+
+      const repo = new SqliteConfigRevisionRepository(dbPath);
+      try {
+        const all = await repo.listAll();
+        expect(all).toHaveLength(1);
+        expect(all[0]!.configName).toBe('general');
+        expect(all[0]!.triggerCategory).toBe('new-scenario');
+        expect(all[0]!.evidenceRef).toBe('session-abc');
+        expect(all[0]!.supersedesRevisionId).toBeNull();
+      } finally {
+        repo.close();
+      }
+    });
+  });
+
+  test('rejects a candidate whose defaultMarker.value is not a boolean, with zero writes', async () => {
+    await withTempDb(async (dbPath) => {
+      const writer = new SqliteConfigRevisionWriter(dbPath);
+      try {
+        await expect(
+          writer.create({
+            triggerCategory: 'new-scenario',
+            evidenceRef: 'session-abc',
+            candidate: { ...VALID_CANDIDATE, defaultMarker: { kind: 'known', value: 'not-a-boolean' } },
+          }),
+        ).rejects.toBeInstanceOf(InvalidCandidateError);
+
+        const repo = new SqliteConfigRevisionRepository(dbPath);
+        try {
+          expect(await repo.listAll()).toEqual([]);
+        } finally {
+          repo.close();
+        }
+      } finally {
+        writer.close();
+      }
+    });
+  });
+
+  test('rejects a candidate missing configName, with zero writes', async () => {
+    await withTempDb(async (dbPath) => {
+      const writer = new SqliteConfigRevisionWriter(dbPath);
+      try {
+        await expect(
+          writer.create({
+            triggerCategory: 'bad-case',
+            evidenceRef: 'session-abc',
+            candidate: { skills: [] },
+          }),
+        ).rejects.toBeInstanceOf(InvalidCandidateError);
+      } finally {
+        writer.close();
+      }
+    });
+  });
+
+  test('two calls to create() generate two distinct revisionIds via crypto.randomUUID()', async () => {
+    await withTempDb(async (dbPath) => {
+      const writer = new SqliteConfigRevisionWriter(dbPath);
+      try {
+        const a = await writer.create({ triggerCategory: 'new-scenario', evidenceRef: 'e1', candidate: VALID_CANDIDATE });
+        const b = await writer.create({ triggerCategory: 'known-insufficiency', evidenceRef: 'e2', candidate: VALID_CANDIDATE });
+        expect(a.revisionId).not.toBe(b.revisionId);
+      } finally {
+        writer.close();
+      }
+    });
+  });
+
+  test('a capability entry missing sourceRef/contentFingerprint in the candidate degrades those two fields to Unknown rather than being rejected', async () => {
+    await withTempDb(async (dbPath) => {
+      const writer = new SqliteConfigRevisionWriter(dbPath);
+      try {
+        const revision = await writer.create({
+          triggerCategory: 'new-scenario',
+          evidenceRef: 'session-abc',
+          candidate: VALID_CANDIDATE,
+        });
+        const skill = revision.skills[0]!;
+        expect(skill.sourceRef.kind).toBe('unknown');
+        expect(skill.contentFingerprint.kind).toBe('unknown');
+      } finally {
+        writer.close();
+      }
+    });
+  });
+
+  test('ConfigRevisionWriter port type only exposes `create` -- no update/delete at compile time', () => {
+    type Keys = keyof ConfigRevisionWriter;
+    const onlyCreate: Keys extends 'create' ? true : false = true;
+    expect(onlyCreate).toBe(true);
+  });
+});

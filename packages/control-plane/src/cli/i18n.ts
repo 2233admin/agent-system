@@ -110,6 +110,17 @@ const zh: Dict = {
   'launchPlan.notFound': '未找到启动计划 {target}。请先运行 `configs use <id>`。',
   'launchPlan.notFoundTargetForId': '（id 为 "{planId}"）',
   'launchPlan.notFoundTargetNoActive': '（客户端 "omp" 没有活跃的启动计划）',
+
+  'parseError.establishFlagRequiresValue': '{flag} 需要一个值',
+  'parseError.establishFlagRepeated': '{flag} 只能传一次',
+
+  'establish.successPrefix': '已建立新配置修订：',
+  'establish.missingTriggerCategory':
+    'configs establish：缺少或不合法的触发类别——必须通过 --trigger-category 传入 new-scenario / known-insufficiency / bad-case 之一；未写入任何内容。',
+  'establish.missingEvidence': 'configs establish：缺少证据引用——必须通过 --evidence <ref> 传入非空值；未写入任何内容。',
+  'establish.noCandidateSource':
+    'configs establish：未提供候选内容——请传入 --from <path>，或通过 stdin 管道输入候选 JSON（当前 stdin 是交互式终端）；未写入任何内容。',
+  'establish.invalidCandidate': 'configs establish：候选内容不合法（以下为英文字段路径/类型提示，非待翻译文案）：`{reason}`；未写入任何内容。',
 };
 
 const en: Dict = {
@@ -198,6 +209,17 @@ const en: Dict = {
   'launchPlan.notFound': 'No launch plan found {target}. Run `configs use <id>` first.',
   'launchPlan.notFoundTargetForId': 'for id "{planId}"',
   'launchPlan.notFoundTargetNoActive': '(no active plan for client "omp")',
+
+  'parseError.establishFlagRequiresValue': '{flag} requires a value',
+  'parseError.establishFlagRepeated': '{flag} can only be passed once',
+
+  'establish.successPrefix': 'Established new configuration revision:',
+  'establish.missingTriggerCategory':
+    'configs establish: trigger category is missing or invalid -- pass one of new-scenario / known-insufficiency / bad-case via --trigger-category; nothing was written.',
+  'establish.missingEvidence': 'configs establish: evidence reference is missing -- pass a non-empty value via --evidence <ref>; nothing was written.',
+  'establish.noCandidateSource':
+    'configs establish: no candidate source was provided -- pass --from <path>, or pipe candidate JSON via stdin (stdin is currently an interactive terminal); nothing was written.',
+  'establish.invalidCandidate': 'configs establish: candidate is invalid: `{reason}`; nothing was written.',
 };
 
 const DICTS: Record<Lang, Dict> = { zh, en };
