@@ -32,7 +32,42 @@ import { defaultExtensionPath } from '../adapters/omp/process-port';
 import { ROLE_COLOR_NAMES } from './colors';
 import { t } from './i18n';
 import { formatAvailability, formatDefaultMarker, renderDetail, renderHandoffLine, renderLaunchFailure, renderLaunchStatus } from './render';
+import { CONFIGS_VERSION } from './version';
 import { openDeps, type CliOverrides, type FullDeps } from './index';
+const TUI_DIAGNOSTICS_ENABLED = process.env.CONFIGS_TUI_DEBUG === '1';
+
+function debugTui(stage: string, details: Record<string, unknown> = {}): void {
+  if (!TUI_DIAGNOSTICS_ENABLED) {
+    return;
+  }
+  try {
+    process.stderr.write(
+      `[configs-tui] ${JSON.stringify({
+        version: CONFIGS_VERSION,
+        executable: process.execPath,
+        argv: process.argv,
+        platform: process.platform,
+        stdinIsTTY: process.stdin.isTTY === true,
+        stdoutIsTTY: process.stdout.isTTY === true,
+      })}\n`,
+    );
+  } catch {
+    // Diagnostics must never change TUI behavior.
+  }
+}
+
+function stdinListenerCounts(source: NodeJS.ReadStream): Record<string, number> {
+  return {
+    data: source.listenerCount('data'),
+    readable: source.listenerCount('readable'),
+    end: source.listenerCount('end'),
+    close: source.listenerCount('close'),
+    error: source.listenerCount('error'),
+  };
+}
+
+debugTui('module-loaded', { stdinListeners: stdinListenerCounts(process.stdin) });
+
 
 const ALT_SCREEN_ENTER = '\x1b[?1049h';
 const ALT_SCREEN_EXIT = '\x1b[?1049l';
@@ -60,8 +95,19 @@ class TuiStdinBridge extends EventEmitter {
   // Ink's second enable call idempotent.
   private rawModeEnabled = false;
   private readonly chunks: Array<string | Buffer> = [];
+  private firstInputLogged = false;
   private readonly onSourceData = (chunk: string | Uint8Array): void => {
-    this.chunks.push(typeof chunk === 'string' ? chunk : Buffer.from(chunk));
+    const bytes = Buffer.from(chunk);
+    if (!this.firstInputLogged) {
+      this.firstInputLogged = true;
+      debugTui('stdin:first-data', {
+        inputType: typeof chunk,
+        byteLength: bytes.length,
+        bytes: Array.from(bytes.subarray(0, 32)),
+        stdinListeners: stdinListenerCounts(this.source),
+      });
+    }
+    this.chunks.push(typeof chunk === 'string' ? chunk : bytes);
     this.emit('readable');
   };
 
@@ -69,16 +115,26 @@ class TuiStdinBridge extends EventEmitter {
     super();
     this.isTTY = source.isTTY === true;
     this.bootstrapRawMode = process.platform === 'win32' && this.isTTY;
+    debugTui('bridge:construct', {
+      isTTY: this.isTTY,
+      wasPaused: source.isPaused(),
+      stdinListeners: stdinListenerCounts(source),
+    });
     if (this.bootstrapRawMode) {
       source.setRawMode(true);
       this.rawModeEnabled = true;
+      debugTui('raw-mode:set', { requested: true, applied: true, reason: 'bootstrap', stdinListeners: stdinListenerCounts(source) });
     }
     source.setEncoding('utf8');
     source.on('data', this.onSourceData);
+    debugTui('bridge:data-attached', { stdinListeners: stdinListenerCounts(source) });
   }
 
   override addListener(eventName: string | symbol, listener: (...args: unknown[]) => void): this {
     const result = super.addListener(eventName, listener);
+    if (eventName === 'readable') {
+      debugTui('bridge:readable-attached', { bridgeReadableListeners: this.listenerCount('readable'), stdinListeners: stdinListenerCounts(this.source) });
+    }
     if (eventName === 'readable' && this.chunks.length > 0) {
       queueMicrotask(() => this.emit('readable'));
     }
@@ -91,10 +147,17 @@ class TuiStdinBridge extends EventEmitter {
   }
 
   setRawMode(enabled: boolean): this {
-    if (!this.bootstrapRawMode || enabled !== this.rawModeEnabled) {
+    const applied = !this.bootstrapRawMode || enabled !== this.rawModeEnabled;
+    if (applied) {
       this.source.setRawMode(enabled);
       this.rawModeEnabled = enabled;
     }
+    debugTui('raw-mode:set', {
+      requested: enabled,
+      applied,
+      tracked: this.rawModeEnabled,
+      stdinListeners: stdinListenerCounts(this.source),
+    });
     return this;
   }
 
@@ -108,39 +171,55 @@ class TuiStdinBridge extends EventEmitter {
     return this;
   }
   read(): string | Buffer | null {
-    return this.chunks.shift() ?? null;
+    const chunk = this.chunks.shift() ?? null;
+    if (chunk !== null) {
+      debugTui('bridge:read', {
+        inputType: typeof chunk,
+        byteLength: typeof chunk === 'string' ? Buffer.byteLength(chunk) : chunk.length,
+        queuedChunks: this.chunks.length,
+      });
+    }
+    return chunk;
   }
 
   dispose(): void {
+    debugTui('bridge:dispose:start', { stdinListeners: stdinListenerCounts(this.source), queuedChunks: this.chunks.length });
     this.source.removeListener('data', this.onSourceData);
     if (this.bootstrapRawMode && this.rawModeEnabled) {
       this.source.setRawMode(false);
       this.rawModeEnabled = false;
+      debugTui('raw-mode:set', { requested: false, applied: true, reason: 'dispose', stdinListeners: stdinListenerCounts(this.source) });
     }
     this.chunks.length = 0;
     this.removeAllListeners();
+    debugTui('bridge:dispose:done', { stdinListeners: stdinListenerCounts(this.source) });
   }
 }
 
 function prepareTuiStdin(): { readonly input: NodeJS.ReadStream; readonly cleanup: () => void } {
   const source = process.stdin;
   const wasPaused = source.isPaused();
+  debugTui('stdin:prepare:start', { wasPaused, stdinListeners: stdinListenerCounts(source) });
   const bridge = new TuiStdinBridge(source);
   source.resume();
+  debugTui('stdin:prepare:resumed', { stdinListeners: stdinListenerCounts(source) });
   let cleanedUp = false;
   return {
     input: bridge as unknown as NodeJS.ReadStream,
     cleanup: () => {
       if (cleanedUp) {
+        debugTui('stdin:cleanup:duplicate');
         return;
       }
       cleanedUp = true;
+      debugTui('stdin:cleanup:start', { wasPaused, stdinListeners: stdinListenerCounts(source) });
       bridge.dispose();
       if (wasPaused) {
         source.pause();
       } else {
         source.resume();
       }
+      debugTui('stdin:cleanup:done', { restoredPaused: source.isPaused(), stdinListeners: stdinListenerCounts(source) });
     },
   };
 }
@@ -282,13 +361,16 @@ export type TuiDecision = { readonly kind: 'launch'; readonly revision: StableCo
  */
 function runTuiScreen(revisions: readonly StableConfigRevision[], knownDifferencesByRevision: ReadonlyMap<string, readonly string[]>): Promise<TuiDecision> {
   return new Promise((resolve) => {
+    debugTui('screen:start', { revisionCount: revisions.length });
     const tuiStdin = prepareTuiStdin();
+    debugTui('screen:before-render');
     try {
       const instance = render(
         <TuiApp
           revisions={revisions}
           knownDifferencesByRevision={knownDifferencesByRevision}
           onLaunch={(revision) => {
+            debugTui('screen:decision', { kind: 'launch', revisionId: revision.revisionId });
             try {
               instance.unmount();
             } finally {
@@ -297,6 +379,7 @@ function runTuiScreen(revisions: readonly StableConfigRevision[], knownDifferenc
             resolve({ kind: 'launch', revision });
           }}
           onQuit={() => {
+            debugTui('screen:decision', { kind: 'quit' });
             try {
               instance.unmount();
             } finally {
@@ -312,7 +395,9 @@ function runTuiScreen(revisions: readonly StableConfigRevision[], knownDifferenc
         // -- the same cleanup path as a normal `q` quit.
         { exitOnCtrlC: false, stdin: tuiStdin.input },
       );
+      debugTui('screen:rendered');
     } catch (error) {
+      debugTui('screen:render-error', { message: error instanceof Error ? error.message : String(error) });
       try {
         tuiStdin.cleanup();
       } finally {
@@ -375,6 +460,7 @@ export async function runTuiWithDeps(deps: FullDeps, hooks: RunTuiHooks = {}): P
   const pickDecision = hooks.pickDecision ?? runTuiScreen;
   const doEnterAltScreen = hooks.enterAltScreen ?? enterAltScreen;
   const doExitAltScreen = hooks.exitAltScreen ?? exitAltScreen;
+  debugTui('orchestration:start');
 
   // A single outer `finally` closes both repositories exactly once,
   // regardless of which branch below returns or throws -- no branch
@@ -385,7 +471,9 @@ export async function runTuiWithDeps(deps: FullDeps, hooks: RunTuiHooks = {}): P
     let revisions: readonly StableConfigRevision[];
     try {
       revisions = await listConfigRevisions(deps.configRepository);
+      debugTui('orchestration:revisions-loaded', { revisionCount: revisions.length });
     } catch (error) {
+      debugTui('orchestration:revision-load-error', { message: (error as Error).message });
       console.error(t('unexpectedFailure', { message: (error as Error).message }));
       return 1;
     }
@@ -396,18 +484,24 @@ export async function runTuiWithDeps(deps: FullDeps, hooks: RunTuiHooks = {}): P
     // otherwise a crash mid-TUI would leave the user's real terminal
     // stuck showing the alt-screen buffer.
     let decision: TuiDecision;
+    debugTui('orchestration:enter-alt-screen');
     doEnterAltScreen();
     try {
       decision = await pickDecision(revisions, knownDifferencesByRevision);
+      debugTui('orchestration:decision-received', { kind: decision.kind });
     } finally {
       doExitAltScreen();
+      debugTui('orchestration:exit-alt-screen');
     }
 
     if (decision.kind === 'quit') {
+      debugTui('orchestration:quit');
       return 0;
     }
 
+    debugTui('orchestration:prepare-launch', { revisionId: decision.revision.revisionId });
     const plan = await runAutoConfirmLaunch(deps, decision.revision.revisionId);
+    debugTui('orchestration:launch-plan', { phase: plan.phase, planId: plan.planId });
     if (plan.phase !== 'applying') {
       // `prepareLaunchPlan` carried the plan straight to `failed` (e.g. the
       // revision vanished between the list rendering and this point) --
@@ -427,6 +521,7 @@ export async function runTuiWithDeps(deps: FullDeps, hooks: RunTuiHooks = {}): P
       onSpawning: () => console.log(renderHandoffLine()),
     });
 
+    debugTui('orchestration:launch-result', { phase: finalPlan.phase, planId: finalPlan.planId });
     if (finalPlan.phase === 'succeeded' || finalPlan.phase === 'degraded') {
       const status = await getLaunchStatus(deps, finalPlan.planId);
       console.log(renderLaunchStatus(status));
@@ -436,6 +531,7 @@ export async function runTuiWithDeps(deps: FullDeps, hooks: RunTuiHooks = {}): P
     console.log(renderLaunchFailure(finalPlan));
     return 1;
   } finally {
+    debugTui('orchestration:cleanup');
     deps.configRepository.close();
     deps.launchPlanRepository.close();
   }
