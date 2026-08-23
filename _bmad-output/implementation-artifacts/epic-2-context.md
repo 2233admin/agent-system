@@ -4,11 +4,12 @@
 
 ## Goal
 
-`configs` (the external Agent System CLI) is distributed as a Bun-compiled standalone executable, published per platform. On every process start, it silently checks a fixed release endpoint in the background for a newer version; if one exists, it verifies its integrity and replaces the local binary in place. Any failure in this check/download/verify path degrades silently — the current launch must never be blocked or failed because of it — and no telemetry, usage data, or product state is ever transmitted as part of the check. This closes a real gap: the reference client (`omp`) already ships this exact self-update behavior, and the repo owner explicitly requested parity for `configs`. This epic is brand-new — no stories have been drafted yet; story-level scope and acceptance criteria are left to the next story-drafting pass.
+`configs` (the external Agent System CLI) is distributed as a Bun-compiled standalone executable, published per platform. On every process start, it silently checks a fixed release endpoint in the background for a newer version; if one exists, it verifies its integrity and replaces the local binary in place. Any failure in this check/download/verify path degrades silently — the current launch must never be blocked or failed because of it — and no telemetry, usage data, or product state is ever transmitted as part of the check. This closes a real gap: the reference client (`omp`) already ships this exact self-update behavior, and the repo owner explicitly requested parity for `configs`.
 
 ## Stories
 
-No stories drafted yet for this epic. Story-level scope and acceptance criteria are pending a future `bmad-create-epics-and-stories` / `bmad-build` pass.
+- **Story 2.1 — 打包与发布流水线** (`spec-2-1-打包与发布流水线.md`, done): per-platform Bun `--compile` release pipeline and publishing to this repo's GitHub Releases, including the `SHA256SUMS.txt` integrity manifest Story 2.2 depends on.
+- **Story 2.2 — 自更新客户端** (`spec-2-2-自更新客户端.md`, done): the silent-update-on-launch client described above — fixed-endpoint check, hash verification, `.bak`-preserving in-place replacement, silent degrade-on-failure. Drafted and built directly from a fresh spec (not through `bmad-create-epics-and-stories`), so its sprint-status entry had to be added by hand; see `deferred-work.md` for that process note.
 
 ## Requirements & Constraints
 
@@ -33,4 +34,4 @@ No stories drafted yet for this epic. Story-level scope and acceptance criteria 
 ## Cross-Story Dependencies
 
 - Independent of Epic 1 (查看、选择并使用 OMP 配置) — Epic 1 is already done and unrelated to distribution/update mechanics; no shared code or sequencing dependency is known.
-- This epic's CI/CD needs (a pipeline that publishes release binaries and hosts/updates the release endpoint) are net-new — current CI only runs test/typecheck/assembly jobs and has no release-publishing job yet. Any story implementing self-update will also need the publishing side stood up, since the update client is meaningless without artifacts and a version manifest actually being published to the fixed endpoint.
+- This epic's CI/CD needs (a pipeline that publishes release binaries and hosts the release endpoint) were net-new when this epic started; Story 2.1 stood up `.github/workflows/release-configs.yml`, publishing per-platform binaries and `SHA256SUMS.txt` to this repo's GitHub Releases, which Story 2.2's update client consumes as its fixed endpoint.
