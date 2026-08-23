@@ -13,10 +13,11 @@ import type { OmpProcessPort, OmpSpawnParams, OmpSpawnResult } from '../../appli
  * CONTEXT` env var instead (Design Notes), so it needs no shell-unsafe
  * escaping here regardless of spaces/non-ASCII characters.
  *
- * Never emits anything that clears, rewrites or restores the user's real
- * global OMP configuration directory -- only `--profile`/`--no-extensions
- * -e <path>`/`--skills`|`--no-skills` plus the caller's opaque forwarded
- * args.
+ * The configs-launched OMP process deliberately uses OMP's default profile,
+ * matching a direct `omp` invocation so the user's existing authentication,
+ * sessions, settings, and caches remain available. Configuration selection
+ * is represented by the explicit skills/extension arguments, not an OMP
+ * profile switch.
  */
 export function buildOmpArgv(
   revision: StableConfigRevision,
@@ -26,7 +27,7 @@ export function buildOmpArgv(
 ): string[] {
   void launchContextPath;
 
-  const argv: string[] = ['--profile', sanitizeProfileName(revision.configName)];
+  const argv: string[] = [];
 
   if (extensionPath !== null) {
     // `--no-extensions` disables auto-discovery of the user's own
@@ -50,18 +51,17 @@ export function buildOmpArgv(
 /**
  * Forwarded-arg (`-- <args>`) tokens that would defeat this Story's own
  * safety guarantees if let through to the real `omp` binary -- verified
- * against this machine's real `omp --help` output (18.0.0), matching the
+ * against this machine's real `omp --help` output (18.0.3), matching the
  * Design Notes' "OMP 真实调用面" section:
  *  - extension loading: `-e, --extension=<value>` is documented and
  *    verified repeatable ("Load an extension file (can be used multiple
- *    times)"), so a forwarded `-e <path>` would add an *extra* extension
+ *    times"), so a forwarded `-e <path>` would add an *extra* extension
  *    on top of the `--no-extensions -e <thin-extension>` this module
  *    already emits -- breaking the "single fact source" guarantee
  *    (`buildOmpArgv`'s own docstring above).
- *  - profile selection: `--profile=<value>` is the exact flag
- *    `buildOmpArgv` uses to isolate auth/session/settings/cache per
- *    config; a forwarded `--profile` would override that computed value,
- *    breaking config/OMP-profile isolation.
+ *  - profile selection: a forwarded `--profile` would move this launch
+ *    away from OMP's default profile, causing it to use a different auth,
+ *    session, settings, and cache state than a direct `omp` invocation.
  *  - resume/continue/session-dir: `-c, --continue`, `-r, --resume=<value>`
  *    and `--session-dir=<value>` all let OMP auto-resume a prior session
  *    or redirect where sessions are discovered, breaking "resume 完全不
@@ -102,30 +102,6 @@ export function findDenylistedForwardedArg(forwardedArgs: readonly string[]): st
   return null;
 }
 
-/**
- * Deterministic, non-cryptographic short hash of the *original* (pre-
- * sanitization) `configName` -- same collision-resistance philosophy as
- * `domain/activation.ts`'s `computePlanHash`. Appended as a suffix so two
- * distinct config names that sanitize to the same readable prefix (e.g.
- * `"my config"` and `"my/config"`, which both collapse disallowed
- * characters to `-`) can never collide onto the same `--profile` value --
- * `--profile` isolates OMP auth/session/settings/cache, so a collision
- * here would mean two different Agent System configs silently sharing
- * OMP profile state.
- */
-function shortHash(input: string): string {
-  let hash = 0;
-  for (let i = 0; i < input.length; i += 1) {
-    hash = (Math.imul(31, hash) + input.charCodeAt(i)) | 0;
-  }
-  return (hash >>> 0).toString(16);
-}
-
-function sanitizeProfileName(configName: string): string {
-  const sanitized = configName.trim().replace(/[^a-zA-Z0-9_.-]+/g, '-');
-  const base = sanitized.length > 0 ? sanitized : 'agent-system-default';
-  return `${base}-${shortHash(configName)}`;
-}
 
 /** Resolves the on-disk path of the thin status/switch extension shipped with this package. */
 export function defaultExtensionPath(): string {

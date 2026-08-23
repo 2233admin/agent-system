@@ -10,8 +10,8 @@ import type { StableConfigRevision } from '../../src/domain/config';
  * sandboxes do not guarantee. So this smoke test only runs when a real
  * `omp` binary is reachable on this machine, and replaces the message
  * positional argument our own argv would carry with `--help` -- proving
- * the flags this Story actually constructs (`--profile`, `--no-extensions
- * -e <path>`, `--skills`/`--no-skills`) are accepted by the real binary
+ * the flags this Story actually constructs (`--no-extensions -e <path>`,
+ * `--skills`/`--no-skills`) are accepted by the real binary
  * and exit 0, without needing a model call. Skips (not fails) when `omp`
  * is not installed.
  */

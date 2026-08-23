@@ -34,36 +34,19 @@ function revision(overrides: Partial<StableConfigRevision> & { configName: strin
 }
 
 describe('buildOmpArgv', () => {
-  test('always sets --profile to a sanitized configName (with a disambiguating suffix)', () => {
+  test('does not select a named profile, so configs reuses direct omp auth/session/settings/cache state', () => {
     const argv = buildOmpArgv(revision({ configName: 'general', revisionId: 'rev-1' }), '/tmp/ctx.json', null, []);
-    expect(argv).toContain('--profile');
-    const profileValue = argv[argv.indexOf('--profile') + 1]!;
-    expect(profileValue).toMatch(/^general-[0-9a-f]+$/);
+    expect(argv.some((arg) => arg === '--profile' || arg.startsWith('--profile='))).toBe(false);
+  });
+  test('config names are not part of argv, so spaces, slashes, and non-ASCII remain valid', () => {
+    const argv = buildOmpArgv(revision({ configName: '审阅/版本 with spaces', revisionId: 'rev-奇异' }), '/tmp/ctx.json', null, []);
+    expect(argv).not.toContain('--profile');
+    expect(argv).toEqual(['--no-skills']);
   });
 
-  test('sanitizes profile names containing spaces/slashes/other unsafe characters', () => {
-    const argv = buildOmpArgv(revision({ configName: 'my config/team ☺', revisionId: 'rev-1' }), '/tmp/ctx.json', null, []);
-    const profileValue = argv[argv.indexOf('--profile') + 1]!;
-    expect(profileValue).not.toMatch(/[\s/☺]/);
-    expect(profileValue.length).toBeGreaterThan(0);
-  });
-
-  test('two distinct configNames that sanitize to the same readable prefix never collide onto the same --profile value', () => {
-    const argvA = buildOmpArgv(revision({ configName: 'my config', revisionId: 'rev-a' }), '/tmp/ctx.json', null, []);
-    const argvB = buildOmpArgv(revision({ configName: 'my/config', revisionId: 'rev-b' }), '/tmp/ctx.json', null, []);
-    const profileA = argvA[argvA.indexOf('--profile') + 1]!;
-    const profileB = argvB[argvB.indexOf('--profile') + 1]!;
-    expect(profileA).not.toBe(profileB);
-  });
-
-  test('the same configName always sanitizes to the same --profile value (deterministic)', () => {
-    const argvA = buildOmpArgv(revision({ configName: 'general', revisionId: 'rev-a' }), '/tmp/ctx.json', null, []);
-    const argvB = buildOmpArgv(revision({ configName: 'general', revisionId: 'rev-b' }), '/tmp/ctx.json', null, []);
-    expect(argvA[argvA.indexOf('--profile') + 1]).toBe(argvB[argvB.indexOf('--profile') + 1]);
-  });
-
-  test('when extensionPath is provided, emits --no-extensions -e <path> to guarantee a single fact source', () => {
+  test('when extensionPath is provided, emits no profile and loads only the thin extension', () => {
     const argv = buildOmpArgv(revision({ configName: 'general', revisionId: 'rev-1' }), '/tmp/ctx.json', '/path/to/ext.ts', []);
+    expect(argv.some((arg) => arg === '--profile' || arg.startsWith('--profile='))).toBe(false);
     expect(argv).toContain('--no-extensions');
     const eIndex = argv.indexOf('-e');
     expect(eIndex).toBeGreaterThan(-1);
