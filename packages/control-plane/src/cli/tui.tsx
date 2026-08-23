@@ -22,6 +22,7 @@
  */
 
 import React, { useState } from 'react';
+import { EventEmitter } from 'node:events';
 import { Box, render, Text, useInput } from 'ink';
 
 import type { StableConfigRevision } from '../domain/config';
@@ -43,32 +44,96 @@ function enterAltScreen(): void {
 function exitAltScreen(): void {
   process.stdout.write(ALT_SCREEN_EXIT);
 }
+
 /**
- * Bun's Windows console stdin can remain paused after the process starts,
- * which prevents the readable events Ink uses for raw-mode input from
- * reaching its `stdin.read()` loop. Resume consumption before mounting Ink;
- * Ink remains responsible for raw mode, parsing, and listener cleanup.
- *
- * Capture the stream being mounted into Ink so its pre-existing paused or
- * flowing state is restored even if another test or caller replaces
- * `process.stdin` later. The returned cleanup is idempotent because
- * launch/quit callbacks should share one stdin lifecycle.
+ * Ink's production renderer consumes a `readable`/`read()` stream, while Bun
+ * Windows console streams can deliver raw keyboard bytes through `data`
+ * without notifying `readable`. Bun also requires raw mode before the data
+ * listener is attached. Bridge the source's data events into the contract
+ * Ink actually consumes and own that bootstrap cleanup around Ink's lifecycle.
  */
-function resumeTuiStdin(): () => void {
-  const stdin = process.stdin;
-  const wasPaused = stdin.isPaused();
-  stdin.resume();
+class TuiStdinBridge extends EventEmitter {
+  readonly isTTY: boolean;
+  private readonly bootstrapRawMode: boolean;
+  private readonly chunks: string[] = [];
+  private readonly onSourceData = (chunk: string | Buffer): void => {
+    this.chunks.push(typeof chunk === 'string' ? chunk : chunk.toString('utf8'));
+    this.emit('readable');
+  };
+
+  constructor(private readonly source: NodeJS.ReadStream) {
+    super();
+    this.isTTY = source.isTTY === true;
+    this.bootstrapRawMode = process.platform === 'win32' && this.isTTY;
+    if (this.bootstrapRawMode) {
+      source.setRawMode(true);
+    }
+    source.setEncoding('utf8');
+    source.on('data', this.onSourceData);
+  }
+
+  override addListener(eventName: string | symbol, listener: (...args: unknown[]) => void): this {
+    const result = super.addListener(eventName, listener);
+    if (eventName === 'readable' && this.chunks.length > 0) {
+      queueMicrotask(() => this.emit('readable'));
+    }
+    return result;
+  }
+
+  setEncoding(encoding: BufferEncoding): this {
+    this.source.setEncoding(encoding);
+    return this;
+  }
+
+  setRawMode(enabled: boolean): this {
+    this.source.setRawMode(enabled);
+    return this;
+  }
+
+  ref(): this {
+    this.source.ref();
+    return this;
+  }
+
+  unref(): this {
+    this.source.unref();
+    return this;
+  }
+
+  read(): string | null {
+    return this.chunks.shift() ?? null;
+  }
+
+  dispose(): void {
+    this.source.removeListener('data', this.onSourceData);
+    if (this.bootstrapRawMode) {
+      this.source.setRawMode(false);
+    }
+    this.chunks.length = 0;
+    this.removeAllListeners();
+  }
+}
+
+function prepareTuiStdin(): { readonly input: NodeJS.ReadStream; readonly cleanup: () => void } {
+  const source = process.stdin;
+  const wasPaused = source.isPaused();
+  const bridge = new TuiStdinBridge(source);
+  source.resume();
   let cleanedUp = false;
-  return () => {
-    if (cleanedUp) {
-      return;
-    }
-    cleanedUp = true;
-    if (wasPaused) {
-      stdin.pause();
-    } else {
-      stdin.resume();
-    }
+  return {
+    input: bridge as unknown as NodeJS.ReadStream,
+    cleanup: () => {
+      if (cleanedUp) {
+        return;
+      }
+      cleanedUp = true;
+      bridge.dispose();
+      if (wasPaused) {
+        source.pause();
+      } else {
+        source.resume();
+      }
+    },
   };
 }
 
@@ -209,9 +274,7 @@ export type TuiDecision = { readonly kind: 'launch'; readonly revision: StableCo
  */
 function runTuiScreen(revisions: readonly StableConfigRevision[], knownDifferencesByRevision: ReadonlyMap<string, readonly string[]>): Promise<TuiDecision> {
   return new Promise((resolve) => {
-    // This must happen before `render()` mounts Ink so a Bun Windows console
-    // can deliver readable events into Ink's existing raw-mode input path.
-    const cleanupStdin = resumeTuiStdin();
+    const tuiStdin = prepareTuiStdin();
     try {
       const instance = render(
         <TuiApp
@@ -221,7 +284,7 @@ function runTuiScreen(revisions: readonly StableConfigRevision[], knownDifferenc
             try {
               instance.unmount();
             } finally {
-              cleanupStdin();
+              tuiStdin.cleanup();
             }
             resolve({ kind: 'launch', revision });
           }}
@@ -229,7 +292,7 @@ function runTuiScreen(revisions: readonly StableConfigRevision[], knownDifferenc
             try {
               instance.unmount();
             } finally {
-              cleanupStdin();
+              tuiStdin.cleanup();
             }
             resolve({ kind: 'quit' });
           }}
@@ -239,11 +302,11 @@ function runTuiScreen(revisions: readonly StableConfigRevision[], knownDifferenc
         // cleanup in `runTui()`. Disabling it here routes Ctrl+C through
         // `TuiApp`'s own `useInput` handler (which calls `onQuit()`) instead
         // -- the same cleanup path as a normal `q` quit.
-        { exitOnCtrlC: false },
+        { exitOnCtrlC: false, stdin: tuiStdin.input },
       );
     } catch (error) {
       try {
-        cleanupStdin();
+        tuiStdin.cleanup();
       } finally {
         throw error;
       }

@@ -199,8 +199,8 @@ function fakeFullDeps(): {
 
 /**
  * Ink's production renderer consumes stdin through `readable`/`read()`.
- * This fake keeps that contract while recording whether the TUI restores
- * Bun's paused stdin before Ink subscribes.
+ * This fake emits only `data`, reproducing Bun's Windows console behavior
+ * that the TUI stdin bridge adapts while recording lifecycle restoration.
  */
 class FakeTuiStdin extends EventEmitter {
   readonly isTTY = true;
@@ -212,8 +212,8 @@ class FakeTuiStdin extends EventEmitter {
 
   override addListener(...args: Parameters<EventEmitter['addListener']>): this {
     const [eventName] = args;
-    if (eventName === 'readable') {
-      this.events.push('readable-listener');
+    if (eventName === 'data') {
+      this.events.push('data-listener');
     }
     return super.addListener(...args);
   }
@@ -257,10 +257,11 @@ class FakeTuiStdin extends EventEmitter {
   }
 
   pushInput(input: string): void {
-    this.chunks.push(input);
     if (this.resumed) {
-      this.emit('readable');
+      this.emit('data', input);
+      return;
     }
+    this.chunks.push(input);
   }
 }
 
@@ -608,11 +609,11 @@ describe('runTuiWithDeps orchestration (mocked deps + injected alt-screen/decisi
       await flush();
 
       expect(stdin.resumeCallCount).toBe(1);
-      expect(stdin.events.indexOf('resume')).toBeLessThan(stdin.events.indexOf('readable-listener'));
+      expect(stdin.listenerCount('data')).toBe(1);
 
       stdin.pushInput('\x03');
-      await expect(tui).resolves.toBe(0);
       expect(stdin.listenerCount('readable')).toBe(0);
+      expect(stdin.listenerCount('data')).toBe(0);
       expect(stdin.pauseCallCount).toBe(1);
       expect(stdin.events[stdin.events.length - 1]).toBe('pause');
       expect(stdin.isPaused()).toBe(true);
