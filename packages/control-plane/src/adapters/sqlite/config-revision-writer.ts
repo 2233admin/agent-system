@@ -33,12 +33,11 @@ export class SqliteConfigRevisionWriter implements ConfigRevisionWriter {
       mkdirSync(path.dirname(dbPath), { recursive: true });
     }
     this.db = new Database(dbPath, { create: true });
-    this.db.exec('PRAGMA journal_mode = WAL;');
-    // `[Review fix]` Root-cause mitigation for concurrent migrations (see
-    // `repository.ts`'s `runConfigRevisionMigrations` docstring): make
-    // SQLite itself wait out short-lived lock contention instead of
-    // failing immediately with `SQLITE_BUSY`/`"database is locked"`.
+    // Install the wait policy before changing the database journal mode:
+    // `PRAGMA journal_mode = WAL` itself can contend when two fresh
+    // processes open the same database concurrently.
     this.db.exec('PRAGMA busy_timeout = 5000;');
+    this.db.exec('PRAGMA journal_mode = WAL;');
     this.db.exec('PRAGMA foreign_keys = ON;');
     runConfigRevisionMigrations(this.db);
   }
