@@ -16,6 +16,8 @@
 - `grilling` 虽常驻于本 profile，但只有负责人直接要求盘问／压力测试，或明确接受建议后才能执行；复杂、模糊或高风险本身不等于同意。
 - `.cap/lock.json`、machine-context pin、bindings、render 和 runtime generation 是派生或校验状态；不得手改来掩盖源声明问题。
 - 分别报告标准合规、声明态、配置态和真实客户端生效态。文件存在、lock 通过或模型自述不能冒充运行行为。
+- 常驻 prompt、knowledge 与其他派生资产不得写入 secret 或凭据；历史资产、候选来源或调查过程中出现 secret 时上报并阻断复制，不得誊抄或落盘。
+- 报告能力闭包时区分 profile 自身显式 allow 声明与经 `project-defaults`、`skill-imports` 等全局继承的能力；两层都需可追溯来源，不得只统计前者而遗漏后者。
 
 ## 执行路由
 1. 恢复目标合同、现状和受影响调用方，明确哪些决定仍需负责人裁决。
