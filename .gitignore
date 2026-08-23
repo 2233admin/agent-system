@@ -26,10 +26,22 @@ WATCHDOG.yml
 .qoder/commands/opsx/
 .qoder/skills/openspec-*/
 
-# BMAD installation is local tooling, not tracked (each machine installs its
-# own copy) -- EXCEPT _bmad/custom/, the sanctioned location for team-wide
-# customization overrides (bmad-customize skill), which must be shared via
-# git so every clone/session sees the same overrides. Personal (*.user.toml)
-# overrides inside _bmad/custom/ stay untracked via its own .gitignore.
-/_bmad/*
-!/_bmad/custom/
+# _bmad/, .claude/skills/, and .agents/skills/ (the BMad installation and
+# its skill content) were previously local-only via .git/info/exclude --
+# 2026-08-23: tracked instead, so every clone/session gets the same skills
+# without a separate local install step. Personal (*.user.toml) overrides
+# inside _bmad/custom/ stay untracked via its own .gitignore.
+
+# Claude Code / agent runtime-local session state -- never shared, unlike
+# the skill content above.
+.claude/settings.local.json
+**/.claude/scheduled_tasks.lock
+**/.claude/scheduled_tasks.json
+**/.claude/routines/.state/
+**/.claude/worktrees/
+**/.claude/checkpoints/
+**/.claude/mailbox/
+**/.claude/agent-registry.json
+**/.claude/agent-memory-local
+**/.claude/first-run
+**/.claude/assistant-daemon-state.json
