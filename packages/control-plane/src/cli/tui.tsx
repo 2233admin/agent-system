@@ -43,6 +43,8 @@ function debugTui(stage: string, details: Record<string, unknown> = {}): void {
   try {
     process.stderr.write(
       `[configs-tui] ${JSON.stringify({
+        stage,
+        ...details,
         version: CONFIGS_VERSION,
         executable: process.execPath,
         argv: process.argv,
@@ -95,8 +97,14 @@ class TuiStdinBridge extends EventEmitter {
   // Ink's second enable call idempotent.
   private rawModeEnabled = false;
   private readonly chunks: Array<string | Buffer> = [];
+  private rawModeRearmTimer: ReturnType<typeof setTimeout> | undefined;
+  private rawModeRearmAttempted = false;
   private firstInputLogged = false;
   private readonly onSourceData = (chunk: string | Uint8Array): void => {
+    if (this.rawModeRearmTimer !== undefined) {
+      clearTimeout(this.rawModeRearmTimer);
+      this.rawModeRearmTimer = undefined;
+    }
     const bytes = Buffer.from(chunk);
     if (!this.firstInputLogged) {
       this.firstInputLogged = true;
@@ -129,11 +137,28 @@ class TuiStdinBridge extends EventEmitter {
     source.on('data', this.onSourceData);
     debugTui('bridge:data-attached', { stdinListeners: stdinListenerCounts(source) });
   }
+  private scheduleRawModeRearm(): void {
+    if (!this.bootstrapRawMode || this.rawModeRearmAttempted || this.rawModeRearmTimer !== undefined) {
+      return;
+    }
+    this.rawModeRearmTimer = setTimeout(() => {
+      this.rawModeRearmTimer = undefined;
+      if (this.firstInputLogged || !this.rawModeEnabled) {
+        return;
+      }
+      this.rawModeRearmAttempted = true;
+      debugTui('raw-mode:rearm', { reason: 'no-input-before-timeout', stdinListeners: stdinListenerCounts(this.source) });
+      this.source.setRawMode(false);
+      this.source.setRawMode(true);
+      this.rawModeEnabled = true;
+    }, 250);
+  }
 
   override addListener(eventName: string | symbol, listener: (...args: unknown[]) => void): this {
     const result = super.addListener(eventName, listener);
     if (eventName === 'readable') {
       debugTui('bridge:readable-attached', { bridgeReadableListeners: this.listenerCount('readable'), stdinListeners: stdinListenerCounts(this.source) });
+      this.scheduleRawModeRearm();
     }
     if (eventName === 'readable' && this.chunks.length > 0) {
       queueMicrotask(() => this.emit('readable'));
@@ -183,6 +208,10 @@ class TuiStdinBridge extends EventEmitter {
   }
 
   dispose(): void {
+    if (this.rawModeRearmTimer !== undefined) {
+      clearTimeout(this.rawModeRearmTimer);
+      this.rawModeRearmTimer = undefined;
+    }
     debugTui('bridge:dispose:start', { stdinListeners: stdinListenerCounts(this.source), queuedChunks: this.chunks.length });
     this.source.removeListener('data', this.onSourceData);
     if (this.bootstrapRawMode && this.rawModeEnabled) {

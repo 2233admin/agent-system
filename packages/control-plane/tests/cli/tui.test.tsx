@@ -625,6 +625,30 @@ describe('runTuiWithDeps orchestration (mocked deps + injected alt-screen/decisi
     }
   });
 
+  test('re-arms Windows raw mode once when no input arrives after Ink subscribes', async () => {
+    const { deps, configRepository } = fakeFullDeps();
+    configRepository.add(revision({ configName: 'general', revisionId: 'rev-general' }));
+    const stdin = new FakeTuiStdin();
+    const originalStdin = process.stdin;
+    Object.defineProperty(process, 'stdin', { value: stdin, configurable: true });
+
+    try {
+      const tui = runTuiWithDeps(deps, noAltScreen);
+      await flush();
+      await flush();
+      await new Promise((resolve) => setTimeout(resolve, 300));
+
+      expect(stdin.rawModeCalls).toEqual([true, false, true]);
+      stdin.pushInput('q');
+      await tui;
+      expect(stdin.rawModeCalls).toEqual([true, false, true, false]);
+      expect(stdin.listenerCount('data')).toBe(0);
+      expect(stdin.listenerCount('readable')).toBe(0);
+    } finally {
+      Object.defineProperty(process, 'stdin', { value: originalStdin, configurable: true });
+    }
+  });
+
   test('alt-screen is entered before pickDecision runs and exited after -- both exactly once on the "quit" path', async () => {
     const { deps } = fakeFullDeps();
     const order: string[] = [];
