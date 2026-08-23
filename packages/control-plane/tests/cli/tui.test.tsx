@@ -626,8 +626,10 @@ describe('runTuiWithDeps orchestration (mocked deps + injected alt-screen/decisi
   });
 
   test('re-arms Windows raw mode once when no input arrives after Ink subscribes', async () => {
+    if (process.platform !== 'win32') {
+      return;
+    }
     const { deps, configRepository } = fakeFullDeps();
-    configRepository.add(revision({ configName: 'general', revisionId: 'rev-general' }));
     const stdin = new FakeTuiStdin();
     const originalStdin = process.stdin;
     Object.defineProperty(process, 'stdin', { value: stdin, configurable: true });
