@@ -103,7 +103,13 @@ action_items:
       and have both repositories import it, so a future serialization fix cannot land
       in only one copy."
     owner: "control-plane maintainer"
-    status: open
+    status: done
+    note: "Extracted factColumns/factColumnToFact into a new
+      packages/control-plane/src/adapters/sqlite/fact-columns.ts module; repository.ts,
+      launch-repository.ts, and config-revision-writer.ts now import it instead of each
+      defining/re-exporting their own copy. Pure dedup, no behavior change -- bunx tsc
+      --noEmit clean, bun test 272 pass / 0 fail (up from the 150/150 baseline at the
+      Epic 1 retro, reflecting Story 3.1 additions since)."
     ref: "_bmad-output/implementation-artifacts/epic-1-retro-2026-08-22.md"
   - id: "epic-1-retro-item-5-sprint_status-py-s-update-command-has-no"
     epic: 1

@@ -28,7 +28,8 @@ import { parseCandidateRevision, parseEvidenceRef, parseSupersedesRevisionId, pa
 import { SupersedesConflictError } from '../../application/ports';
 import type { EstablishConfigRevisionParams, ConfigRevisionWriter } from '../../application/ports';
 import type { StableConfigRevision } from '../../domain/config';
-import { factColumns, runConfigRevisionMigrations } from './repository';
+import { runConfigRevisionMigrations } from './repository';
+import { factColumns } from './fact-columns';
 
 /**
  * `[Story 3.2]` The exact substring SQLite's error message contains when
