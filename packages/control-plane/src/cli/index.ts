@@ -15,6 +15,7 @@ import { SqliteLaunchPlanRepository } from '../adapters/sqlite/launch-repository
 import { BunOmpProcessPort, defaultExtensionPath, findDenylistedForwardedArg } from '../adapters/omp/process-port';
 import { BunOmpCapabilityProbe } from '../adapters/omp/capability-probe';
 import { FsLaunchContextWriter } from '../adapters/launch-context/fs-launch-context-writer';
+import { GithubReleaseUpdater } from '../adapters/self-update/github-release-updater';
 import type { ConfigRevisionRepository, LaunchPlanRepository, OmpCapabilityProbePort, OmpProcessPort, LaunchContextWriter } from '../application/ports';
 import {
   ConfigNotFoundError,
@@ -450,6 +451,16 @@ export { InvalidTransitionError, LaunchPlanNotFoundError, StaleConfirmationError
 
 if (import.meta.main) {
   try {
+    // Story 2.2: a one-time, inline, best-effort self-update check --
+    // only ever runs against a compiled release binary (never a source/
+    // test run, which always reports `CONFIGS_VERSION === 'dev'`), and
+    // never throws or produces output (`GithubReleaseUpdater.
+    // checkAndApply`'s own top-level try/catch). `main()`/`runTui()`
+    // themselves stay unaware of self-update entirely.
+    if (CONFIGS_VERSION !== 'dev') {
+      await new GithubReleaseUpdater().checkAndApply(CONFIGS_VERSION);
+    }
+
     const argv = process.argv.slice(2);
     // `[DELTA]` IA first layer: zero-arg + interactive TTY (both stdin and
     // stdout) enters the TUI and never touches the pure-text dispatch

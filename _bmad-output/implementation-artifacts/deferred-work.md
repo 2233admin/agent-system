@@ -66,3 +66,19 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-2-1-打包与发布流水线.md`
   summary: `gh release create` 只用 `--generate-notes`，没有 changelog 文件、没有区分正式版和预发布 tag（例如 `configs-v1.2.3-beta.1` 仍会被发成正式 Release），也没有更新任何 README/文档说明 `--version` 或如何获取发布的二进制。
   evidence: blind-hunter 审查层发现，均为 spec 明确范围之外的产品/文档细节，不是本次 Story 2.1 的验收要求。
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-2-自更新客户端.md`
+  summary: `GithubReleaseUpdater` 直接信任仓库级 `GET /releases/latest`，不按 `configs-v` 前缀过滤——如果本仓库未来出现除 `release-configs.yml` 以外的另一个 GitHub Release 发布来源（当前核实过，仓库里只有这一处 `gh release create`），`/releases/latest` 可能返回非 configs 的 release，`isNewerVersion` 解析失败会 fail-closed 静默停止自更新（不会误更新/降级，但会悄悄失效且无提示）。
+  evidence: blind-hunter 审查层（第二轮）发现。修复需要改用 `GET /releases`（列表）并按前缀筛选最新一条，这会改变 spec `Boundaries & Constraints` 里已冻结钉死的固定端点（`.../releases/latest`），需要负责人重新确认端点选择，不是本次可自行决定的机械 patch；当前不可达（仓库唯一的 release 来源就是 configs），且失败模式是安全的静默不更新，不阻塞本次交付。
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-2-自更新客户端.md`
+  summary: 自更新客户端没有任何退出开关（如 `CONFIGS_NO_SELF_UPDATE` 环境变量或 `--no-self-update` 参数）、没有检查节流/缓存（每次调用都实打一次未认证 GitHub API，限额 60 次/小时/IP）、失败时没有可选的调试/verbose 日志（`checkAndApply` 整体静默吞掉所有错误，用户和维护者都无从诊断"自更新为什么不生效"）。
+  evidence: blind-hunter 审查层（两轮）独立发现。均为合理的运维/可诊断性增强，但 spec 的 `Boundaries & Constraints`/`Never` 明确要求"任一步失败都不得输出到 stdout/stderr/TUI"且"成功和失败都不在正常输出中提示"，加开关/日志需要先决定是否、如何在不违反这条约束的前提下开一个显式 opt-in 例外，属于需要负责人裁决的产品/安全边界问题，不在本次范围内顺手加。
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-2-自更新客户端.md`
+  summary: `replaceBinary` 成功更新后产生的 `<execPath>.<旧版本号>.bak` 文件永不清理，多次更新后无限累积；且两次 `rename`（旧文件→`.bak`、临时文件→`execPath`）之间仍有极小非原子窗口——若第二次 rename 失败，`execPath` 会彻底缺失且无自动回滚，只能从 `.bak` 手动恢复；另外没有并发保护，两个同时运行的 `configs` 进程可能同时触发自更新并竞争同一个 `execPath`/`<execPath>.download` 临时文件。
+  evidence: blind-hunter 与 edge-case-hunter 审查层（两轮）独立发现。第一项窗口是本次 Spec Change Log 已明确"缩小但不消除"的已知残余风险（verification-gap 审查层第二轮复核确认这是"已明确接受的残余风险，不是隐藏回归"）；`.bak` 清理、失败自动回滚和并发锁都是合理的后续加固方向，但都需要额外设计判断（清理策略、回滚语义、锁的粒度），不是本次可无争议机械修的 patch，留待后续单独处理。
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-2-自更新客户端.md`
+  summary: `_bmad-output/implementation-artifacts/sprint-status.yaml` 目前没有 `2-2-...` 这个 story 条目（`development_status` 下只有 `epic-2: in-progress` 和 `2-1-打包与发布流水线: done`），因为 Story 2.2 是本次直接从空白起 spec 的新故事，未经过 `bmad-sprint-planning`/`bmad-create-epics-and-stories` 生成 story 级 sprint-status 条目。
+  evidence: `bmad-build` 的 `sync-sprint-status` 子步骤在找不到匹配 story_key 时按设计静默跳过（"warn the user once... and return to caller"）；本次工作流运行期间已提示过一次。留给负责人决定是否需要单独跑一次 sprint-status 生成/修复来补上这个条目，不影响本次代码交付。
