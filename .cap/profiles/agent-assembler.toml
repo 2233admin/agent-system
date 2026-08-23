@@ -12,6 +12,12 @@ allow = [
   "capability-lifecycle",
   "agent-behavior-evaluation",
   "spec-change-pack",
+  "openspec-explore",
+  "openspec-propose",
+  "openspec-update-change",
+  "openspec-apply-change",
+  "openspec-sync-specs",
+  "openspec-archive-change",
 ]
 deny = []
 override = []
