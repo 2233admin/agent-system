@@ -29,7 +29,16 @@ import type {
 } from '../domain/config';
 import type { LaunchPlan, LaunchStatus } from '../domain/activation';
 import type { CompareConfigRevisionsResult, ConfigQueryError } from '../application/queries';
-import type { InvalidCandidateError, InvalidTriggerCategoryError, MissingEvidenceError, NoCandidateSourceError } from '../application/ports';
+import type {
+  InvalidCandidateError,
+  InvalidTriggerCategoryError,
+  MissingEvidenceError,
+  MissingSupersedesError,
+  NoCandidateSourceError,
+  SupersedesConfigMismatchError,
+  SupersedesConflictError,
+  SupersedesNotFoundError,
+} from '../application/ports';
 import { attention, colorForPhase, dim } from './colors';
 import { t } from './i18n';
 
@@ -128,8 +137,21 @@ export function renderDetail(revision: StableConfigRevision): string {
  * write-path rejections, so `renderQueryFailure` stays the one shared
  * failure-rendering path for every typed rejection in this CLI instead of
  * `establish` inventing a parallel one.
+ *
+ * `[Story 3.2]` Widened again to also cover `configs revise`'s four
+ * additional supersedes-specific rejections -- same reasoning: one shared
+ * failure-rendering path, not a parallel one for `revise`.
  */
-export type QueryOrEstablishError = ConfigQueryError | InvalidTriggerCategoryError | MissingEvidenceError | NoCandidateSourceError | InvalidCandidateError;
+export type QueryOrEstablishError =
+  | ConfigQueryError
+  | InvalidTriggerCategoryError
+  | MissingEvidenceError
+  | NoCandidateSourceError
+  | InvalidCandidateError
+  | MissingSupersedesError
+  | SupersedesNotFoundError
+  | SupersedesConfigMismatchError
+  | SupersedesConflictError;
 
 /**
  * `[Review fix]` Exhaustiveness guard: if `QueryOrEstablishError` ever
@@ -158,6 +180,18 @@ function formatErrorReason(error: QueryOrEstablishError): string {
       return t('establish.noCandidateSource');
     case 'invalid-candidate':
       return t('establish.invalidCandidate', { reason: error.reason });
+    case 'missing-supersedes':
+      return t('revise.missingSupersedes');
+    case 'supersedes-not-found':
+      return t('revise.supersedesNotFound', { revisionId: error.revisionId });
+    case 'supersedes-config-mismatch':
+      return t('revise.supersedesConfigMismatch', {
+        revisionId: error.revisionId,
+        expected: error.expectedConfigName,
+        actual: error.actualConfigName,
+      });
+    case 'supersedes-conflict':
+      return t('revise.supersedesConflict', { revisionId: error.revisionId });
     default:
       return assertNeverErrorKind(error);
   }
@@ -180,6 +214,16 @@ export function renderQueryFailure(label: string, error: QueryOrEstablishError):
  */
 export function renderEstablishSuccess(revision: StableConfigRevision): string {
   return [t('establish.successPrefix'), renderDetail(revision)].join('\n');
+}
+
+/**
+ * `[Story 3.2]` Same shape as `renderEstablishSuccess` (reuses
+ * `renderDetail` verbatim -- no "替代自：" line yet, that's Story 3.3's
+ * `renderDetail` change), just a different success prefix so `revise`'s
+ * output is distinguishable from `establish`'s.
+ */
+export function renderReviseSuccess(revision: StableConfigRevision): string {
+  return [t('revise.successPrefix'), renderDetail(revision)].join('\n');
 }
 
 function formatScalarField(field: ScalarFieldComparison): string {

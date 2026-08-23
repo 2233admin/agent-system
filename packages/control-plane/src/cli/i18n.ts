@@ -122,6 +122,13 @@ const zh: Dict = {
     'configs establish：未提供候选内容——请传入 --from <path>，或通过 stdin 管道输入候选 JSON（当前 stdin 是交互式终端）；未写入任何内容。',
   'establish.invalidCandidate': 'configs establish：候选内容不合法（以下为英文字段路径/类型提示，非待翻译文案）：`{reason}`；未写入任何内容。',
 
+  'revise.successPrefix': '已建立替代修订：',
+  'revise.missingSupersedes': 'configs revise：缺少 --supersedes 目标修订 id——必须通过 --supersedes <revisionId> 传入非空值；未写入任何内容。',
+  'revise.supersedesNotFound': 'configs revise：--supersedes 指向的修订 "{revisionId}" 不存在；未写入任何内容。',
+  'revise.supersedesConfigMismatch':
+    'configs revise：--supersedes 指向的修订 "{revisionId}" 属于配置 "{actual}"，与候选内容的配置 "{expected}" 不一致；未写入任何内容。',
+  'revise.supersedesConflict': 'configs revise：--supersedes 指向的修订 "{revisionId}" 已被另一条修订替代；未写入任何内容。',
+
   'selfUpdate.updated': 'configs：已更新到 v{version}（下次启动生效）',
 };
 
@@ -222,6 +229,13 @@ const en: Dict = {
   'establish.noCandidateSource':
     'configs establish: no candidate source was provided -- pass --from <path>, or pipe candidate JSON via stdin (stdin is currently an interactive terminal); nothing was written.',
   'establish.invalidCandidate': 'configs establish: candidate is invalid: `{reason}`; nothing was written.',
+
+  'revise.successPrefix': 'Established superseding revision:',
+  'revise.missingSupersedes': 'configs revise: missing --supersedes target revision id -- pass a non-empty value via --supersedes <revisionId>; nothing was written.',
+  'revise.supersedesNotFound': 'configs revise: supersedes target revision "{revisionId}" was not found; nothing was written.',
+  'revise.supersedesConfigMismatch':
+    'configs revise: supersedes target revision "{revisionId}" belongs to configuration "{actual}", which does not match the candidate\'s configuration "{expected}"; nothing was written.',
+  'revise.supersedesConflict': 'configs revise: supersedes target revision "{revisionId}" has already been superseded by another revision; nothing was written.',
 
   'selfUpdate.updated': 'configs: updated to v{version} (takes effect next launch)',
 };

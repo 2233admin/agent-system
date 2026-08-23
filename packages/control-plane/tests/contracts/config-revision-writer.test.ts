@@ -5,7 +5,14 @@ import path from 'node:path';
 
 import { SqliteConfigRevisionWriter } from '../../src/adapters/sqlite/config-revision-writer';
 import { SqliteConfigRevisionRepository } from '../../src/adapters/sqlite/repository';
-import { InvalidCandidateError, InvalidTriggerCategoryError, MissingEvidenceError } from '../../src/application/establish';
+import {
+  InvalidCandidateError,
+  InvalidTriggerCategoryError,
+  MissingEvidenceError,
+  MissingSupersedesError,
+  parseSupersedesRevisionId,
+} from '../../src/application/establish';
+import { SupersedesConflictError } from '../../src/application/ports';
 import type { ConfigRevisionWriter, EstablishConfigRevisionParams } from '../../src/application/ports';
 
 /**
@@ -45,6 +52,7 @@ describe('SqliteConfigRevisionWriter.create', () => {
           triggerCategory: 'new-scenario',
           evidenceRef: 'session-abc',
           candidate: VALID_CANDIDATE,
+          supersedesRevisionId: null,
         });
         expect(revision.configName).toBe('general');
         expect(revision.triggerCategory).toBe('new-scenario');
@@ -79,6 +87,7 @@ describe('SqliteConfigRevisionWriter.create', () => {
             triggerCategory: 'new-scenario',
             evidenceRef: 'session-abc',
             candidate: { ...VALID_CANDIDATE, defaultMarker: { kind: 'known', value: 'not-a-boolean' } },
+            supersedesRevisionId: null,
           }),
         ).rejects.toBeInstanceOf(InvalidCandidateError);
 
@@ -103,6 +112,7 @@ describe('SqliteConfigRevisionWriter.create', () => {
             triggerCategory: 'bad-case',
             evidenceRef: 'session-abc',
             candidate: { skills: [] },
+            supersedesRevisionId: null,
           }),
         ).rejects.toBeInstanceOf(InvalidCandidateError);
       } finally {
@@ -115,8 +125,8 @@ describe('SqliteConfigRevisionWriter.create', () => {
     await withTempDb(async (dbPath) => {
       const writer = new SqliteConfigRevisionWriter(dbPath);
       try {
-        const a = await writer.create({ triggerCategory: 'new-scenario', evidenceRef: 'e1', candidate: VALID_CANDIDATE });
-        const b = await writer.create({ triggerCategory: 'known-insufficiency', evidenceRef: 'e2', candidate: VALID_CANDIDATE });
+        const a = await writer.create({ triggerCategory: 'new-scenario', evidenceRef: 'e1', candidate: VALID_CANDIDATE, supersedesRevisionId: null });
+        const b = await writer.create({ triggerCategory: 'known-insufficiency', evidenceRef: 'e2', candidate: VALID_CANDIDATE, supersedesRevisionId: null });
         expect(a.revisionId).not.toBe(b.revisionId);
       } finally {
         writer.close();
@@ -132,6 +142,7 @@ describe('SqliteConfigRevisionWriter.create', () => {
           triggerCategory: 'new-scenario',
           evidenceRef: 'session-abc',
           candidate: VALID_CANDIDATE,
+          supersedesRevisionId: null,
         });
         const skill = revision.skills[0]!;
         expect(skill.sourceRef.kind).toBe('unknown');
@@ -156,6 +167,7 @@ describe('SqliteConfigRevisionWriter.create', () => {
             triggerCategory: 'bogus' as unknown as EstablishConfigRevisionParams['triggerCategory'],
             evidenceRef: 'session-abc',
             candidate: VALID_CANDIDATE,
+            supersedesRevisionId: null,
           }),
         ).rejects.toBeInstanceOf(InvalidTriggerCategoryError);
 
@@ -180,6 +192,7 @@ describe('SqliteConfigRevisionWriter.create', () => {
             triggerCategory: 'bad-case',
             evidenceRef: '',
             candidate: VALID_CANDIDATE,
+            supersedesRevisionId: null,
           }),
         ).rejects.toBeInstanceOf(MissingEvidenceError);
 
@@ -207,6 +220,7 @@ describe('SqliteConfigRevisionWriter.create', () => {
             triggerCategory: 'bad-case',
             evidenceRef: '   ',
             candidate: VALID_CANDIDATE,
+            supersedesRevisionId: null,
           }),
         ).rejects.toBeInstanceOf(MissingEvidenceError);
 
@@ -226,5 +240,147 @@ describe('SqliteConfigRevisionWriter.create', () => {
     type Keys = keyof ConfigRevisionWriter;
     const onlyCreate: Keys extends 'create' ? true : false = true;
     expect(onlyCreate).toBe(true);
+  });
+
+  // `[Story 3.2]`
+  test('create() with a non-null supersedesRevisionId pointing at an existing revision persists the supersede link', async () => {
+    await withTempDb(async (dbPath) => {
+      const writer = new SqliteConfigRevisionWriter(dbPath);
+      try {
+        const baseline = await writer.create({
+          triggerCategory: 'new-scenario',
+          evidenceRef: 'session-baseline',
+          candidate: VALID_CANDIDATE,
+          supersedesRevisionId: null,
+        });
+
+        const revised = await writer.create({
+          triggerCategory: 'bad-case',
+          evidenceRef: 'session-revise',
+          candidate: VALID_CANDIDATE,
+          supersedesRevisionId: baseline.revisionId,
+        });
+        expect(revised.supersedesRevisionId).toBe(baseline.revisionId);
+
+        const repo = new SqliteConfigRevisionRepository(dbPath);
+        try {
+          const all = await repo.listAll();
+          expect(all).toHaveLength(2);
+          const persisted = all.find((r) => r.revisionId === revised.revisionId);
+          expect(persisted?.supersedesRevisionId).toBe(baseline.revisionId);
+        } finally {
+          repo.close();
+        }
+      } finally {
+        writer.close();
+      }
+    });
+  });
+
+  // `[Story 3.2]` The unique index `idx_stable_config_revision_supersedes_revision_id`
+  // must reject a second revision superseding the same target -- translated
+  // to `SupersedesConflictError`, never a raw SQLite `UNIQUE constraint
+  // failed` error, and the second (rejected) call must not add a row.
+  test('create() rejects a second revision superseding the same target, with the rejected call adding zero rows', async () => {
+    await withTempDb(async (dbPath) => {
+      const writer = new SqliteConfigRevisionWriter(dbPath);
+      try {
+        const baseline = await writer.create({
+          triggerCategory: 'new-scenario',
+          evidenceRef: 'session-baseline',
+          candidate: VALID_CANDIDATE,
+          supersedesRevisionId: null,
+        });
+
+        await writer.create({
+          triggerCategory: 'bad-case',
+          evidenceRef: 'session-revise-1',
+          candidate: VALID_CANDIDATE,
+          supersedesRevisionId: baseline.revisionId,
+        });
+
+        const repo = new SqliteConfigRevisionRepository(dbPath);
+        try {
+          expect(await repo.listAll()).toHaveLength(2);
+        } finally {
+          repo.close();
+        }
+
+        await expect(
+          writer.create({
+            triggerCategory: 'bad-case',
+            evidenceRef: 'session-revise-2',
+            candidate: VALID_CANDIDATE,
+            supersedesRevisionId: baseline.revisionId,
+          }),
+        ).rejects.toBeInstanceOf(SupersedesConflictError);
+
+        const repoAfter = new SqliteConfigRevisionRepository(dbPath);
+        try {
+          // Zero writes from the rejected second call -- still only 2, not 3.
+          expect(await repoAfter.listAll()).toHaveLength(2);
+        } finally {
+          repoAfter.close();
+        }
+      } finally {
+        writer.close();
+      }
+    });
+  });
+
+  // `[Review fix]` `parseSupersedesRevisionId` itself (not just through the
+  // CLI integration test) -- mirrors the shape of a direct
+  // `parseTriggerCategory`/`parseEvidenceRef` unit test, none of which
+  // existed as standalone tests either, so this is the first direct
+  // coverage of any of the three validators in this file.
+  describe('parseSupersedesRevisionId', () => {
+    test('accepts a non-empty id, trimmed', () => {
+      expect(parseSupersedesRevisionId('  some-revision-id  ')).toBe('some-revision-id');
+    });
+
+    test('rejects undefined', () => {
+      expect(() => parseSupersedesRevisionId(undefined)).toThrow(MissingSupersedesError);
+    });
+
+    test('rejects an empty string', () => {
+      expect(() => parseSupersedesRevisionId('')).toThrow(MissingSupersedesError);
+    });
+
+    // `[Review fix]` Same trim-before-non-emptiness shape as
+    // `parseEvidenceRef` -- a whitespace-only value must be rejected the
+    // same way as `''`, not accepted as a literal whitespace id.
+    test('rejects a whitespace-only string', () => {
+      expect(() => parseSupersedesRevisionId('   ')).toThrow(MissingSupersedesError);
+    });
+  });
+
+  // `[Review fix]` `SqliteConfigRevisionWriter.create()`'s own defensive
+  // re-validation of `supersedesRevisionId` (a direct caller bypassing the
+  // CLI's `parseSupersedesRevisionId` call could otherwise persist an
+  // empty/whitespace-only value verbatim) -- mirrors the existing
+  // whitespace-only `evidenceRef` test above.
+  test('rejects a whitespace-only supersedesRevisionId, with zero writes', async () => {
+    await withTempDb(async (dbPath) => {
+      const writer = new SqliteConfigRevisionWriter(dbPath);
+      try {
+        await expect(
+          writer.create({
+            triggerCategory: 'bad-case',
+            evidenceRef: 'session-abc',
+            candidate: VALID_CANDIDATE,
+            supersedesRevisionId: '   ',
+          }),
+        ).rejects.toBeInstanceOf(MissingSupersedesError);
+
+        const repo = new SqliteConfigRevisionRepository(dbPath);
+        try {
+          expect(await repo.listAll()).toEqual([]);
+        } finally {
+          repo.close();
+        }
+      } finally {
+        writer.close();
+      }
+    });
   });
 });

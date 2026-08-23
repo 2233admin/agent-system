@@ -90,11 +90,17 @@ export interface StableConfigRevision {
   readonly triggerCategory: TriggerCategory;
   readonly evidenceRef: string;
   /**
-   * `[Story 3.1]` Reserved for Story 3.2's supersede chain -- this Story
-   * only ever writes `null` (`configs establish` has no notion of
-   * replacing an existing revision yet). Plain nullable id, not a `Fact`:
-   * "no predecessor" is a real, known structural fact, not an unresolved
-   * one.
+   * `[Story 3.1]`/`[Story 3.2]` The revision this one replaces, or `null`
+   * if it has no predecessor. `configs establish` always writes `null`
+   * (it never replaces an existing revision); `configs revise` writes the
+   * `--supersedes <revisionId>` target once it has been validated to exist
+   * and share the same `configName` (`application/establish.ts`'s
+   * `parseSupersedesRevisionId` + `cli/index.ts`'s `runRevise`). Plain
+   * nullable id, not a `Fact`: "no predecessor" is a real, known
+   * structural fact, not an unresolved one. A given revision id can be the
+   * `supersedesRevisionId` of at most one other revision -- enforced by
+   * `idx_stable_config_revision_supersedes_revision_id`, translated to
+   * `SupersedesConflictError` on conflict.
    */
   readonly supersedesRevisionId: string | null;
 }

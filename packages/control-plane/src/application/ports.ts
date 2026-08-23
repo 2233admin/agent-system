@@ -21,11 +21,17 @@ export interface ConfigRevisionRepository {
  * field (see `application/establish.ts`'s `parseCandidateRevision`)
  * before ever writing anything; a type mismatch anywhere must fail the
  * whole call with zero writes, never partially insert or silently coerce.
+ *
+ * `[Story 3.2]` `supersedesRevisionId` is required (not optional) so every
+ * call site must make an explicit choice: `configs establish` always
+ * passes `null` (it never replaces an existing revision); `configs revise`
+ * passes the already-validated target revision id it is superseding.
  */
 export interface EstablishConfigRevisionParams {
   readonly triggerCategory: TriggerCategory;
   readonly evidenceRef: string;
   readonly candidate: unknown;
+  readonly supersedesRevisionId: string | null;
 }
 
 /**
@@ -33,8 +39,9 @@ export interface EstablishConfigRevisionParams {
  * deliberately has no `update`/`delete` (Boundaries & Constraints: a
  * `StableConfigRevision` is immutable once established; a "new decision"
  * is always a new revision, never a mutation of an existing one).
- * `create` always writes `supersedes = null` in this Story; Story 3.2
- * extends this port's params, not this Story.
+ * `[Story 3.2]` `create` now accepts a non-null `supersedesRevisionId` too
+ * (via `configs revise`); the port still only ever inserts a brand-new row
+ * -- superseding never mutates the row it supersedes.
  */
 export interface ConfigRevisionWriter {
   create(params: EstablishConfigRevisionParams): Promise<StableConfigRevision>;
@@ -94,6 +101,70 @@ export class InvalidCandidateError extends Error {
   constructor(readonly reason: string) {
     super(`candidate is invalid: ${reason}`);
     this.name = 'InvalidCandidateError';
+  }
+}
+
+/** `[Story 3.2]` `configs revise`'s `--supersedes <revisionId>` was omitted or empty. */
+export class MissingSupersedesError extends Error {
+  readonly kind = 'missing-supersedes' as const;
+
+  constructor() {
+    super('supersedes target revision id is required and must be non-empty');
+    this.name = 'MissingSupersedesError';
+  }
+}
+
+/**
+ * `[Story 3.2]` `--supersedes <revisionId>` does not identify any existing
+ * revision (checked via a read-only `ConfigRevisionRepository.findById`
+ * before the write port's transaction ever starts -- zero writes).
+ */
+export class SupersedesNotFoundError extends Error {
+  readonly kind = 'supersedes-not-found' as const;
+
+  constructor(readonly revisionId: string) {
+    super(`supersedes target revision "${revisionId}" was not found`);
+    this.name = 'SupersedesNotFoundError';
+  }
+}
+
+/**
+ * `[Story 3.2]` `--supersedes <revisionId>` identifies a revision that
+ * exists but belongs to a different `configName` than the candidate being
+ * revised -- checked before the write port's transaction ever starts (zero
+ * writes).
+ */
+export class SupersedesConfigMismatchError extends Error {
+  readonly kind = 'supersedes-config-mismatch' as const;
+
+  constructor(
+    readonly revisionId: string,
+    readonly expectedConfigName: string,
+    readonly actualConfigName: string,
+  ) {
+    super(
+      `supersedes target revision "${revisionId}" belongs to configName "${actualConfigName}", but the candidate's configName is "${expectedConfigName}"`,
+    );
+    this.name = 'SupersedesConfigMismatchError';
+  }
+}
+
+/**
+ * `[Story 3.2]` The `--supersedes <revisionId>` target has already been
+ * superseded by another revision -- surfaced as a typed error translated
+ * from the `idx_stable_config_revision_supersedes_revision_id` unique
+ * index conflict inside `SqliteConfigRevisionWriter.create()`'s insert
+ * transaction (this closes the TOCTOU window a prior `findById` check
+ * alone cannot close -- see Design Notes). The raw SQLite
+ * `UNIQUE constraint failed` error must never escape past this
+ * translation.
+ */
+export class SupersedesConflictError extends Error {
+  readonly kind = 'supersedes-conflict' as const;
+
+  constructor(readonly revisionId: string) {
+    super(`supersedes target revision "${revisionId}" has already been superseded by another revision`);
+    this.name = 'SupersedesConflictError';
   }
 }
 
