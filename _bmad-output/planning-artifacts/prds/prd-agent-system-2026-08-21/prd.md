@@ -2,7 +2,7 @@
 title: "Agent Context Assembly 产品需求文档"
 status: final
 created: 2026-08-21
-updated: 2026-08-21
+updated: 2026-08-23
 ---
 
 # Agent Context Assembly 产品需求文档
@@ -97,6 +97,8 @@ Agent Context Assembly 面向长期借助 Agent 完成多类真实工作的个�
 ### 4.4 已确认 MVP 客户端范围
 
 **MVP 只承诺一个真实 Agent 客户端运行环境，本文统一称为“OMP Agent 单客户端环境”。** MVP 必须在该环境中完成稳定配置、激活、执行与验收闭环，并诚实呈现其可观察状态。每个基线与稳定配置样本都必须记录可回读的客户端身份、版本或等价环境证据；具体版本值留在样本记录，不在 PRD 固化。Claude Code 与 Codex 官方语义只作为平台差异和证据边界的事实输入，不构成第二、第三客户端支持承诺。出现第二客户端的重复真实任务或 Bad Case 时，才重新评估扩大覆盖；MVP 不承诺跨客户端配置等价。
+
+**2026-08-23 裁决更新（见 `sprint-change-proposal-2026-08-23-cap-claude-codex-adapter.md`）：** 上述重开条件已被触发并由负责人在 correct-course 会话中明确裁决——`.cap/`（`manifest.toml`、`profiles/*.toml`、`runtime/claude.toml`、`skill-imports.toml`）长期独立、以软约束（TOML allow/deny 与 prompt 文字，不具备宿主客户端可强制执行的权限/工具/MCP 边界）给 Claude Code/Codex 装配 Instructions/Skills/MCP，且缺乏正式跟踪与治理（证据见 `epic-1-retro-2026-08-22.md` 的 open action item `epic-1-retro-item-7`），构成本条所指的真实 Bad Case。据此，Claude Code 与 Codex 正式升格为已激活的第二类客户端，纳入 Epic 4（装配并激活 Claude Code/Codex 客户端）。此次激活的范围严格限定为：为 Claude Code、Codex 各自建立类型化 client adapter，以宿主原生可强制执行的边界（硬控制）交付 Instructions/Skills/MCP 装配。**不构成**跨客户端配置等价、Session 翻译、三端同步，也不构成除 Claude Code/Codex 外任何其他客户端的支持承诺——这些边界维持不变，本次裁决不放开它们；相关技术裁决（硬控制要求、排除的实现路径、复用哪套既有能力合同模式、`.cap/` 退役约束）记录在 `addendum.md`，供下一轮 `bmad-architecture` 使用。
 
 ## 5. 产品能力与功能需求
 
@@ -282,7 +284,7 @@ Agent 能从用户提供的目标、约束、验收、当前环境和授权来�
 - 资产 taxonomy、目录布局、字段、存储方式、Canonical IR 或 Schema；
 - CLI、适配器、TUI、存储或其他具体实现架构；
 - OMP、Claude CLI、Codex CLI 之间的跨 CLI 对话恢复或配置等价；
-- 第二个或更多 Agent 客户端的产品支持；扩大覆盖必须由重复真实任务或 Bad Case 触发；
+- 第二个或更多 Agent 客户端的产品支持；扩大覆盖必须由重复真实任务或 Bad Case 触发（**2026-08-23 更新**：该触发条件已就 Claude Code/Codex 达成，两者升格为已激活的第二类客户端 adapter，纳入 Epic 4；范围限定为各自的类型化能力装配，不构成配置或 Session 等价、不构成三端同步、不构成对 Claude Code/Codex 之外任何客户端的支持承诺，详见本节上方 §4.4 的裁决更新与 `sprint-change-proposal-2026-08-23-cap-claude-codex-adapter.md`）；
 - 强制 Hard Handoff、每任务实时 Skill Discovery、现场任意生成动态子 Agent 装配；
 - 把 Work Type × Subject × Situation、BMad、OpenSpec、SpecKit 或任一组 micro methods 当作系统本体；
 - 面向其他个人的公共配置发现、共享或消费流程；
@@ -300,7 +302,7 @@ Agent 能从用户提供的目标、约束、验收、当前环境和授权来�
 - Profile Activation、声明入口式 Context Loading 与普通任务复用；
 - 装配忠实度、配置适用性、任务结果三层验证；
 - 围绕已确认的 T-1、T-2、T-3 建立真实任务基线；无合适 T-3 Issue 时按已确认选项以 T-4 替代；
-- 在 §4.4 确认的单一 OMP Agent 运行环境内完成闭环，不承诺第二客户端支持；
+- 在 §4.4 确认的单一 OMP Agent 运行环境内完成闭环；Claude Code/Codex 第二客户端已按 §4.4 的 2026-08-23 裁决更新激活，其装配能力属于 Epic 4，不在本节所述的既有 MVP（Epic 1～3）交付范围内；
 - 跨 Session 关键事实、决定和证据交接；
 - Bad Case 驱动的受控演进。
 

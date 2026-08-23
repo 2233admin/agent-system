@@ -46,10 +46,19 @@ development_status:
   epic-2-retrospective: optional
 
   epic-3: in-progress
-  3-1-建立新配置修订-configs-establish: review
+  3-1-建立新配置修订-configs-establish: done
   3-2-修订现有配置-configs-revise: backlog
   3-3-查看装配来源与替代链: backlog
   epic-3-retrospective: optional
+
+  epic-4: backlog
+  4-1-建立-claude-code-adapter-骨架与硬控制能力探测: backlog
+  4-2-装配-claude-code-的确定性-adapterplan: backlog
+  4-3-fresh-target-的启动与观察: backlog
+  4-4-already-running-session-target-的-requires-restart-路径: backlog
+  4-5-cap-parity-验证与本仓自身切换: backlog
+  4-6-退役-cap-本体: backlog
+  epic-4-retrospective: optional
 action_items:
   - id: "epic-1-retro-item-1-launchomp-packages-control-plane-src-app"
     epic: 1
@@ -134,5 +143,6 @@ action_items:
       yet covers replacing CAP's role (b). Decide whether a future epic should cover
       this, or explicitly accept CAP continuing in this role for now."
     owner: "repo owner"
-    status: open
+    status: done
     ref: "_bmad-output/implementation-artifacts/epic-1-retro-2026-08-22.md"
+    resolved_ref: "_bmad-output/planning-artifacts/sprint-change-proposal-2026-08-23-cap-claude-codex-adapter.md"

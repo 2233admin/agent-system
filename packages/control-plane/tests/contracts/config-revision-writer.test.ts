@@ -5,8 +5,8 @@ import path from 'node:path';
 
 import { SqliteConfigRevisionWriter } from '../../src/adapters/sqlite/config-revision-writer';
 import { SqliteConfigRevisionRepository } from '../../src/adapters/sqlite/repository';
-import { InvalidCandidateError } from '../../src/application/establish';
-import type { ConfigRevisionWriter } from '../../src/application/ports';
+import { InvalidCandidateError, InvalidTriggerCategoryError, MissingEvidenceError } from '../../src/application/establish';
+import type { ConfigRevisionWriter, EstablishConfigRevisionParams } from '../../src/application/ports';
 
 /**
  * `bun:sqlite`'s `:memory:` gives every `new Database(':memory:')` call its
@@ -136,6 +136,86 @@ describe('SqliteConfigRevisionWriter.create', () => {
         const skill = revision.skills[0]!;
         expect(skill.sourceRef.kind).toBe('unknown');
         expect(skill.contentFingerprint.kind).toBe('unknown');
+      } finally {
+        writer.close();
+      }
+    });
+  });
+
+  // `[Review fix]` A caller reaching this port directly (bypassing
+  // `cli/index.ts`'s `parseTriggerCategory`/`parseEvidenceRef` calls, which
+  // is exactly what a `TriggerCategory`-typed-but-runtime-untyped param
+  // allows) must still be rejected -- `create()` cannot trust its own
+  // params object.
+  test('rejects a triggerCategory not in the known enum, with zero writes', async () => {
+    await withTempDb(async (dbPath) => {
+      const writer = new SqliteConfigRevisionWriter(dbPath);
+      try {
+        await expect(
+          writer.create({
+            triggerCategory: 'bogus' as unknown as EstablishConfigRevisionParams['triggerCategory'],
+            evidenceRef: 'session-abc',
+            candidate: VALID_CANDIDATE,
+          }),
+        ).rejects.toBeInstanceOf(InvalidTriggerCategoryError);
+
+        const repo = new SqliteConfigRevisionRepository(dbPath);
+        try {
+          expect(await repo.listAll()).toEqual([]);
+        } finally {
+          repo.close();
+        }
+      } finally {
+        writer.close();
+      }
+    });
+  });
+
+  test('rejects an empty evidenceRef, with zero writes', async () => {
+    await withTempDb(async (dbPath) => {
+      const writer = new SqliteConfigRevisionWriter(dbPath);
+      try {
+        await expect(
+          writer.create({
+            triggerCategory: 'bad-case',
+            evidenceRef: '',
+            candidate: VALID_CANDIDATE,
+          }),
+        ).rejects.toBeInstanceOf(MissingEvidenceError);
+
+        const repo = new SqliteConfigRevisionRepository(dbPath);
+        try {
+          expect(await repo.listAll()).toEqual([]);
+        } finally {
+          repo.close();
+        }
+      } finally {
+        writer.close();
+      }
+    });
+  });
+
+  // `[Review fix]` `parseEvidenceRef` trims *before* checking non-emptiness
+  // -- a whitespace-only value must be rejected the same way as `''`, but
+  // that half of the validator had no coverage at this (writer) boundary.
+  test('rejects a whitespace-only evidenceRef, with zero writes', async () => {
+    await withTempDb(async (dbPath) => {
+      const writer = new SqliteConfigRevisionWriter(dbPath);
+      try {
+        await expect(
+          writer.create({
+            triggerCategory: 'bad-case',
+            evidenceRef: '   ',
+            candidate: VALID_CANDIDATE,
+          }),
+        ).rejects.toBeInstanceOf(MissingEvidenceError);
+
+        const repo = new SqliteConfigRevisionRepository(dbPath);
+        try {
+          expect(await repo.listAll()).toEqual([]);
+        } finally {
+          repo.close();
+        }
       } finally {
         writer.close();
       }

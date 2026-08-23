@@ -20,7 +20,7 @@ OMP Agent 的低频配置建立、高频任务复用和 Bad Case 演进目前缺
 
 ## Capabilities
 
-> **MVP 范围锚定。** 下列 CAP-1～CAP-8 描述完整目标态产品意图。当前锁定的 MVP 由 [`epics.md`](../../planning-artifacts/epics.md) 权威定义（1 个 Epic：查看、选择并使用 OMP 配置；2 条 Story：1.1 查看与比较配置内容、1.2 选择配置并使用 OMP；覆盖 MVP-FR1～MVP-FR10），是本节的严格子集。每个 CAP 下追加的 `**MVP:**` 行说明该能力在当前 MVP 中的归属；未实施部分保留为已确认的未来能力描述，不因写在本文档中而自动获得当前实施授权，重开需要新证据与负责人明确裁决（epics.md AR13、AR15、AR16）。
+> **MVP 范围锚定。** 下列 CAP-1～CAP-8 描述完整目标态产品意图，均为客户端中立表述。当前排期以 [`epics.md`](../../planning-artifacts/epics.md) 权威定义：Epic 1（查看、选择并使用 OMP 配置，覆盖 MVP-FR1～MVP-FR10）是原始锁定 MVP，Epic 2（控制面发布与自更新）、Epic 3（配置供应与装配，OMP）已陆续排入后续排期；三者均服务 OMP 单客户端。Epic 4（装配并激活 Claude Code 客户端——2026-08-23 裁决激活，见 `sprint-change-proposal-2026-08-23-cap-claude-codex-adapter.md`；Codex 证据不足未同批，继续非目标）是第二客户端的独立能力域，不改变 Epic 1～3 的完成门槛。每个 CAP 下追加的 `**MVP:**` 行说明该能力当前在 OMP（Epic 1～3）与 Claude Code（Epic 4）各自的归属；未实施部分保留为已确认的未来能力描述，不因写在本文档中而自动获得当前实施授权，重开需要新证据与负责人明确裁决（epics.md AR13、AR15、AR16；Claude Code 的重开证据见 `epic-1-retro-2026-08-22.md` 的 `epic-1-retro-item-7`）。
 
 - **CAP-1 — 有界触发、候选与推荐**
   - **intent:** Agent 能在新工作场景、已知能力不足或有证据的 Bad Case 出现时主动调查、抽象需求，提出可区分候选和明确推荐，由用户裁决。
@@ -30,17 +30,17 @@ OMP Agent 的低频配置建立、高频任务复用和 Bad Case 演进目前缺
 - **CAP-2 — 稳定配置与内容所有权**
   - **intent:** 用户能保存带有限变体的稳定配置，引用源资产和结构化任务输入入口而不复制原始内容。
   - **success:** Instructions、Skills、MCP 三类资产不要求齐全；配置显式记录适用工作、必要资产、不装配能力、有限变体、共同边界、来源和输入入口，变体只改变已声明差异并继承共同边界；任务内容、私域原文与凭据仍由原始载体拥有，公共产物不复制它们。
-  - **MVP:** 部分在 MVP，窄化为只读消费。MVP 只查看已存在配置修订的组成、来源类别、边界与 Unknown（MVP-FR1、MVP-FR2）；配置的建立、修订、变体裁剪与来源登记不是 MVP 用户能力（epics.md AR16：配置供应不是本轮能力；AR13：配置创建/编辑不进 MVP）。
+  - **MVP:** 部分在 MVP，窄化为只读消费。MVP 只查看已存在配置修订的组成、来源类别、边界与 Unknown（MVP-FR1、MVP-FR2）；配置的建立、修订、变体裁剪与来源登记不是 MVP 用户能力（epics.md AR16：配置供应不是本轮能力；AR13：配置创建/编辑不进 MVP）。**Epic 4：** Claude Code adapter 复用同一内容所有权模型——只读引用 Instructions/Skills/MCP、不复制原文；同样不含建立/修订工作流，该部分需要独立证据与裁决才能开（类比 Epic 3 之于 OMP），不因 Epic 4 顺带打开。
 
 - **CAP-3 — 装配事实、差异与解释**
   - **intent:** 用户能分别看到期望装配、最终结果、运行观察、差异与 Unknown，并理解重复激活为何相同或变化。
   - **success:** 系统分别表达期望装配、Adapter Plan、Launch Receipt、运行观察、差异与 Unknown；能力状态使用 `supported | degraded | unsupported | unknown`，运行装配使用 `observationStage = planned | launched | observed | verified`，三层验证另用 `validationMethod`；隔离对每个版本化 SourceId 列出 excluded/residual/unknown；缺失、额外、禁用、覆盖、预算或限制裁剪及其影响可见。
-  - **MVP:** 在 MVP，窄化为配置应用与 OMP 启动生命周期。期望装配/最终结果/运行观察/差异/Unknown 的区分保留，用于 MVP-FR6 状态视图；运行观察范围限定为配置应用与客户端启动阶段，不含任务目标、对话、工具调用、任务进度或结果（epics.md MVP-FR6、AR7、NFR8）。
+  - **MVP:** 在 MVP，窄化为配置应用与 OMP 启动生命周期。期望装配/最终结果/运行观察/差异/Unknown 的区分保留，用于 MVP-FR6 状态视图；运行观察范围限定为配置应用与客户端启动阶段，不含任务目标、对话、工具调用、任务进度或结果（epics.md MVP-FR6、AR7、NFR8）。**Epic 4：** Claude Code adapter 复用同一 `capabilityStatus`/`observationStage`/Known-Unknown 分层（Architecture Spine AD-19）；`supported` 只接受宿主原生可强制执行的权限/工具/MCP 证据，prompt 文字承诺不算证据。目标为已在运行的交互式会话（如本仓自身的 Claude Code session）时，`observationStage` 在用户实际重启前不越过 `planned`（AD-20）。
 
 - **CAP-4 — 低摩擦可信复用**
   - **intent:** 用户能复用已验证配置，并在声明输入或外部事实发生实质变化时重新判断。
   - **success:** 普通复用逐项能力选择为 0、重复输入为 0、产品确认至多 1 次；prepare 持久化 ChangeAssessment，逐项比较目标、约束、权限、风险和必需能力，只能允许继续原修订或要求低频重判；必需 Unknown 时 fail closed。客户端 capability 与隔离残留在启动前可见；配置切换创建新 operation，并通过客户端重启或显式 resume 生效。
-  - **MVP:** 部分在 MVP，窄化为单次确认。"逐项能力选择为 0、产品确认至多一次"保留（MVP-FR4、NFR7）；ChangeAssessment 式逐项比较目标/约束/权限/风险的重判流程不在 MVP——该比较隐含任务语义判断，与 epics.md AR7/NFR8 的"不执行任务语义判断、不观察任务运行态"裁决不兼容。MVP 内每次配置选择都作为新的启动计划处理，不做跨激活的声明输入重判（MVP-FR4、MVP-FR7）。
+  - **MVP:** 部分在 MVP，窄化为单次确认。"逐项能力选择为 0、产品确认至多一次"保留（MVP-FR4、NFR7）；ChangeAssessment 式逐项比较目标/约束/权限/风险的重判流程不在 MVP——该比较隐含任务语义判断，与 epics.md AR7/NFR8 的"不执行任务语义判断、不观察任务运行态"裁决不兼容。MVP 内每次配置选择都作为新的启动计划处理，不做跨激活的声明输入重判（MVP-FR4、MVP-FR7）。**Epic 4：** Claude Code adapter 的 fresh target（本产品新 spawn 一个 Claude Code 进程）复用同一单次确认状态机（AD-7/AD-18，经 AD-20）；already-running session target（目标是已在运行的交互式会话）的 `apply` 只解析为 `requires-restart`，不完成激活、不冒充成功。同 OMP 一样不做 ChangeAssessment 式重判，也不做 CAP-1 的候选/推荐——用户直接选择既有装配。
 
 - **CAP-5 — 三层适用性验证**
   - **intent:** 负责人能按静态/机械、受控集成、真实任务三层证据判断配置是否必要、充分且不过载。
@@ -73,12 +73,12 @@ OMP Agent 的低频配置建立、高频任务复用和 Bad Case 演进目前缺
 - 机械检查优先，但代理信号不得替代受控集成或真实任务证据；证据不足必须保持 Unknown。
 - 普通复用不得要求逐项能力选择或重复任务输入，且产品确认至多一次。
 - 外部状态、客户端身份/版本、capability snapshot、隔离残留和声明输入变化必须可见；样本按任务、验收、输入可比规则、配置无关客户端环境和外部变化分组：可重复任务要求等价输入，一次性任务只要求相同输入分类/结构及验收映射。实际输入、配置/manifest/capability/receipt/Session 关系作为被比较自变量或分层字段，不要求相等但不得隐藏。
-- 实现、数据所有权、激活状态机、失败边界、技术栈和验证作用域必须遵守 adopted `ARCHITECTURE-SPINE.md` 的 AD-1~AD-19；其中 AD-7、AD-11、AD-13、AD-16、AD-17 与 AD-19 的部分条款按下条 MVP 范围收窄执行。
-- **MVP 范围收窄（权威见 [`epics.md`](../../planning-artifacts/epics.md)）：** 当前锁定的 MVP 只落地 1 个 Epic、2 条 Story（MVP-FR1～MVP-FR10）。CAP-1 的候选/推荐、CAP-2 的配置建立/修订、CAP-4 的 ChangeAssessment 式声明输入重判、CAP-7 的 Bad Case 产品化、CAP-8 中 opaque native Session locator 的持久化与 Session lease/fencing 均不在 MVP；CAP-5、CAP-6 的三层验证与样本合同是外部开发验收门，不是 MVP 产品运行时功能。以上收窄由 epics.md AR13、AR15、AR16 确认；重开需要新证据与负责人明确裁决，不因本 SPEC 保留完整目标态描述而自动恢复实施授权。
+- 实现、数据所有权、激活状态机、失败边界、技术栈和验证作用域必须遵守 adopted `ARCHITECTURE-SPINE.md` 的 AD-1~AD-20；其中 AD-7、AD-11、AD-13、AD-16、AD-17 与 AD-19 的部分条款按下条 MVP 范围收窄执行；AD-20（Claude Code adapter 会话模型）是 Epic 4 的专属条款，见下条。
+- **MVP 范围收窄（权威见 [`epics.md`](../../planning-artifacts/epics.md)）：** OMP 侧当前只落地 Epic 1（MVP-FR1～MVP-FR10）；Epic 2、Epic 3 已陆续排入排期。CAP-1 的候选/推荐、CAP-2 的配置建立/修订、CAP-4 的 ChangeAssessment 式声明输入重判、CAP-7 的 Bad Case 产品化、CAP-8 中 opaque native Session locator 的持久化与 Session lease/fencing 均不在 MVP；CAP-5、CAP-6 的三层验证与样本合同是外部开发验收门，不是 MVP 产品运行时功能。以上收窄由 epics.md AR13、AR15、AR16 确认；重开需要新证据与负责人明确裁决，不因本 SPEC 保留完整目标态描述而自动恢复实施授权。**Claude Code（Epic 4，2026-08-23 裁决激活）同样受上述收窄约束**：候选/推荐（CAP-1）、建立/修订（CAP-2）、ChangeAssessment（CAP-4）、Bad Case 产品化（CAP-7）、locator/lease 持久化（CAP-8）对 Claude Code 同样不在 MVP，与 OMP 侧收窄口径一致，不因新增第二客户端而单独放开。
 
 ## Non-goals
 
-- 不在 MVP 实现 Claude Code/Codex CLI adapter，不构建配置等价层、跨客户端 Session 翻译、三端同步首发或通用 plugin/hook 语义；客户端 adapter port 只保留未来接入边界。
+- Claude Code adapter 已按 2026-08-23 裁决激活（Epic 4，见 AD-1、AD-19、AD-20）；**Codex CLI 继续不在 MVP**（`.cap/runtime/` 无 `codex.toml`，无真实 Bad Case 证据支持同批激活）。无论 Claude Code 还是未来的 Codex，均不构建跨客户端配置等价层、Session 翻译、三端同步首发或通用 plugin/hook 语义；每个客户端 adapter 只实现同一窄端口（AD-19），不追求彼此等价。
 - 不在 MVP 生成配置候选、评分、排序或 Recommendation，不由 Agent 选择配置或推荐装配；不提供配置创建、编辑或 Context Assembly；不分析或观察任务目标、过程、对话或结果；不持久化 opaque native Session locator，不实现 explicit resume 启动参数或 Session lease/fencing；不把样本/Bad Case 产品化、三层任务验证或跨 Session 任务证据作为 MVP 产品运行时功能（epics.md AR13、AR15、AR16 负责人裁决）。
 - 不构建远程同步、团队共享服务、产品遥测、daemon、Python CAP 迁移兼容层，或以清空用户全局配置实现隔离。
 - 不把 Profile 语义、Hard Handoff、每任务实时 Skill Discovery、动态子 Agent 装配或第四类核心资产作为默认修复。

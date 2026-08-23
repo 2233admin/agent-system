@@ -2,7 +2,7 @@
 title: "Agent Context Assembly PRD 补充"
 status: captured
 created: 2026-08-21
-updated: 2026-08-21
+updated: 2026-08-23
 ---
 
 # Agent Context Assembly PRD 补充
@@ -35,3 +35,15 @@ TypeScript 是后续架构阶段应认真评估的候选方向，不是当前既
 - Hard Handoff、实时 Skill Discovery 或动态子 Agent 装配机制。
 
 这些事项只有在 PRD 的用户结果、FR 与真实任务验收要求明确后，才能在架构阶段提出候选、比较取舍并获得确认。
+
+## 4. 2026-08-23 裁决：Claude Code/Codex 第二客户端激活的技术边界
+
+对应 PRD §4.4、§7 的 2026-08-23 裁决更新（第二客户端正式激活，纳入 Epic 4）。本节记录负责人在 correct-course 会话中对"如何实现"给出的明确技术裁决；这些是**已确认的约束**，不是留给架构阶段自由比较的候选——下一轮 `bmad-architecture` 必须遵守，不得重新选择其他机制，除非出现推翻下述核实结论的新证据。
+
+- **硬控制，而非软控制。** 新 adapter 必须交付宿主客户端能够实际强制执行的权限/工具/MCP 边界（例如 Claude Code 的 settings.json 权限字段、hook 拒绝返回值），不得依赖 prompt 文字这类不可强制执行的软约束。
+- **排除 OMP extension 路线。** 经核实 `oh-my-pi/docs/extensions.md`：OMP 自身的 extension 机制无法声明 Skills/Instructions，对 MCP 只能被动监听通知而不能配置，且不能代表独立客户端身份运行——技术上无法承担本次要求的能力，不得作为实现路径重新提出。
+- **复用 Architecture Spine AD-19 窄端口模式。** 新 adapter 落在 `packages/control-plane` 内，按既有的 `probe → plan → launch/resume → interpret` 与 `capabilityStatus = supported | degraded | unsupported | unknown`（每项绑定证据）能力合同实现，不新建一套平行的能力语义。
+- **`.cap/` 退役约束。** `.cap/manifest.toml`、`profiles/*.toml`、`runtime/claude.toml`、`skill-imports.toml` 是本次问题的证据来源与迁移前身，不是需求或架构基线；具体退役顺序留给下一轮 `bmad-architecture` 决定，但该顺序必须保证本仓自身运行的 Claude Code session（包括当前维护本仓的 session）在迁移期间不失去 skill/profile 装配能力，不得先退役后设计替代。
+- **不与 Epic 3 合并。** Epic 3（OMP 配置供应与装配）与本次 Claude Code/Codex adapter 是两个不同客户端的能力域，不合并、不追求跨客户端配置或 Session 等价。
+
+来源：`sprint-change-proposal-2026-08-23-cap-claude-codex-adapter.md`（已获负责人批准）。

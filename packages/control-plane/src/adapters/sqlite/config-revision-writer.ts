@@ -17,7 +17,7 @@ import { Database } from 'bun:sqlite';
 import { mkdirSync } from 'node:fs';
 import path from 'node:path';
 
-import { parseCandidateRevision } from '../../application/establish';
+import { parseCandidateRevision, parseEvidenceRef, parseTriggerCategory } from '../../application/establish';
 import type { EstablishConfigRevisionParams, ConfigRevisionWriter } from '../../application/ports';
 import type { StableConfigRevision } from '../../domain/config';
 import { factColumns, runConfigRevisionMigrations } from './repository';
@@ -34,11 +34,27 @@ export class SqliteConfigRevisionWriter implements ConfigRevisionWriter {
     }
     this.db = new Database(dbPath, { create: true });
     this.db.exec('PRAGMA journal_mode = WAL;');
+    // `[Review fix]` Root-cause mitigation for concurrent migrations (see
+    // `repository.ts`'s `runConfigRevisionMigrations` docstring): make
+    // SQLite itself wait out short-lived lock contention instead of
+    // failing immediately with `SQLITE_BUSY`/`"database is locked"`.
+    this.db.exec('PRAGMA busy_timeout = 5000;');
     this.db.exec('PRAGMA foreign_keys = ON;');
     runConfigRevisionMigrations(this.db);
   }
 
   async create(params: EstablishConfigRevisionParams): Promise<StableConfigRevision> {
+    // `[Review fix]` `EstablishConfigRevisionParams.triggerCategory`/
+    // `.evidenceRef` are typed, but TypeScript types are erased at runtime
+    // -- a caller that reaches this port directly (bypassing
+    // `cli/index.ts`'s `parseTriggerCategory`/`parseEvidenceRef` calls)
+    // could still pass an out-of-enum category or empty evidence. Reuse
+    // the exact same validators the CLI already uses, before the
+    // transaction below (or the candidate parse) ever runs, so an invalid
+    // value here fails with zero writes just like an invalid candidate.
+    parseTriggerCategory(params.triggerCategory);
+    parseEvidenceRef(params.evidenceRef);
+
     // Validate the whole candidate before touching the database at all --
     // a type mismatch anywhere throws `InvalidCandidateError` here, before
     // any `INSERT` is even prepared, so a rejected candidate can never
