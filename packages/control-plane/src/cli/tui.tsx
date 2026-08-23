@@ -54,6 +54,7 @@ function exitAltScreen(): void {
  */
 class TuiStdinBridge extends EventEmitter {
   readonly isTTY: boolean;
+  private readonly bootstrapRawMode: boolean;
   private readonly chunks: string[] = [];
   private readonly onSourceData = (chunk: string | Buffer): void => {
     this.chunks.push(typeof chunk === 'string' ? chunk : chunk.toString('utf8'));
@@ -63,7 +64,10 @@ class TuiStdinBridge extends EventEmitter {
   constructor(private readonly source: NodeJS.ReadStream) {
     super();
     this.isTTY = source.isTTY === true;
-    source.setRawMode(true);
+    this.bootstrapRawMode = process.platform === 'win32' && this.isTTY;
+    if (this.bootstrapRawMode) {
+      source.setRawMode(true);
+    }
     source.setEncoding('utf8');
     source.on('data', this.onSourceData);
   }
@@ -101,7 +105,10 @@ class TuiStdinBridge extends EventEmitter {
   }
 
   dispose(): void {
-    this.source.setRawMode(false);
+    this.source.removeListener('data', this.onSourceData);
+    if (this.bootstrapRawMode) {
+      this.source.setRawMode(false);
+    }
     this.chunks.length = 0;
     this.removeAllListeners();
   }
