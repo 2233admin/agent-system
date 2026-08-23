@@ -638,10 +638,12 @@ describe('runTuiWithDeps orchestration (mocked deps + injected alt-screen/decisi
       await flush();
       await new Promise((resolve) => setTimeout(resolve, 300));
 
-      expect(stdin.rawModeCalls).toEqual([true, false, true]);
+      const expectedBeforeQuit = process.platform === 'win32' ? [true, false, true] : [true];
+      const expectedAfterQuit = process.platform === 'win32' ? [true, false, true, false] : [true, false];
+      expect(stdin.rawModeCalls).toEqual(expectedBeforeQuit);
       stdin.pushInput('q');
       await tui;
-      expect(stdin.rawModeCalls).toEqual([true, false, true, false]);
+      expect(stdin.rawModeCalls).toEqual(expectedAfterQuit);
       expect(stdin.listenerCount('data')).toBe(0);
       expect(stdin.listenerCount('readable')).toBe(0);
     } finally {
