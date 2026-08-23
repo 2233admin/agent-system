@@ -31,3 +31,7 @@
 
 - 需要 Windows／PowerShell GitHub 多行 Markdown 或 Windows 长路径／文件锁知识时，主动按名运行 `python tools/knowledge_action_trigger/action_trigger.py --action github-multiline-markdown` 或 `--action windows-path-or-file-lock`，再按需读取返回的当前知识源。
 - 这是可查询工具，不自动触发、注入或挂 Hook；也可直接按名读取 `_archive/knowledge/windows-powershell-multiline-transfer.md` 或 `_archive/knowledge/windows-agent-ops.md`。查询不扩大合同、权限或产品决定。
+
+## Git / PR 约定
+
+- `gh pr create`/`gh pr edit` 的标题和正文默认使用中文（提交信息本身的语言不受此约束）。
