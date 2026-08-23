@@ -20,10 +20,10 @@ def locate_default_cards() -> Path:
     for anchor in (Path.cwd().resolve(), Path(__file__).resolve().parent):
         roots.extend((anchor, *anchor.parents))
     for root in dict.fromkeys(roots):
-        candidate = root / "knowledge" / "retrieval-cards.md"
+        candidate = root / "_archive" / "knowledge" / "retrieval-cards.md"
         if candidate.is_file():
             return candidate
-    raise FileNotFoundError("未找到 knowledge/retrieval-cards.md")
+    raise FileNotFoundError("未找到 _archive/knowledge/retrieval-cards.md")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -47,7 +47,7 @@ def _result_payload(outcome: object) -> dict[str, object]:
             "matched": False,
             "reason": outcome.reason,
             "candidateCount": outcome.candidate_count,
-            "fallback": "转回 knowledge/README.md 人工选择当前 K 包。",
+            "fallback": "转回 _archive/knowledge/README.md 人工选择当前 K 包。",
         }
     card = match.card
     return {

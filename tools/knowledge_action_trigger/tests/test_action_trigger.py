@@ -43,7 +43,7 @@ class KnowledgeActionTriggerTests(unittest.TestCase):
         )
         self.assertEqual(
             matches[0].route.source,
-            "knowledge/windows-powershell-multiline-transfer.md",
+            "_archive/knowledge/windows-powershell-multiline-transfer.md",
         )
 
     def test_windows_path_and_file_lock_blind_spot_routes_to_k24(self) -> None:
@@ -53,7 +53,7 @@ class KnowledgeActionTriggerTests(unittest.TestCase):
         )
 
         self.assertEqual([match.route.identifier for match in matches], ["windows-path-or-file-lock"])
-        self.assertEqual(matches[0].route.source, "knowledge/windows-agent-ops.md")
+        self.assertEqual(matches[0].route.source, "_archive/knowledge/windows-agent-ops.md")
 
     def test_partial_signal_groups_do_not_match(self) -> None:
         self.assertEqual(

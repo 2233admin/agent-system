@@ -25,7 +25,7 @@
 
 ### 删除全文镜像，保留摘要目录
 
-`docs/skill-catalog.zh-CN.md` 保留导航、触发摘要和能力关系，直接链接 `.cap/capabilities/skills/*/SKILL.md`。删除 `docs/skills/*.zh-CN.md`，因为它们不再提供独立价值且会恢复同步成本。
+`_archive/docs/skill-catalog.zh-CN.md` 保留导航、触发摘要和能力关系，直接链接 `.cap/capabilities/skills/*/SKILL.md`。删除 `docs/skills/*.zh-CN.md`，因为它们不再提供独立价值且会恢复同步成本。
 
 ### Frontmatter description 同样使用中文
 

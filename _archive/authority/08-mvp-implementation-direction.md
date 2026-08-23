@@ -34,7 +34,7 @@ Windows Codex 的当前权威入口同时覆盖两种启动路径：
 1. 未设置 `CODEX_HOME` 的普通 Windows 环境，使用默认 `C:\Users\Morni\.codex`；
 2. Orca 宿主注入专用 `CODEX_HOME` 的环境。
 
-版本化公共入口来源是 [`../entrypoints/agent-system.md`](../entrypoints/agent-system.md)，仓库级 Codex 入口是 [`../AGENTS.md`](../AGENTS.md)，Claude 通过 [`../CLAUDE.md`](../CLAUDE.md) 导入同一入口规则。普通 Codex 与 Orca Codex 的 Plugin／Skills 存储已用 NTFS Junction 收敛为单份；配置文件与用户级 `AGENTS.md` 仍是两套独立文件，入口一致性继续由现有同步验收检查。Junction 消失或指向变化时，该安装事实失效，必须重新核验。
+版本化公共入口来源是 [`../entrypoints/agent-system.md`](../../entrypoints/agent-system.md)，仓库级 Codex 入口是 [`../AGENTS.md`](../../AGENTS.md)，Claude 通过 [`../CLAUDE.md`](../../CLAUDE.md) 导入同一入口规则。普通 Codex 与 Orca Codex 的 Plugin／Skills 存储已用 NTFS Junction 收敛为单份；配置文件与用户级 `AGENTS.md` 仍是两套独立文件，入口一致性继续由现有同步验收检查。Junction 消失或指向变化时，该安装事实失效，必须重新核验。
 
 入口负责让 Session 找到当前权威、远端合同和条件性行为，不在用户级文件复制完整知识、状态机、工具命令或运行状态。
 
@@ -70,7 +70,7 @@ Windows Codex 的当前权威入口同时覆盖两种启动路径：
 
 **守恒律**：
 
-1. **无条件入口不得超过当前规模**：始终被加载的入口正文（版本化来源 [`../entrypoints/agent-system.md`](../entrypoints/agent-system.md) 及其安装副本）以已批 10314 个 LF 规范化 UTF-8 字节为上限；未来任何未批净增仍默认回退；
+1. **无条件入口不得超过当前规模**：始终被加载的入口正文（版本化来源 [`../entrypoints/agent-system.md`](../../entrypoints/agent-system.md) 及其安装副本）以已批 10314 个 LF 规范化 UTF-8 字节为上限；未来任何未批净增仍默认回退；
 2. **Skill 描述预算封顶**：单个 Skill 的描述不得超过当前平台可承载的上限，也不得依靠被平台截断来维持；
 3. **新增规则须写明置换对象**：向入口、Skill 描述或其他常驻规则面新增内容时，必须在同一次修改中写明被置换、压缩或删除的对象；只换不加。
 

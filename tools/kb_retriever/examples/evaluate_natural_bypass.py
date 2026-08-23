@@ -27,7 +27,7 @@ from kb_retriever.retriever import KnowledgeRetriever  # noqa: E402
 from kb_retriever.scoring import rank_cards  # noqa: E402
 
 
-DEFAULT_CARDS_PATH = REPOSITORY_ROOT / "knowledge" / "retrieval-cards.md"
+DEFAULT_CARDS_PATH = REPOSITORY_ROOT / "_archive" / "knowledge" / "retrieval-cards.md"
 DEFAULT_SAMPLES_PATH = Path(__file__).with_name("natural_bypass_samples.json")
 REGISTERED_SINGLE_CARD_BUCKETS = frozenset(
     {

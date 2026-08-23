@@ -1,6 +1,6 @@
 # KB Retriever
 
-这是 `knowledge/retrieval-cards.md` 的真实可运行检索器。它读取结构化卡片，先按 `stage`／`object` 精确硬筛，再在候选卡的 `operation` 与 `signals.aliases` 上执行轻量 BM25，输出一张最短动作卡及其 `source`、`evidence` 标注。
+这是 `_archive/knowledge/retrieval-cards.md` 的真实可运行检索器。它读取结构化卡片，先按 `stage`／`object` 精确硬筛，再在候选卡的 `operation` 与 `signals.aliases` 上执行轻量 BM25，输出一张最短动作卡及其 `source`、`evidence` 标注。
 
 本工具只依赖 Python 标准库，不建设语义层、向量库或索引服务，也不修改现有 K 包。当前产品证据上限仍是**小样回放有效**：两项真实任务的三个决策点可以复现 top-1 命中，但主动问路的自然采用率、误命中成本、长期召回和实际采用仍未验证。
 
@@ -15,9 +15,9 @@ cd tools/kb_retriever
 python -m kb_retriever "stage=post-dispatch; object=orca.supervised-worker-dispatch; signals=worker-start 返回 input_accepted 后查 dispatch-show"
 ```
 
-也可以把同一个参数写成 JSON 对象，并用 `--json` 取得机器可读结果。默认从当前目录和包目录向上寻找 `knowledge/retrieval-cards.md`；`--cards <path>` 可以显式指定只读卡片文件。
+也可以把同一个参数写成 JSON 对象，并用 `--json` 取得机器可读结果。默认从当前目录和包目录向上寻找 `_archive/knowledge/retrieval-cards.md`；`--cards <path>` 可以显式指定只读卡片文件。
 
-命中输出包括卡片、BM25 得分、`one-line-action`、`source` 与 `evidence`。如果 `stage`／`object` 没有候选，工具不会跨对象猜测，而是提示转回 `knowledge/README.md` 人工选择当前 K 包。唯一硬筛候选即使没有词法重合也会以 `matched-by-structure` 返回；多个候选均无词法重合时仍安全回退。
+命中输出包括卡片、BM25 得分、`one-line-action`、`source` 与 `evidence`。如果 `stage`／`object` 没有候选，工具不会跨对象猜测，而是提示转回 `_archive/knowledge/README.md` 人工选择当前 K 包。唯一硬筛候选即使没有词法重合也会以 `matched-by-structure` 返回；多个候选均无词法重合时仍安全回退。
 
 ## 回放演示
 

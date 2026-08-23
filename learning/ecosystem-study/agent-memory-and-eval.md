@@ -37,7 +37,7 @@
 | [Graphiti 官方仓库](https://github.com/getzep/graphiti) | 29,837 | Apache-2.0 | 时间图记忆的开源核心有显著关注度。 |
 | [cognee 官方仓库](https://github.com/topoteretes/cognee) | 29,968 | Apache-2.0 | 本地可运行、图＋向量和 Agent 集成路线有显著关注度。 |
 
-本仓已有可直接复用的结论包括：[当前知识权威](../../authority/01-knowledge.md)、[公共知识检索边界](../../knowledge/public-knowledge-retrieval-activation.md)、[研发记忆权威](../../authority/09-rd-memory.md)和[三方审阅知识](../../knowledge/three-party-review-consensus.md)。本次外部调研补的是产品机制、共同模式与可迁移设计，不改变这些权威。
+本仓已有可直接复用的结论包括：[当前知识权威](../../_archive/authority/01-knowledge.md)、[公共知识检索边界](../../_archive/knowledge/public-knowledge-retrieval-activation.md)、[研发记忆权威](../../_archive/authority/09-rd-memory.md)和[三方审阅知识](../../_archive/knowledge/three-party-review-consensus.md)。本次外部调研补的是产品机制、共同模式与可迁移设计，不改变这些权威。
 
 ---
 

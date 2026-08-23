@@ -30,7 +30,7 @@
 
 - 项目规则：`AGENTS.md`。
 - 运行时合同：`.cap/capabilities/skills/*/SKILL.md`。
-- 审查文档：`README.md`、`docs/skill-catalog.zh-CN.md`、`docs/maintenance.zh-CN.md`，并删除 `docs/skills/*.zh-CN.md`。
+- 审查文档：`README.md`、`_archive/docs/skill-catalog.zh-CN.md`、`_archive/docs/maintenance.zh-CN.md`，并删除 `docs/skills/*.zh-CN.md`。
 - OpenSpec：`openspec/config.yaml` 及后续 change 资产。
 - 验证：Skill 元数据、profile lock/verify、OMP 运行 smoke。
 
