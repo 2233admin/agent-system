@@ -43,6 +43,34 @@ function enterAltScreen(): void {
 function exitAltScreen(): void {
   process.stdout.write(ALT_SCREEN_EXIT);
 }
+/**
+ * Bun's Windows console stdin can remain paused after the process starts,
+ * which prevents the readable events Ink uses for raw-mode input from
+ * reaching its `stdin.read()` loop. Resume consumption before mounting Ink;
+ * Ink remains responsible for raw mode, parsing, and listener cleanup.
+ *
+ * Capture the stream being mounted into Ink so its pre-existing paused or
+ * flowing state is restored even if another test or caller replaces
+ * `process.stdin` later. The returned cleanup is idempotent because
+ * launch/quit callbacks should share one stdin lifecycle.
+ */
+function resumeTuiStdin(): () => void {
+  const stdin = process.stdin;
+  const wasPaused = stdin.isPaused();
+  stdin.resume();
+  let cleanedUp = false;
+  return () => {
+    if (cleanedUp) {
+      return;
+    }
+    cleanedUp = true;
+    if (wasPaused) {
+      stdin.pause();
+    } else {
+      stdin.resume();
+    }
+  };
+}
 
 type TuiScreen = { readonly kind: 'list'; readonly selectedIndex: number } | { readonly kind: 'detail'; readonly selectedIndex: number };
 
@@ -181,26 +209,45 @@ export type TuiDecision = { readonly kind: 'launch'; readonly revision: StableCo
  */
 function runTuiScreen(revisions: readonly StableConfigRevision[], knownDifferencesByRevision: ReadonlyMap<string, readonly string[]>): Promise<TuiDecision> {
   return new Promise((resolve) => {
-    const instance = render(
-      <TuiApp
-        revisions={revisions}
-        knownDifferencesByRevision={knownDifferencesByRevision}
-        onLaunch={(revision) => {
-          instance.unmount();
-          resolve({ kind: 'launch', revision });
-        }}
-        onQuit={() => {
-          instance.unmount();
-          resolve({ kind: 'quit' });
-        }}
-      />,
-      // Ink's default `exitOnCtrlC` unmounts and calls `process.exit()`
-      // directly on Ctrl+C, bypassing `exitAltScreen()`/dependency
-      // cleanup in `runTui()`. Disabling it here routes Ctrl+C through
-      // `TuiApp`'s own `useInput` handler (which calls `onQuit()`) instead
-      // -- the same cleanup path as a normal `q` quit.
-      { exitOnCtrlC: false },
-    );
+    // This must happen before `render()` mounts Ink so a Bun Windows console
+    // can deliver readable events into Ink's existing raw-mode input path.
+    const cleanupStdin = resumeTuiStdin();
+    try {
+      const instance = render(
+        <TuiApp
+          revisions={revisions}
+          knownDifferencesByRevision={knownDifferencesByRevision}
+          onLaunch={(revision) => {
+            try {
+              instance.unmount();
+            } finally {
+              cleanupStdin();
+            }
+            resolve({ kind: 'launch', revision });
+          }}
+          onQuit={() => {
+            try {
+              instance.unmount();
+            } finally {
+              cleanupStdin();
+            }
+            resolve({ kind: 'quit' });
+          }}
+        />,
+        // Ink's default `exitOnCtrlC` unmounts and calls `process.exit()`
+        // directly on Ctrl+C, bypassing `exitAltScreen()`/dependency
+        // cleanup in `runTui()`. Disabling it here routes Ctrl+C through
+        // `TuiApp`'s own `useInput` handler (which calls `onQuit()`) instead
+        // -- the same cleanup path as a normal `q` quit.
+        { exitOnCtrlC: false },
+      );
+    } catch (error) {
+      try {
+        cleanupStdin();
+      } finally {
+        throw error;
+      }
+    }
   });
 }
 

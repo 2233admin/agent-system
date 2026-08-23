@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import { EventEmitter } from 'node:events';
 import { render } from 'ink-testing-library';
 
 import { TuiApp, runAutoConfirmLaunch, runTuiWithDeps, type RunTuiHooks, type TuiDecision } from '../../src/cli/tui';
@@ -194,6 +195,73 @@ function fakeFullDeps(): {
     capabilityProbe,
     contextWriter,
   };
+}
+
+/**
+ * Ink's production renderer consumes stdin through `readable`/`read()`.
+ * This fake keeps that contract while recording whether the TUI restores
+ * Bun's paused stdin before Ink subscribes.
+ */
+class FakeTuiStdin extends EventEmitter {
+  readonly isTTY = true;
+  readonly events: string[] = [];
+  resumeCallCount = 0;
+  pauseCallCount = 0;
+  private resumed = false;
+  private readonly chunks: string[] = [];
+
+  override addListener(...args: Parameters<EventEmitter['addListener']>): this {
+    const [eventName] = args;
+    if (eventName === 'readable') {
+      this.events.push('readable-listener');
+    }
+    return super.addListener(...args);
+  }
+
+  isPaused(): boolean {
+    return !this.resumed;
+  }
+
+  resume(): this {
+    this.resumeCallCount += 1;
+    this.resumed = true;
+    this.events.push('resume');
+    return this;
+  }
+
+  pause(): this {
+    this.pauseCallCount += 1;
+    this.resumed = false;
+    this.events.push('pause');
+    return this;
+  }
+
+  setEncoding(_encoding: string): this {
+    return this;
+  }
+
+  setRawMode(_enabled: boolean): this {
+    return this;
+  }
+
+  ref(): this {
+    return this;
+  }
+
+  unref(): this {
+    return this;
+  }
+
+  read(): string | null {
+    return this.chunks.shift() ?? null;
+  }
+
+  pushInput(input: string): void {
+    this.chunks.push(input);
+    if (this.resumed) {
+      this.emit('readable');
+    }
+  }
 }
 
 describe('TuiApp list screen', () => {
@@ -525,6 +593,33 @@ describe('runTuiWithDeps orchestration (mocked deps + injected alt-screen/decisi
   // `\x1b[?1049h`/`\x1b[?1049l` sequences never hit this test run's real
   // stdout.
   const noAltScreen = { enterAltScreen: () => {}, exitAltScreen: () => {} };
+
+  test('resumes stdin before Ink subscribes to readable input and still routes Ctrl+C through the normal quit cleanup', async () => {
+    const { deps, configRepository } = fakeFullDeps();
+    configRepository.add(revision({ configName: 'general', revisionId: 'rev-general' }));
+    const stdin = new FakeTuiStdin();
+    const originalStdin = process.stdin;
+    Object.defineProperty(process, 'stdin', { value: stdin, configurable: true });
+
+    try {
+      expect(stdin.isPaused()).toBe(true);
+      const tui = runTuiWithDeps(deps, noAltScreen);
+      await flush();
+      await flush();
+
+      expect(stdin.resumeCallCount).toBe(1);
+      expect(stdin.events.indexOf('resume')).toBeLessThan(stdin.events.indexOf('readable-listener'));
+
+      stdin.pushInput('\x03');
+      await expect(tui).resolves.toBe(0);
+      expect(stdin.listenerCount('readable')).toBe(0);
+      expect(stdin.pauseCallCount).toBe(1);
+      expect(stdin.events[stdin.events.length - 1]).toBe('pause');
+      expect(stdin.isPaused()).toBe(true);
+    } finally {
+      Object.defineProperty(process, 'stdin', { value: originalStdin, configurable: true });
+    }
+  });
 
   test('alt-screen is entered before pickDecision runs and exited after -- both exactly once on the "quit" path', async () => {
     const { deps } = fakeFullDeps();
