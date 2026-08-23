@@ -7,7 +7,7 @@ import { t } from '../../src/cli/i18n';
 import { confirmLaunchPlan, prepareLaunchPlan } from '../../src/application/launch';
 import type { ClientId } from '../../src/domain/client';
 import type { LaunchPlan } from '../../src/domain/activation';
-import { known, unknown } from '../../src/domain/facts';
+import { known } from '../../src/domain/facts';
 import type { Fact } from '../../src/domain/facts';
 import type { CapabilityReference, StableConfigRevision } from '../../src/domain/config';
 import type {
@@ -72,8 +72,8 @@ function ref(kind: CapabilityReference['kind'], name: string): CapabilityReferen
     name,
     sourceCategory: known('project-capability'),
     summary: known(`${kind}: ${name}`),
-    sourceRef: unknown('not-provided', 'now'),
-    contentFingerprint: unknown('not-provided', 'now'),
+    sourceRef: known(`ref/${name}`),
+    contentFingerprint: known(`fingerprint/${name}`),
   };
 }
 
@@ -84,12 +84,14 @@ function revision(overrides: Partial<StableConfigRevision> & { configName: strin
     defaultMarker: overrides.defaultMarker ?? known(false),
     scopeBoundary: overrides.scopeBoundary ?? known('a scope boundary'),
     availability: overrides.availability ?? known('resolved'),
-    supersedesRevisionId: overrides.supersedesRevisionId ?? null,
     instructions: overrides.instructions ?? [],
     skills: overrides.skills ?? [],
     mcp: overrides.mcp ?? [],
     hooks: overrides.hooks ?? [],
     plugins: overrides.plugins ?? [],
+    triggerCategory: overrides.triggerCategory ?? 'new-scenario',
+    evidenceRef: overrides.evidenceRef ?? 'test-evidence',
+    supersedesRevisionId: overrides.supersedesRevisionId ?? null,
   };
 }
 

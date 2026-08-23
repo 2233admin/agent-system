@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 
 import { DENYLISTED_FORWARDED_ARG_TOKENS, buildOmpArgv, findDenylistedForwardedArg } from '../../src/adapters/omp/process-port';
-import { known, unknown } from '../../src/domain/facts';
+import { known } from '../../src/domain/facts';
 import type { CapabilityReference, StableConfigRevision } from '../../src/domain/config';
 
 function ref(kind: CapabilityReference['kind'], name: string): CapabilityReference {
@@ -10,8 +10,8 @@ function ref(kind: CapabilityReference['kind'], name: string): CapabilityReferen
     name,
     sourceCategory: known('project-capability'),
     summary: known(`${kind}: ${name}`),
-    sourceRef: unknown('not-provided', 'now'),
-    contentFingerprint: unknown('not-provided', 'now'),
+    sourceRef: known(`ref/${name}`),
+    contentFingerprint: known(`fingerprint/${name}`),
   };
 }
 
@@ -22,12 +22,14 @@ function revision(overrides: Partial<StableConfigRevision> & { configName: strin
     defaultMarker: known(false),
     scopeBoundary: known('a scope boundary'),
     availability: known('resolved'),
-    supersedesRevisionId: overrides.supersedesRevisionId ?? null,
     instructions: overrides.instructions ?? [],
     skills: overrides.skills ?? [],
     mcp: overrides.mcp ?? [],
     hooks: overrides.hooks ?? [],
     plugins: overrides.plugins ?? [],
+    triggerCategory: 'new-scenario',
+    evidenceRef: 'test-evidence',
+    supersedesRevisionId: null,
   };
 }
 

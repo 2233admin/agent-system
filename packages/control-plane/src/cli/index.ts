@@ -1,37 +1,25 @@
 #!/usr/bin/env bun
 /**
  * `configs` CLI entry point. Dispatches the read-only subcommands from
- * Story 1.1 (`list`, `show <id>`, `compare <id...>`) plus Story 1.2's
- * activation subcommands: `use <id>`, `status [<planId>]`, `switch <id>`;
- * plus Story 3.1's non-interactive assembly command `establish`. No other
- * subcommand exists -- in particular there is no `configs sync`/`configs
- * import` (see `src/adapters/sources/cap-fs.ts` for why).
+ * Story 1.1 (`list`, `show <id>`, `compare <id...>`), Story 1.2's
+ * activation subcommands (`use <id>`, `status [<planId>]`, `switch <id>`),
+ * and Story 3.1's non-interactive write subcommand
+ * (`establish --trigger-category <cat> --evidence <ref> [--from <path>]`).
+ * No other subcommand exists -- in particular there is no `configs sync`/
+ * `configs import` (see `src/adapters/sources/cap-fs.ts` for why).
  */
 
 import type { ClientId } from '../domain/client';
 import { resolveClientSupport } from '../domain/client';
 import type { LaunchPlan } from '../domain/activation';
-import { CAPABILITY_KINDS } from '../domain/config';
-import type { CapabilityKind, CapabilityReference, SourceCategory } from '../domain/config';
-import { known, unknown } from '../domain/facts';
-import type { Fact } from '../domain/facts';
 import { SqliteConfigRevisionRepository } from '../adapters/sqlite/repository';
-import { SqliteConfigRevisionWriter } from '../adapters/sqlite/revision-writer';
+import { SqliteConfigRevisionWriter } from '../adapters/sqlite/config-revision-writer';
 import { SqliteLaunchPlanRepository } from '../adapters/sqlite/launch-repository';
 import { BunOmpProcessPort, defaultExtensionPath, findDenylistedForwardedArg } from '../adapters/omp/process-port';
 import { BunOmpCapabilityProbe } from '../adapters/omp/capability-probe';
 import { FsLaunchContextWriter } from '../adapters/launch-context/fs-launch-context-writer';
 import { GithubReleaseUpdater } from '../adapters/self-update/github-release-updater';
-import type {
-  ConfigRevisionRepository,
-  ConfigRevisionWriter,
-  LaunchPlanRepository,
-  NewConfigRevisionInput,
-  OmpCapabilityProbePort,
-  OmpProcessPort,
-  LaunchContextWriter,
-} from '../application/ports';
-import { InvalidCandidateError, InvalidTriggerCategoryError, MissingEvidenceError } from '../application/ports';
+import type { ConfigRevisionRepository, LaunchPlanRepository, OmpCapabilityProbePort, OmpProcessPort, LaunchContextWriter } from '../application/ports';
 import {
   ConfigNotFoundError,
   ConfigUnsupportedError,
@@ -40,6 +28,16 @@ import {
   listConfigRevisions,
   type ConfigQueryError,
 } from '../application/queries';
+import {
+  InvalidCandidateError,
+  InvalidTriggerCategoryError,
+  MissingEvidenceError,
+  NoCandidateSourceError,
+  parseCandidateRevision,
+  parseEvidenceRef,
+  parseTriggerCategory,
+} from '../application/establish';
+import { isStdinTTY, readCandidateFile, readStdinText } from './candidate-source';
 import {
   InvalidTransitionError,
   LaunchPlanNotFoundError,
@@ -107,8 +105,8 @@ type ParsedCommand =
   | { readonly kind: 'status'; readonly planId: string | null }
   | {
       readonly kind: 'establish';
-      readonly triggerCategory: string | null;
-      readonly evidenceRef: string | null;
+      readonly triggerCategoryRaw: string | undefined;
+      readonly evidenceRaw: string | undefined;
       readonly fromPath: string | null;
     };
 
@@ -173,40 +171,80 @@ function parseUseOrSwitch(kind: 'use' | 'switch', rest: readonly string[]): Pars
 }
 
 /**
- * `[DELTA]` Story 3.1: `establish`'s three flags are all optional at the
- * *parse* level -- omitting `--trigger-category`/`--evidence` is not a
- * usage error (exit 2). Per the I/O matrix, it is a domain-level rejection
- * (exit 1, zero writes) surfaced once `create()` validates the resulting
- * `RevisionTriggerInput` -- see `main()`'s `establish` case. Only a flag
- * given with no following value (e.g. a dangling `--evidence`) is a usage
- * error here, same convention as `--client` in `parseUseOrSwitch`.
+ * Pure syntactic parsing only -- extracts the raw `--trigger-category`/
+ * `--evidence`/`--from` flag values without validating them (no enum
+ * check, no non-empty check, no stdin/file read). Semantic validation, in
+ * the exact order Boundaries & Constraints requires (trigger/evidence
+ * before any candidate is read, then the TTY guard, then the candidate
+ * itself), happens in `runEstablish` -- keeping it out of this function
+ * matches every other subcommand here (`parseUseOrSwitch` also only
+ * extracts/shape-checks flags, never opens anything).
  */
 function parseEstablish(rest: readonly string[]): ParsedCommand {
-  let triggerCategory: string | null = null;
-  let evidenceRef: string | null = null;
+  let triggerCategoryRaw: string | undefined;
+  let evidenceRaw: string | undefined;
   let fromPath: string | null = null;
 
   for (let i = 0; i < rest.length; i += 1) {
-    const token = rest[i]!;
-    if (token === '--trigger-category' || token === '--evidence' || token === '--from') {
+    const token = rest[i];
+    if (token === '--trigger-category') {
+      if (triggerCategoryRaw !== undefined) {
+        return {
+          kind: 'usage-error',
+          message: `${t('parseError.establishFlagRepeated', { flag: '--trigger-category' })}\n${usageLine()}`,
+        };
+      }
       const value = rest[i + 1];
       if (value === undefined) {
-        return { kind: 'usage-error', message: `${t('parseError.flagRequiresValue', { flag: token })}\n${usageLine()}` };
+        return {
+          kind: 'usage-error',
+          message: `${t('parseError.establishFlagRequiresValue', { flag: '--trigger-category' })}\n${usageLine()}`,
+        };
       }
-      if (token === '--trigger-category') {
-        triggerCategory = value;
-      } else if (token === '--evidence') {
-        evidenceRef = value;
-      } else {
-        fromPath = value;
-      }
+      triggerCategoryRaw = value;
       i += 1;
       continue;
     }
-    return { kind: 'usage-error', message: `${t('parseError.unknownFlag', { flag: token })}\n${usageLine()}` };
+    if (token === '--evidence') {
+      if (evidenceRaw !== undefined) {
+        return {
+          kind: 'usage-error',
+          message: `${t('parseError.establishFlagRepeated', { flag: '--evidence' })}\n${usageLine()}`,
+        };
+      }
+      const value = rest[i + 1];
+      if (value === undefined) {
+        return {
+          kind: 'usage-error',
+          message: `${t('parseError.establishFlagRequiresValue', { flag: '--evidence' })}\n${usageLine()}`,
+        };
+      }
+      evidenceRaw = value;
+      i += 1;
+      continue;
+    }
+    if (token === '--from') {
+      if (fromPath !== null) {
+        return {
+          kind: 'usage-error',
+          message: `${t('parseError.establishFlagRepeated', { flag: '--from' })}\n${usageLine()}`,
+        };
+      }
+      const value = rest[i + 1];
+      if (value === undefined) {
+        return {
+          kind: 'usage-error',
+          message: `${t('parseError.establishFlagRequiresValue', { flag: '--from' })}\n${usageLine()}`,
+        };
+      }
+      fromPath = value;
+      i += 1;
+      continue;
+    }
+    return { kind: 'usage-error', message: `${t('parseError.unknownFlag', { flag: token! })}\n${usageLine()}` };
   }
 
-  return { kind: 'establish', triggerCategory, evidenceRef, fromPath };
+  return { kind: 'establish', triggerCategoryRaw, evidenceRaw, fromPath };
 }
 
 function parseCommand(argv: readonly string[]): ParsedCommand {
@@ -244,29 +282,10 @@ function parseCommand(argv: readonly string[]): ParsedCommand {
   }
 }
 
-export interface ClosableConfigRevisionWriter extends ConfigRevisionWriter {
-  close(): void;
-}
-
 export interface CliOverrides {
   readonly ompPort?: OmpProcessPort;
   readonly capabilityProbe?: OmpCapabilityProbePort;
   readonly contextWriter?: LaunchContextWriter;
-  /**
-   * `[DELTA]` Story 3.1: injectable write port for `establish` -- kept out
-   * of `FullDeps` (unlike `configRepository`/`launchPlanRepository`)
-   * because it is opened only for `establish`'s own case in `main()`, never
-   * shared with `list`/`show`/`compare`/`use`/`switch`/`status` or the TUI
-   * (Epic 3 context: the TUI never gains an assembly screen).
-   */
-  readonly configWriter?: ClosableConfigRevisionWriter;
-  /**
-   * `[DELTA]` Story 3.1: source of `establish`'s candidate JSON when
-   * `--from <path>` is not given. Defaults to reading real stdin to
-   * completion; overridable so tests can supply candidate content without a
-   * real OS pipe.
-   */
-  readonly readCandidateInput?: () => Promise<string>;
 }
 
 /**
@@ -430,154 +449,76 @@ async function runLaunchFlow(
 }
 
 /**
- * Reads real stdin to completion. Used as `establish`'s default candidate
- * source when `--from <path>` is not given (`CliOverrides.readCandidateInput`
- * lets tests substitute this without a real OS pipe).
+ * Non-interactive `configs establish`. Boundaries & Constraints: must
+ * validate `--trigger-category`/`--evidence` (both, before reading any
+ * candidate), then the stdin-TTY guard, then parse+validate the candidate
+ * itself -- in exactly that order, so a missing flag on a non-interactive
+ * invocation never blocks on a stdin read. Never calls `openDeps()` -- it
+ * opens its own `SqliteConfigRevisionWriter` instead, since it needs
+ * neither `launchPlanRepository` nor any of the OMP-launch ports that
+ * `FullDeps` otherwise bundles together.
+ *
+ * `[Review fix]` The candidate is fully parsed+validated (`parseCandidateRevision`)
+ * *before* `SqliteConfigRevisionWriter` is ever constructed -- constructing
+ * it runs a migration against the real on-disk db file, so a rejected
+ * candidate must never reach that point. `writer.create()` re-validates
+ * the same candidate internally (cheap, and keeps the port self-sufficient
+ * for any other caller), but that redundant check is never the *first*
+ * time validation happens.
  */
-async function readStdinText(): Promise<string> {
-  const chunks: Buffer[] = [];
-  for await (const chunk of process.stdin) {
-    chunks.push(chunk as Buffer);
-  }
-  return Buffer.concat(chunks).toString('utf8');
-}
+async function runEstablish(parsed: Extract<ParsedCommand, { kind: 'establish' }>): Promise<number> {
+  let writer: SqliteConfigRevisionWriter | undefined;
+  try {
+    const triggerCategory = parseTriggerCategory(parsed.triggerCategoryRaw);
+    const evidenceRef = parseEvidenceRef(parsed.evidenceRaw);
 
-/**
- * Parses one `Fact<T>`-shaped JSON value: `{"kind":"known","value":...}` or
- * `{"kind":"unknown","reason":"...","observedAt":"..."}` -- the same shape
- * `known()`/`unknown()` (`domain/facts.ts`) produce, so a candidate that was
- * itself built from this codebase's own types round-trips unchanged.
- * Throws `InvalidCandidateError` on any other shape rather than guessing --
- * this Story defines the candidate shape for the first time, so there is no
- * pre-existing external schema to reconcile with (Boundaries: "Ask First"
- * is about a *conflicting already-established* schema, which does not apply
- * here).
- */
-function parseFact(raw: unknown, fieldPath: string): Fact<unknown> {
-  if (raw === null || typeof raw !== 'object') {
-    throw new InvalidCandidateError(`"${fieldPath}" must be a Fact object (kind "known" or "unknown")`);
-  }
-  const obj = raw as Record<string, unknown>;
-  if (obj.kind === 'known') {
-    if (!('value' in obj)) {
-      throw new InvalidCandidateError(`"${fieldPath}.value" is required when "${fieldPath}.kind" is "known"`);
+    if (parsed.fromPath === null && isStdinTTY()) {
+      throw new NoCandidateSourceError();
     }
-    return known(obj.value);
-  }
-  if (obj.kind === 'unknown') {
-    if (typeof obj.reason !== 'string' || typeof obj.observedAt !== 'string') {
-      throw new InvalidCandidateError(`"${fieldPath}" must have string "reason" and "observedAt" when "kind" is "unknown"`);
-    }
-    return unknown(obj.reason, obj.observedAt);
-  }
-  throw new InvalidCandidateError(`"${fieldPath}.kind" must be "known" or "unknown"`);
-}
 
-function parseCapabilityRefEntry(raw: unknown, fieldPath: string): CapabilityReference {
-  if (raw === null || typeof raw !== 'object') {
-    throw new InvalidCandidateError(`"${fieldPath}" must be an object`);
-  }
-  const obj = raw as Record<string, unknown>;
-  if (typeof obj.kind !== 'string' || !CAPABILITY_KINDS.includes(obj.kind as CapabilityKind)) {
-    throw new InvalidCandidateError(`"${fieldPath}.kind" must be one of: ${CAPABILITY_KINDS.join(', ')}`);
-  }
-  if (typeof obj.name !== 'string' || obj.name.trim().length === 0) {
-    throw new InvalidCandidateError(`"${fieldPath}.name" must be a non-empty string`);
-  }
-  return {
-    kind: obj.kind as CapabilityKind,
-    name: obj.name,
-    sourceCategory: parseFact(obj.sourceCategory, `${fieldPath}.sourceCategory`) as Fact<SourceCategory>,
-    summary: parseFact(obj.summary, `${fieldPath}.summary`) as Fact<string>,
-    sourceRef: parseFact(obj.sourceRef, `${fieldPath}.sourceRef`) as Fact<string>,
-    contentFingerprint: parseFact(obj.contentFingerprint, `${fieldPath}.contentFingerprint`) as Fact<string>,
-  };
-}
-
-function parseCapabilityArray(raw: unknown, fieldPath: string): CapabilityReference[] {
-  if (raw === undefined) {
-    return [];
-  }
-  if (!Array.isArray(raw)) {
-    throw new InvalidCandidateError(`"${fieldPath}" must be an array`);
-  }
-  return raw.map((entry, index) => parseCapabilityRefEntry(entry, `${fieldPath}[${index}]`));
-}
-
-/**
- * Parses `establish`'s candidate JSON (from `--from <path>` or stdin) into
- * a `NewConfigRevisionInput`. Never reads `revisionId`/`supersedesRevisionId`
- * from the candidate -- the port generates the former, and `establish`
- * always passes `null` for the latter (Boundaries: "固定传 supersedes=null").
- */
-function parseCandidateJson(raw: string): NewConfigRevisionInput {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw);
-  } catch (error) {
-    throw new InvalidCandidateError(`candidate content is not valid JSON: ${(error as Error).message}`);
-  }
-  if (parsed === null || typeof parsed !== 'object') {
-    throw new InvalidCandidateError('candidate content must be a JSON object');
-  }
-  const obj = parsed as Record<string, unknown>;
-  if (typeof obj.configName !== 'string' || obj.configName.trim().length === 0) {
-    throw new InvalidCandidateError('"configName" must be a non-empty string');
-  }
-  return {
-    configName: obj.configName,
-    defaultMarker: parseFact(obj.defaultMarker, 'defaultMarker') as Fact<boolean>,
-    scopeBoundary: parseFact(obj.scopeBoundary, 'scopeBoundary') as Fact<string>,
-    availability: parseFact(obj.availability, 'availability') as Fact<'resolved'>,
-    instructions: parseCapabilityArray(obj.instructions, 'instructions'),
-    skills: parseCapabilityArray(obj.skills, 'skills'),
-    mcp: parseCapabilityArray(obj.mcp, 'mcp'),
-    hooks: parseCapabilityArray(obj.hooks, 'hooks'),
-    plugins: parseCapabilityArray(obj.plugins, 'plugins'),
-  };
-}
-
-/**
- * MVP/Story 3.1: `configs establish` -- non-interactive, no `--yes`
- * equivalent (the human decision already happened in the Agent session
- * that produced this candidate). Always passes `supersedes=null` (a brand
- * new configuration; superseding an existing revision is `configs revise`,
- * Story 3.2). Opens its own write-port connection, independent of
- * `FullDeps`'s read-only repositories, and closes it before returning.
- */
-async function runEstablish(
-  overrides: CliOverrides,
-  params: { readonly triggerCategory: string | null; readonly evidenceRef: string | null; readonly fromPath: string | null },
-): Promise<number> {
-  let writer: ClosableConfigRevisionWriter;
-  try {
-    writer = overrides.configWriter ?? new SqliteConfigRevisionWriter(defaultDbPath());
-  } catch (error) {
-    console.error(t('openDeps.failed', { message: (error as Error).message }));
-    return 1;
-  }
-
-  let candidate: NewConfigRevisionInput | null = null;
-  try {
-    let raw: string;
+    let rawText: string;
     try {
-      raw = params.fromPath !== null ? await Bun.file(params.fromPath).text() : await (overrides.readCandidateInput ?? readStdinText)();
+      rawText = parsed.fromPath !== null ? await readCandidateFile(parsed.fromPath) : await readStdinText();
     } catch (error) {
-      throw new InvalidCandidateError(`could not read candidate content: ${(error as Error).message}`);
+      throw new InvalidCandidateError(`candidate could not be read: ${(error as Error).message}`);
     }
-    candidate = parseCandidateJson(raw);
-    const trigger = { category: params.triggerCategory ?? '', evidenceRef: params.evidenceRef ?? '' };
-    const newRevision = await writer.create(candidate, trigger, null);
-    console.log(renderEstablishSuccess(newRevision));
+
+    let candidate: unknown;
+    try {
+      candidate = JSON.parse(rawText);
+    } catch (error) {
+      throw new InvalidCandidateError(`candidate JSON could not be parsed: ${(error as Error).message}`);
+    }
+
+    // Validate the whole candidate before the db file is ever touched --
+    // `parseCandidateRevision` throws `InvalidCandidateError` on the first
+    // mismatch, and only once it returns successfully do we construct the
+    // writer (which runs a migration against the real file).
+    parseCandidateRevision(candidate);
+
+    writer = new SqliteConfigRevisionWriter(defaultDbPath());
+    const revision = await writer.create({ triggerCategory, evidenceRef, candidate });
+
+    console.log(renderEstablishSuccess(revision));
     return 0;
   } catch (error) {
-    if (error instanceof InvalidTriggerCategoryError || error instanceof MissingEvidenceError || error instanceof InvalidCandidateError) {
-      console.log(renderQueryFailure(candidate?.configName ?? 'establish', error));
+    if (
+      error instanceof InvalidTriggerCategoryError ||
+      error instanceof MissingEvidenceError ||
+      error instanceof NoCandidateSourceError ||
+      error instanceof InvalidCandidateError
+    ) {
+      // No parsed candidate (and therefore no `configName`) is available at
+      // every failure point -- e.g. a missing trigger category fails
+      // before the candidate is ever read -- so `renderQueryFailure`'s
+      // label falls back to the fixed string `'establish'` rather than
+      // trying to recover a `configName` that may not exist yet.
+      console.log(renderQueryFailure('establish', error));
       return 1;
     }
     throw error;
   } finally {
-    writer.close();
+    writer?.close();
   }
 }
 
@@ -610,6 +551,13 @@ export async function main(argv: readonly string[], overrides: CliOverrides = {}
   if (parsed.kind === 'unsupported-client') {
     console.log(renderUnsupportedClient(parsed.clientId, parsed.reason));
     return 1;
+  }
+  // `[DELTA]` Story 3.1: `establish` never calls `openDeps()` -- it neither
+  // needs `launchPlanRepository` nor any OMP-launch port, and it must be
+  // able to fail (missing trigger/evidence, TTY guard) without ever
+  // opening the SQLite files those depend on.
+  if (parsed.kind === 'establish') {
+    return await runEstablish(parsed);
   }
 
   const deps = await openDeps(overrides);
@@ -670,13 +618,6 @@ export async function main(argv: readonly string[], overrides: CliOverrides = {}
           throw error;
         }
       }
-
-      case 'establish':
-        return await runEstablish(overrides, {
-          triggerCategory: parsed.triggerCategory,
-          evidenceRef: parsed.evidenceRef,
-          fromPath: parsed.fromPath,
-        });
     }
   } finally {
     deps.configRepository.close();

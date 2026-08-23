@@ -28,12 +28,14 @@ describe('real omp binary smoke test', () => {
       defaultMarker: known(false),
       scopeBoundary: known('smoke test'),
       availability: known('resolved'),
-      supersedesRevisionId: null,
       instructions: [],
       skills: [],
       mcp: [],
       hooks: [],
       plugins: [],
+      triggerCategory: 'new-scenario',
+      evidenceRef: 'test-evidence',
+      supersedesRevisionId: null,
     };
 
     const argv = buildOmpArgv(revision, '/tmp/does-not-need-to-exist.json', defaultExtensionPath(), ['--help']);

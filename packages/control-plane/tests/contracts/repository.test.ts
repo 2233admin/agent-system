@@ -13,12 +13,41 @@ function sampleRevision(overrides: Partial<StableConfigRevision> & { configName:
     defaultMarker: overrides.defaultMarker ?? known(false),
     scopeBoundary: overrides.scopeBoundary ?? known('a scope boundary'),
     availability: overrides.availability ?? known('resolved'),
-    supersedesRevisionId: overrides.supersedesRevisionId ?? null,
     instructions: overrides.instructions ?? [],
     skills: overrides.skills ?? [],
     mcp: overrides.mcp ?? [],
     hooks: overrides.hooks ?? [],
     plugins: overrides.plugins ?? [],
+    triggerCategory: overrides.triggerCategory ?? 'new-scenario',
+    evidenceRef: overrides.evidenceRef ?? 'test-evidence',
+    supersedesRevisionId: overrides.supersedesRevisionId ?? null,
+  };
+}
+
+function revisionRowFixture(overrides: Partial<RevisionRow> & Pick<RevisionRow, 'revision_id' | 'config_name'>): RevisionRow {
+  return {
+    schema_version: 1,
+    default_marker_status: 'known',
+    default_marker_value: 'false',
+    default_marker_reason: null,
+    default_marker_observed_at: null,
+    scope_boundary_status: 'known',
+    scope_boundary_value: 'boundary',
+    scope_boundary_reason: null,
+    scope_boundary_observed_at: null,
+    availability_status: 'known',
+    availability_value: 'resolved',
+    availability_reason: null,
+    availability_observed_at: null,
+    instructions_json: '[]',
+    skills_json: '[]',
+    mcp_json: '[]',
+    hooks_json: '[]',
+    plugins_json: '[]',
+    trigger_category: 'new-scenario',
+    evidence_ref: 'test-evidence',
+    supersedes_revision_id: null,
+    ...overrides,
   };
 }
 
@@ -58,8 +87,8 @@ describe('SqliteConfigRevisionRepository (:memory:, STRICT)', () => {
             name: 'openspec-explore',
             sourceCategory: known('project-capability'),
             summary: known('skill reference: openspec-explore'),
-            sourceRef: unknown('not-provided', 'now'),
-            contentFingerprint: unknown('not-provided', 'now'),
+            sourceRef: known('ref/openspec-explore'),
+            contentFingerprint: known('fingerprint/openspec-explore'),
           },
         ],
       });
@@ -99,29 +128,11 @@ describe('SqliteConfigRevisionRepository (:memory:, STRICT)', () => {
   test('findById throws ConfigUnsupportedError for a row with an unsupported schema_version', async () => {
     const repo = new SqliteConfigRevisionRepository(':memory:');
     try {
-      const row: RevisionRow = {
+      const row: RevisionRow = revisionRowFixture({
         revision_id: 'rev-bad-version',
         config_name: 'general',
         schema_version: 99,
-        default_marker_status: 'known',
-        default_marker_value: 'false',
-        default_marker_reason: null,
-        default_marker_observed_at: null,
-        scope_boundary_status: 'known',
-        scope_boundary_value: 'boundary',
-        scope_boundary_reason: null,
-        scope_boundary_observed_at: null,
-        availability_status: 'known',
-        availability_value: 'resolved',
-        availability_reason: null,
-        availability_observed_at: null,
-        supersedes_revision_id: null,
-        instructions_json: '[]',
-        skills_json: '[]',
-        mcp_json: '[]',
-        hooks_json: '[]',
-        plugins_json: '[]',
-      };
+      });
       repo.insertRawRow(row);
 
       await expect(repo.findById('rev-bad-version')).rejects.toBeInstanceOf(ConfigUnsupportedError);
@@ -134,29 +145,11 @@ describe('SqliteConfigRevisionRepository (:memory:, STRICT)', () => {
     const repo = new SqliteConfigRevisionRepository(':memory:');
     try {
       repo.seed([sampleRevision({ configName: 'general', revisionId: 'rev-good' })]);
-      const row: RevisionRow = {
+      const row: RevisionRow = revisionRowFixture({
         revision_id: 'rev-bad-version',
         config_name: 'general',
         schema_version: 99,
-        default_marker_status: 'known',
-        default_marker_value: 'false',
-        default_marker_reason: null,
-        default_marker_observed_at: null,
-        scope_boundary_status: 'known',
-        scope_boundary_value: 'boundary',
-        scope_boundary_reason: null,
-        scope_boundary_observed_at: null,
-        availability_status: 'known',
-        availability_value: 'resolved',
-        availability_reason: null,
-        availability_observed_at: null,
-        supersedes_revision_id: null,
-        instructions_json: '[]',
-        skills_json: '[]',
-        mcp_json: '[]',
-        hooks_json: '[]',
-        plugins_json: '[]',
-      };
+      });
       repo.insertRawRow(row);
 
       const all = await repo.listAll();
@@ -173,32 +166,61 @@ describe('SqliteConfigRevisionRepository (:memory:, STRICT)', () => {
   test('findById throws ConfigUnsupportedError when stored capability JSON cannot be parsed', async () => {
     const repo = new SqliteConfigRevisionRepository(':memory:');
     try {
-      const row: RevisionRow = {
+      const row: RevisionRow = revisionRowFixture({
         revision_id: 'rev-corrupt-json',
         config_name: 'general',
         schema_version: 1,
-        default_marker_status: 'known',
-        default_marker_value: 'false',
-        default_marker_reason: null,
-        default_marker_observed_at: null,
-        scope_boundary_status: 'known',
-        scope_boundary_value: 'boundary',
-        scope_boundary_reason: null,
-        scope_boundary_observed_at: null,
-        availability_status: 'known',
-        availability_value: 'resolved',
-        availability_reason: null,
-        availability_observed_at: null,
-        supersedes_revision_id: null,
         instructions_json: 'not-json',
-        skills_json: '[]',
-        mcp_json: '[]',
-        hooks_json: '[]',
-        plugins_json: '[]',
-      };
+      });
       repo.insertRawRow(row);
 
       await expect(repo.findById('rev-corrupt-json')).rejects.toBeInstanceOf(ConfigUnsupportedError);
+    } finally {
+      repo.close();
+    }
+  });
+
+  test('a pre-Story-3.1-style stored capability entry (kind/name/sourceCategory/summary, but no sourceRef/contentFingerprint keys) degrades those two fields to Unknown (not undefined) on both findById and listAll', async () => {
+    const repo = new SqliteConfigRevisionRepository(':memory:');
+    try {
+      const preStory31Skill = {
+        kind: 'skill',
+        name: 'legacy-skill',
+        sourceCategory: { kind: 'known', value: 'project-capability' },
+        summary: { kind: 'known', value: 'skill reference: legacy-skill' },
+        // Deliberately no `sourceRef`/`contentFingerprint` keys at all --
+        // this is the exact shape rows written before Story 3.1 have.
+      };
+      const row: RevisionRow = revisionRowFixture({
+        revision_id: 'rev-pre-3-1',
+        config_name: 'general',
+        skills_json: JSON.stringify([preStory31Skill]),
+      });
+      repo.insertRawRow(row);
+
+      const found = await repo.findById('rev-pre-3-1');
+      expect(found).not.toBeNull();
+      const skillFromFindById = found!.skills[0]!;
+      expect(skillFromFindById.sourceRef).not.toBeUndefined();
+      expect(isUnknown(skillFromFindById.sourceRef)).toBe(true);
+      expect(isUnknown(skillFromFindById.contentFingerprint)).toBe(true);
+      if (isUnknown(skillFromFindById.sourceRef)) {
+        expect(typeof skillFromFindById.sourceRef.reason).toBe('string');
+        expect(skillFromFindById.sourceRef.reason.length).toBeGreaterThan(0);
+      }
+      if (isUnknown(skillFromFindById.contentFingerprint)) {
+        expect(typeof skillFromFindById.contentFingerprint.reason).toBe('string');
+        expect(skillFromFindById.contentFingerprint.reason.length).toBeGreaterThan(0);
+      }
+      // sourceCategory/summary, which *were* present, must still round-trip as Known.
+      expect(isKnown(skillFromFindById.sourceCategory)).toBe(true);
+      expect(isKnown(skillFromFindById.summary)).toBe(true);
+
+      const all = await repo.listAll();
+      const skillFromListAll = all.find((r) => r.revisionId === 'rev-pre-3-1')!.skills[0]!;
+      expect(skillFromListAll.sourceRef).not.toBeUndefined();
+      expect(isUnknown(skillFromListAll.sourceRef)).toBe(true);
+      expect(isUnknown(skillFromListAll.contentFingerprint)).toBe(true);
     } finally {
       repo.close();
     }

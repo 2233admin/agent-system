@@ -56,11 +56,6 @@ const zh: Dict = {
   'queryFailure.unsupported': '不受支持（{reason}）。恢复：重新导入该修订版本，或检查其存储数据；其他配置不受影响。',
   'queryFailure.prefix': '配置 "{revisionId}"：{reason}',
 
-  'establish.success': '已建立新配置修订：',
-  'establish.missingTriggerCategory': '缺少触发类别（必须是 new-scenario、known-insufficiency 或 bad-case 之一）。',
-  'establish.missingEvidence': '缺少证据引用。',
-  'establish.invalidCandidate': '候选内容格式不正确（{reason}）。',
-
   'comparison.header': '正在比较 {count} 个修订版本：{ids}',
   'comparison.missingIn': '缺失于：{ids}',
   'comparison.noValid': '没有解析出任何可比较的有效配置修订版本。',
@@ -108,7 +103,6 @@ const zh: Dict = {
   'parseError.unknownFlag': '未知参数：{flag}',
   'parseError.unknownClient': '未知客户端：{client}',
   'parseError.unknownCommand': '未知命令：{command}',
-  'parseError.flagRequiresValue': '{flag} 需要一个值',
   'parseError.denylistedForwardedArg':
     'configs {command}：转发参数 "{arg}" 不被允许——如果原样传给真实的 `omp` 二进制文件，会破坏本 Story 单一扩展来源/隔离 profile/不自动恢复这几条保证',
   'openDeps.failed': 'configs：无法打开配置存储：{message}',
@@ -116,6 +110,17 @@ const zh: Dict = {
   'launchPlan.notFound': '未找到启动计划 {target}。请先运行 `configs use <id>`。',
   'launchPlan.notFoundTargetForId': '（id 为 "{planId}"）',
   'launchPlan.notFoundTargetNoActive': '（客户端 "omp" 没有活跃的启动计划）',
+
+  'parseError.establishFlagRequiresValue': '{flag} 需要一个值',
+  'parseError.establishFlagRepeated': '{flag} 只能传一次',
+
+  'establish.successPrefix': '已建立新配置修订：',
+  'establish.missingTriggerCategory':
+    'configs establish：缺少或不合法的触发类别——必须通过 --trigger-category 传入 new-scenario / known-insufficiency / bad-case 之一；未写入任何内容。',
+  'establish.missingEvidence': 'configs establish：缺少证据引用——必须通过 --evidence <ref> 传入非空值；未写入任何内容。',
+  'establish.noCandidateSource':
+    'configs establish：未提供候选内容——请传入 --from <path>，或通过 stdin 管道输入候选 JSON（当前 stdin 是交互式终端）；未写入任何内容。',
+  'establish.invalidCandidate': 'configs establish：候选内容不合法（以下为英文字段路径/类型提示，非待翻译文案）：`{reason}`；未写入任何内容。',
 };
 
 const en: Dict = {
@@ -149,11 +154,6 @@ const en: Dict = {
   'queryFailure.notFound': 'not found. Recovery: run `configs list` to see available revision ids.',
   'queryFailure.unsupported': 'unsupported ({reason}). Recovery: re-seed this revision or inspect its stored data; other configurations are unaffected.',
   'queryFailure.prefix': 'Configuration "{revisionId}": {reason}',
-
-  'establish.success': 'Established a new configuration revision:',
-  'establish.missingTriggerCategory': 'missing trigger category (must be one of new-scenario, known-insufficiency, bad-case).',
-  'establish.missingEvidence': 'missing evidence reference.',
-  'establish.invalidCandidate': 'invalid candidate content ({reason}).',
 
   'comparison.header': 'Comparing {count} revision(s): {ids}',
   'comparison.missingIn': 'missing in: {ids}',
@@ -202,7 +202,6 @@ const en: Dict = {
   'parseError.unknownFlag': 'unknown flag: {flag}',
   'parseError.unknownClient': 'unknown client: {client}',
   'parseError.unknownCommand': 'unknown command: {command}',
-  'parseError.flagRequiresValue': '{flag} requires a value',
   'parseError.denylistedForwardedArg':
     "configs {command}: forwarded argument \"{arg}\" is not allowed -- it would defeat this Story's single-extension-source/isolated-profile/no-auto-resume guarantees when passed through to the real `omp` binary",
   'openDeps.failed': 'configs: could not open configuration storage: {message}',
@@ -210,6 +209,17 @@ const en: Dict = {
   'launchPlan.notFound': 'No launch plan found {target}. Run `configs use <id>` first.',
   'launchPlan.notFoundTargetForId': 'for id "{planId}"',
   'launchPlan.notFoundTargetNoActive': '(no active plan for client "omp")',
+
+  'parseError.establishFlagRequiresValue': '{flag} requires a value',
+  'parseError.establishFlagRepeated': '{flag} can only be passed once',
+
+  'establish.successPrefix': 'Established new configuration revision:',
+  'establish.missingTriggerCategory':
+    'configs establish: trigger category is missing or invalid -- pass one of new-scenario / known-insufficiency / bad-case via --trigger-category; nothing was written.',
+  'establish.missingEvidence': 'configs establish: evidence reference is missing -- pass a non-empty value via --evidence <ref>; nothing was written.',
+  'establish.noCandidateSource':
+    'configs establish: no candidate source was provided -- pass --from <path>, or pipe candidate JSON via stdin (stdin is currently an interactive terminal); nothing was written.',
+  'establish.invalidCandidate': 'configs establish: candidate is invalid: `{reason}`; nothing was written.',
 };
 
 const DICTS: Record<Lang, Dict> = { zh, en };

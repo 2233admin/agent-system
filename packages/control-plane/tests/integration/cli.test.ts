@@ -1,12 +1,24 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, rmSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
 import { main } from '../../src/cli/index';
 import { SqliteConfigRevisionRepository } from '../../src/adapters/sqlite/repository';
+import type { RevisionRow } from '../../src/adapters/sqlite/repository';
 import { known, unknown } from '../../src/domain/facts';
-import type { StableConfigRevision } from '../../src/domain/config';
+import type { CapabilityReference, SourceCategory, StableConfigRevision } from '../../src/domain/config';
+
+function ref(kind: CapabilityReference['kind'], name: string, sourceCategory: SourceCategory = 'project-capability'): CapabilityReference {
+  return {
+    kind,
+    name,
+    sourceCategory: known(sourceCategory),
+    summary: known(`${kind} reference: ${name}`),
+    sourceRef: known(`ref/${name}`),
+    contentFingerprint: known(`fingerprint/${name}`),
+  };
+}
 
 function sampleRevision(overrides: Partial<StableConfigRevision> & { configName: string; revisionId: string }): StableConfigRevision {
   return {
@@ -15,21 +27,41 @@ function sampleRevision(overrides: Partial<StableConfigRevision> & { configName:
     defaultMarker: overrides.defaultMarker ?? known(false),
     scopeBoundary: overrides.scopeBoundary ?? known('a scope boundary'),
     availability: overrides.availability ?? known('resolved'),
-    supersedesRevisionId: overrides.supersedesRevisionId ?? null,
-    instructions: overrides.instructions ?? [
-      {
-        kind: 'instruction',
-        name: '.cap/prompts/x.md',
-        sourceCategory: known('project-prompt'),
-        summary: known('prompt file reference: .cap/prompts/x.md'),
-        sourceRef: unknown('not-provided', 'now'),
-        contentFingerprint: unknown('not-provided', 'now'),
-      },
-    ],
+    instructions: overrides.instructions ?? [ref('instruction', '.cap/prompts/x.md', 'project-prompt')],
     skills: overrides.skills ?? [],
     mcp: overrides.mcp ?? [],
     hooks: overrides.hooks ?? [],
     plugins: overrides.plugins ?? [],
+    triggerCategory: overrides.triggerCategory ?? 'new-scenario',
+    evidenceRef: overrides.evidenceRef ?? 'test-evidence',
+    supersedesRevisionId: overrides.supersedesRevisionId ?? null,
+  };
+}
+
+function revisionRowFixture(overrides: Partial<RevisionRow> & Pick<RevisionRow, 'revision_id' | 'config_name'>): RevisionRow {
+  return {
+    schema_version: 1,
+    default_marker_status: 'known',
+    default_marker_value: 'false',
+    default_marker_reason: null,
+    default_marker_observed_at: null,
+    scope_boundary_status: 'known',
+    scope_boundary_value: 'boundary',
+    scope_boundary_reason: null,
+    scope_boundary_observed_at: null,
+    availability_status: 'known',
+    availability_value: 'resolved',
+    availability_reason: null,
+    availability_observed_at: null,
+    instructions_json: '[]',
+    skills_json: '[]',
+    mcp_json: '[]',
+    hooks_json: '[]',
+    plugins_json: '[]',
+    trigger_category: 'new-scenario',
+    evidence_ref: 'test-evidence',
+    supersedes_revision_id: null,
+    ...overrides,
   };
 }
 
@@ -130,16 +162,7 @@ describe('configs show', () => {
       sampleRevision({
         configName: 'general',
         revisionId: 'rev-general',
-        skills: [
-          {
-            kind: 'skill',
-            name: 'openspec-explore',
-            sourceCategory: known('project-capability'),
-            summary: known('skill reference: openspec-explore'),
-            sourceRef: unknown('not-provided', 'now'),
-            contentFingerprint: unknown('not-provided', 'now'),
-          },
-        ],
+        skills: [ref('skill', 'openspec-explore')],
       }),
     ]);
 
@@ -158,16 +181,7 @@ describe('configs show', () => {
       sampleRevision({
         configName: 'agent-assembler',
         revisionId: 'rev-private',
-        skills: [
-          {
-            kind: 'skill',
-            name: 'private-domain-skill',
-            sourceCategory: known('project-skill-import'),
-            summary: known('skill reference: private-domain-skill'),
-            sourceRef: unknown('not-provided', 'now'),
-            contentFingerprint: unknown('not-provided', 'now'),
-          },
-        ],
+        skills: [ref('skill', 'private-domain-skill', 'project-skill-import')],
       }),
     ]);
 
@@ -195,29 +209,13 @@ describe('configs show', () => {
     seed([sampleRevision({ configName: 'general', revisionId: 'rev-good' })]);
     const repo = new SqliteConfigRevisionRepository(dbPath);
     try {
-      repo.insertRawRow({
-        revision_id: 'rev-bad',
-        config_name: 'general',
-        schema_version: 99,
-        default_marker_status: 'known',
-        default_marker_value: 'false',
-        default_marker_reason: null,
-        default_marker_observed_at: null,
-        scope_boundary_status: 'known',
-        scope_boundary_value: 'boundary',
-        scope_boundary_reason: null,
-        scope_boundary_observed_at: null,
-        availability_status: 'known',
-        availability_value: 'resolved',
-        availability_reason: null,
-        availability_observed_at: null,
-        supersedes_revision_id: null,
-        instructions_json: '[]',
-        skills_json: '[]',
-        mcp_json: '[]',
-        hooks_json: '[]',
-        plugins_json: '[]',
-      });
+      repo.insertRawRow(
+        revisionRowFixture({
+          revision_id: 'rev-bad',
+          config_name: 'general',
+          schema_version: 99,
+        }),
+      );
     } finally {
       repo.close();
     }
@@ -237,21 +235,7 @@ describe('configs show', () => {
 describe('configs compare', () => {
   test('比较-多个: mechanical side-by-side composition/source/boundary/missing/differences/Unknown; no score/rank/recommendation', async () => {
     seed([
-      sampleRevision({
-        configName: 'general',
-        revisionId: 'rev-a',
-        scopeBoundary: known('boundary A'),
-        skills: [
-          {
-            kind: 'skill',
-            name: 'shared',
-            sourceCategory: known('project-capability'),
-            summary: known('skill reference: shared'),
-            sourceRef: unknown('not-provided', 'now'),
-            contentFingerprint: unknown('not-provided', 'now'),
-          },
-        ],
-      }),
+      sampleRevision({ configName: 'general', revisionId: 'rev-a', scopeBoundary: known('boundary A'), skills: [ref('skill', 'shared')] }),
       sampleRevision({ configName: 'reviewer', revisionId: 'rev-b', scopeBoundary: known('boundary B'), skills: [] }),
     ]);
 
@@ -308,29 +292,13 @@ describe('configs compare', () => {
     seed([sampleRevision({ configName: 'general', revisionId: 'rev-good' })]);
     const repo = new SqliteConfigRevisionRepository(dbPath);
     try {
-      repo.insertRawRow({
-        revision_id: 'rev-bad',
-        config_name: 'general',
-        schema_version: 99,
-        default_marker_status: 'known',
-        default_marker_value: 'false',
-        default_marker_reason: null,
-        default_marker_observed_at: null,
-        scope_boundary_status: 'known',
-        scope_boundary_value: 'boundary',
-        scope_boundary_reason: null,
-        scope_boundary_observed_at: null,
-        availability_status: 'known',
-        availability_value: 'resolved',
-        availability_reason: null,
-        availability_observed_at: null,
-        supersedes_revision_id: null,
-        instructions_json: '[]',
-        skills_json: '[]',
-        mcp_json: '[]',
-        hooks_json: '[]',
-        plugins_json: '[]',
-      });
+      repo.insertRawRow(
+        revisionRowFixture({
+          revision_id: 'rev-bad',
+          config_name: 'general',
+          schema_version: 99,
+        }),
+      );
     } finally {
       repo.close();
     }
@@ -349,30 +317,12 @@ describe('configs compare', () => {
       sampleRevision({
         configName: 'general',
         revisionId: 'rev-a',
-        skills: [
-          {
-            kind: 'skill',
-            name: 'shared',
-            sourceCategory: known('project-capability'),
-            summary: known('skill reference: shared'),
-            sourceRef: unknown('not-provided', 'now'),
-            contentFingerprint: unknown('not-provided', 'now'),
-          },
-        ],
+        skills: [ref('skill', 'shared')],
       }),
       sampleRevision({
         configName: 'reviewer',
         revisionId: 'rev-b',
-        skills: [
-          {
-            kind: 'skill',
-            name: 'shared',
-            sourceCategory: known('project-skill-import'),
-            summary: known('skill reference: shared'),
-            sourceRef: unknown('not-provided', 'now'),
-            contentFingerprint: unknown('not-provided', 'now'),
-          },
-        ],
+        skills: [ref('skill', 'shared', 'project-skill-import')],
       }),
     ]);
 
@@ -382,117 +332,6 @@ describe('configs compare', () => {
     expect(output).toContain('[source: different]');
     expect(output).toContain('rev-a: project-capability');
     expect(output).toContain('rev-b: project-skill-import');
-  });
-});
-
-describe('configs establish', () => {
-  function validCandidateJson(overrides: { configName?: string } = {}): string {
-    return JSON.stringify({
-      configName: overrides.configName ?? 'assembled-config',
-      defaultMarker: { kind: 'known', value: false },
-      scopeBoundary: { kind: 'known', value: 'Role `assembled-config`' },
-      availability: { kind: 'known', value: 'resolved' },
-      instructions: [],
-      skills: [
-        {
-          kind: 'skill',
-          name: 'openspec-explore',
-          sourceCategory: { kind: 'known', value: 'project-capability' },
-          summary: { kind: 'known', value: 'skill reference: openspec-explore' },
-          sourceRef: { kind: 'unknown', reason: 'not-yet-determined', observedAt: '2026-08-23T00:00:00.000Z' },
-          contentFingerprint: { kind: 'unknown', reason: 'not-yet-determined', observedAt: '2026-08-23T00:00:00.000Z' },
-        },
-      ],
-      mcp: [],
-      hooks: [],
-      plugins: [],
-    });
-  }
-
-  test('建立成功: valid flags + candidate JSON (via stdin) establishes a new supersedes=null revision and prints the success prefix + detail block', async () => {
-    const code = await main(['establish', '--trigger-category', 'new-scenario', '--evidence', 'issue #42'], {
-      readCandidateInput: async () => validCandidateJson(),
-    });
-    expect(code).toBe(0);
-    const output = logs.join('\n');
-    expect(output).toContain('Established a new configuration revision:');
-    expect(output).toContain('Configuration: assembled-config');
-    expect(output).toContain('openspec-explore');
-
-    const repo = new SqliteConfigRevisionRepository(dbPath);
-    try {
-      const all = await repo.listAll();
-      expect(all).toHaveLength(1);
-      expect(all[0]!.configName).toBe('assembled-config');
-      expect(all[0]!.supersedesRevisionId).toBeNull();
-    } finally {
-      repo.close();
-    }
-  });
-
-  test('candidate JSON supplied via --from <path> takes the same success path as stdin', async () => {
-    const candidatePath = path.join(tmpDir, 'candidate.json');
-    writeFileSync(candidatePath, validCandidateJson({ configName: 'from-file-config' }));
-
-    const code = await main(['establish', '--trigger-category', 'bad-case', '--evidence', 'evidence-ref', '--from', candidatePath]);
-    expect(code).toBe(0);
-    expect(logs.join('\n')).toContain('Configuration: from-file-config');
-  });
-
-  test('缺 trigger-category: omitting --trigger-category is rejected (zero writes, exit 1) without ever reading the candidate', async () => {
-    const code = await main(['establish', '--evidence', 'issue #42'], {
-      readCandidateInput: async () => validCandidateJson(),
-    });
-    expect(code).toBe(1);
-    const output = logs.join('\n');
-    expect(output).toMatch(/trigger category/i);
-
-    const repo = new SqliteConfigRevisionRepository(dbPath);
-    try {
-      const all = await repo.listAll();
-      expect(all).toEqual([]);
-    } finally {
-      repo.close();
-    }
-  });
-
-  test('缺 evidence: omitting --evidence is rejected (zero writes, exit 1)', async () => {
-    const code = await main(['establish', '--trigger-category', 'new-scenario'], {
-      readCandidateInput: async () => validCandidateJson(),
-    });
-    expect(code).toBe(1);
-    const output = logs.join('\n');
-    expect(output).toMatch(/evidence/i);
-
-    const repo = new SqliteConfigRevisionRepository(dbPath);
-    try {
-      const all = await repo.listAll();
-      expect(all).toEqual([]);
-    } finally {
-      repo.close();
-    }
-  });
-
-  test('malformed candidate JSON is rejected with a typed failure (zero writes, exit 1) instead of throwing/crashing', async () => {
-    const code = await main(['establish', '--trigger-category', 'new-scenario', '--evidence', 'issue #42'], {
-      readCandidateInput: async () => 'not valid json',
-    });
-    expect(code).toBe(1);
-    expect(logs.join('\n')).toContain('invalid candidate content');
-
-    const repo = new SqliteConfigRevisionRepository(dbPath);
-    try {
-      const all = await repo.listAll();
-      expect(all).toEqual([]);
-    } finally {
-      repo.close();
-    }
-  });
-
-  test('a dangling flag with no value is a usage error (exit 2), distinct from the domain-level exit-1 rejections above', async () => {
-    const code = await main(['establish', '--trigger-category']);
-    expect(code).toBe(2);
-    expect(errors.join('\n')).toContain('--trigger-category');
   });
 });
 

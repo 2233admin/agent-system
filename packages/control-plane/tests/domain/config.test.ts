@@ -10,8 +10,8 @@ function ref(kind: CapabilityReference['kind'], name: string, source: Capability
     name,
     sourceCategory: source,
     summary: known(`${kind} reference: ${name}`),
-    sourceRef: unknown('not-provided', 'now'),
-    contentFingerprint: unknown('not-provided', 'now'),
+    sourceRef: known(`ref/${name}`),
+    contentFingerprint: known(`fingerprint/${name}`),
   };
 }
 
@@ -22,12 +22,14 @@ function revision(overrides: Partial<StableConfigRevision> & { configName: strin
     defaultMarker: overrides.defaultMarker ?? known(false),
     scopeBoundary: overrides.scopeBoundary ?? known('a scope boundary'),
     availability: overrides.availability ?? known('resolved'),
-    supersedesRevisionId: overrides.supersedesRevisionId ?? null,
     instructions: overrides.instructions ?? [],
     skills: overrides.skills ?? [],
     mcp: overrides.mcp ?? [],
     hooks: overrides.hooks ?? [],
     plugins: overrides.plugins ?? [],
+    triggerCategory: overrides.triggerCategory ?? 'new-scenario',
+    evidenceRef: overrides.evidenceRef ?? 'test-evidence',
+    supersedesRevisionId: overrides.supersedesRevisionId ?? null,
   };
 }
 

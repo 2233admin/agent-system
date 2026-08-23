@@ -1,5 +1,5 @@
 import type { Fact } from '../domain/facts';
-import type { StableConfigRevision } from '../domain/config';
+import type { StableConfigRevision, TriggerCategory } from '../domain/config';
 import type { ClientId } from '../domain/client';
 import type { LaunchPlan } from '../domain/activation';
 
@@ -15,90 +15,86 @@ export interface ConfigRevisionRepository {
 }
 
 /**
- * The three allowed reasons a low-frequency configuration establish/revise
- * command may write a new revision (AD-16/AD-21). Merely discovering an
- * asset, its historical existence, or technical feasibility is never a
- * valid trigger on its own.
+ * `[Story 3.1]` Everything `create` needs besides the candidate itself.
+ * `candidate` is intentionally `unknown` -- it is raw, untrusted JSON
+ * (from `--from <path>` or stdin) that the adapter must validate field by
+ * field (see `application/establish.ts`'s `parseCandidateRevision`)
+ * before ever writing anything; a type mismatch anywhere must fail the
+ * whole call with zero writes, never partially insert or silently coerce.
  */
-export type TriggerCategory = 'new-scenario' | 'known-insufficiency' | 'bad-case';
-
-export const TRIGGER_CATEGORIES: readonly TriggerCategory[] = ['new-scenario', 'known-insufficiency', 'bad-case'];
-
-/**
- * The compound value `create` takes as its `trigger` argument (AD-21's
- * `SUPPLY_TRIGGER`) -- category and evidence reference are packed together,
- * never passed as two independent parameters. Typed as raw strings (not
- * `TriggerCategory`) because this is unvalidated input arriving from the
- * CLI/an Agent; `create` is what validates and rejects it.
- */
-export interface RevisionTriggerInput {
-  readonly category: string;
+export interface EstablishConfigRevisionParams {
+  readonly triggerCategory: TriggerCategory;
   readonly evidenceRef: string;
+  readonly candidate: unknown;
 }
 
 /**
- * Everything `create` needs to persist a new revision except the id (which
- * the port generates) and `supersedesRevisionId` (which is supplied
- * separately as `create`'s own `supersedes` argument -- AD-21: the caller
- * declares it explicitly, the port never infers "latest revision").
+ * `[Story 3.1]` Insert-only write port for `stable_config_revision` --
+ * deliberately has no `update`/`delete` (Boundaries & Constraints: a
+ * `StableConfigRevision` is immutable once established; a "new decision"
+ * is always a new revision, never a mutation of an existing one).
+ * `create` always writes `supersedes = null` in this Story; Story 3.2
+ * extends this port's params, not this Story.
  */
-export type NewConfigRevisionInput = Omit<StableConfigRevision, 'revisionId' | 'supersedesRevisionId'>;
+export interface ConfigRevisionWriter {
+  create(params: EstablishConfigRevisionParams): Promise<StableConfigRevision>;
+}
 
 /**
- * The declared trigger category was missing or was not one of
- * `TRIGGER_CATEGORIES`. AD-16/AD-21: `create` must reject the entire write
- * rather than persist a partial/guessed record.
+ * `[Story 3.1]` `--trigger-category` was omitted, or its value is not one
+ * of the three known categories (AD-16/AD-21). Declared alongside the
+ * other write-path ports/errors (same convention as `queries.ts`'s
+ * `ConfigNotFoundError`) so `cli/render.ts`'s `renderQueryFailure` can fold
+ * every `configs establish` rejection into the same closed
+ * failure-rendering path used by `show`/`compare`.
  */
 export class InvalidTriggerCategoryError extends Error {
   readonly kind = 'invalid-trigger-category' as const;
 
-  constructor(readonly received: string) {
-    super(`invalid or missing trigger category: "${received}" (must be one of: ${TRIGGER_CATEGORIES.join(', ')})`);
+  constructor(readonly received: string | undefined) {
+    super(
+      `trigger category is missing or invalid (received: ${received ?? '(none)'}; expected one of new-scenario, known-insufficiency, bad-case)`,
+    );
     this.name = 'InvalidTriggerCategoryError';
   }
 }
 
-/** The evidence reference was missing or empty. AD-16/AD-21. */
+/** `[Story 3.1]` `--evidence` was omitted or empty. */
 export class MissingEvidenceError extends Error {
   readonly kind = 'missing-evidence' as const;
 
   constructor() {
-    super('evidence reference is required and must not be empty');
+    super('evidence reference is required and must be non-empty');
     this.name = 'MissingEvidenceError';
   }
 }
 
 /**
- * The candidate JSON supplied to `configs establish` (via `--from`/stdin)
- * did not match the shape `create` requires. Thrown by the CLI's own
- * parsing step -- not by the write port itself -- but declared alongside
- * the port's other typed rejections so `cli/render.ts` can fold all three
- * into the same closed failure-rendering path.
+ * `[Story 3.1]` Neither `--from <path>` nor a non-TTY stdin was available
+ * to read a candidate from -- rejected immediately rather than blocking on
+ * an interactive stdin read (UX-DR2: non-interactive is a first-class
+ * citizen).
+ */
+export class NoCandidateSourceError extends Error {
+  readonly kind = 'no-candidate-source' as const;
+
+  constructor() {
+    super('no candidate source was provided: pass --from <path>, or pipe candidate JSON via stdin (stdin is a TTY)');
+    this.name = 'NoCandidateSourceError';
+  }
+}
+
+/**
+ * `[Story 3.1]` The candidate (file/stdin content) could not be read,
+ * parsed as JSON, or matched its declared field types.
  */
 export class InvalidCandidateError extends Error {
   readonly kind = 'invalid-candidate' as const;
 
   constructor(readonly reason: string) {
-    super(`invalid candidate content: ${reason}`);
+    super(`candidate is invalid: ${reason}`);
     this.name = 'InvalidCandidateError';
   }
-}
-
-/**
- * Insert-only write port for `StableConfigRevision`s (AD-21), deliberately
- * separate from the read-only `ConfigRevisionRepository`. Only `create`
- * exists -- no update/delete method -- so revision immutability is
- * guaranteed by the interface shape, not just by a runtime check. `create`
- * validates trigger/evidence and generates `revisionId` itself (never
- * trusting a caller-supplied id) atomically with the insert; `supersedes`
- * is the caller's own explicit declaration (`null` for a new configuration).
- */
-export interface ConfigRevisionWriter {
-  create(
-    revision: NewConfigRevisionInput,
-    trigger: RevisionTriggerInput,
-    supersedes: string | null,
-  ): Promise<StableConfigRevision>;
 }
 
 /**

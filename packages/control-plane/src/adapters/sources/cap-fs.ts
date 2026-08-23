@@ -15,6 +15,20 @@ import path from 'node:path';
 import { known, unknown } from '../../domain/facts';
 import type { CapabilityKind, CapabilityReference, SourceCategory, StableConfigRevision } from '../../domain/config';
 
+/**
+ * `[Story 3.1]` `.cap/`-materialized revisions predate the
+ * `trigger_category`/`evidence_ref`/`sourceRef`/`contentFingerprint`
+ * fields this Story adds -- this loader never captured (and, per AD-20,
+ * is not allowed to start capturing) any real Agent-session trigger or a
+ * stronger provenance pointer than `sourceCategory` already carries. These
+ * are honest `Unknown` Facts, not fabricated values, for the two new
+ * per-capability fields; `evidenceRef`/`triggerCategory` on the
+ * revision itself are plain (non-`Fact`) NOT NULL columns, so this uses
+ * the declared manifest path as real (if approximate) evidence rather
+ * than inventing a value that claims more than this loader actually knows.
+ */
+const CAP_FS_FIELD_NOT_CAPTURED = unknown('not-captured-by-cap-fs-adapter', new Date(0).toISOString());
+
 interface CapManifest {
   version: number;
   defaults?: string;
@@ -87,7 +101,6 @@ function mapCapabilityNames(
   names: readonly string[],
   kind: CapabilityKind,
   importNames: ReadonlySet<string>,
-  observedAt: string,
 ): CapabilityReference[] {
   return names.map((name) => {
     const sourceCategory: SourceCategory = importNames.has(name) ? 'project-skill-import' : 'project-capability';
@@ -96,11 +109,8 @@ function mapCapabilityNames(
       name,
       sourceCategory: known(sourceCategory),
       summary: known(`${kind} reference: ${name}`),
-      // `[DELTA]` AD-21 (Story 3.1): `.cap/` never declares a concrete
-      // source address or content fingerprint for its entries -- Unknown,
-      // not omitted, per AD-8.
-      sourceRef: unknown('cap-fs-does-not-declare-a-source-address', observedAt),
-      contentFingerprint: unknown('cap-fs-does-not-declare-a-content-fingerprint', observedAt),
+      sourceRef: CAP_FS_FIELD_NOT_CAPTURED,
+      contentFingerprint: CAP_FS_FIELD_NOT_CAPTURED,
     };
   });
 }
@@ -148,21 +158,31 @@ export async function loadCapConfigRevisions(capRoot: string): Promise<StableCon
       defaultMarker: unknown('cap-manifest-defaults-field-is-not-a-per-profile-role-marker', observedAt),
       scopeBoundary: known(buildScopeBoundary(role, profile)),
       availability: resolved ? known('resolved') : unknown('not-resolved', observedAt),
-      supersedesRevisionId: null,
       instructions: [
         {
           kind: 'instruction',
           name: profile.prompt,
           sourceCategory: known<SourceCategory>('project-prompt'),
           summary: known(`prompt file reference: ${profile.prompt}`),
-          sourceRef: unknown('cap-fs-does-not-declare-a-source-address', observedAt),
-          contentFingerprint: unknown('cap-fs-does-not-declare-a-content-fingerprint', observedAt),
+          sourceRef: CAP_FS_FIELD_NOT_CAPTURED,
+          contentFingerprint: CAP_FS_FIELD_NOT_CAPTURED,
         },
       ],
-      skills: mapCapabilityNames(inventory?.skills ?? [], 'skill', importNames, observedAt),
-      mcp: mapCapabilityNames(inventory?.mcps ?? [], 'mcp', importNames, observedAt),
-      hooks: mapCapabilityNames(inventory?.hooks ?? [], 'hook', importNames, observedAt),
-      plugins: mapCapabilityNames(inventory?.plugins ?? [], 'plugin', importNames, observedAt),
+      skills: mapCapabilityNames(inventory?.skills ?? [], 'skill', importNames),
+      mcp: mapCapabilityNames(inventory?.mcps ?? [], 'mcp', importNames),
+      hooks: mapCapabilityNames(inventory?.hooks ?? [], 'hook', importNames),
+      plugins: mapCapabilityNames(inventory?.plugins ?? [], 'plugin', importNames),
+      // `[Story 3.1]` This loader represents "the configuration as
+      // currently declared in .cap/", not an Agent-session decision to
+      // establish a new revision -- none of the three trigger categories
+      // genuinely fit. `new-scenario` is used as the closest available
+      // placeholder (never persisted through the real write path, which
+      // is `configs establish`, not this dev-only loader) and the
+      // declared profile path is used as the (real, if approximate)
+      // evidence reference.
+      triggerCategory: 'new-scenario',
+      evidenceRef: profilePath,
+      supersedesRevisionId: null,
     });
   }
 
