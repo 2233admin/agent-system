@@ -117,6 +117,14 @@ MVP-FR10：Epic 1 / Story 1.2 — OMP-only 与未来 adapter 边界。
 
 **覆盖 AD：** AD-15（2026-08-22 修订，见 `sprint-change-proposal-2026-08-22-configs-self-update.md`）
 
+### Epic 3：配置供应与装配
+
+`configs` 支持选择数据源（GitHub 仓库或本地目录）导入原始资产，由 Agent 辅助完成调查、候选生成与推荐（对应 SPEC.md CAP-1），用户裁决后建立/修订可持久化的稳定配置（对应 CAP-2 的"建立/修订"部分，恢复覆盖 PRD FR-1～FR-4 / WF-1）。这条能力域此前被 epics.md AR13/AR15/AR16 明确裁定不进入 MVP；本次由负责人在实际使用已交付产品后重新表态、正式排入后续排期。装配（Agent 辅助）与使用（人工看/选/用，即 Epic 1 范围）保持两个不同的能力面，不合并、不互相替代。具体数据源接入方式、配置修订写路径与交互设计留给后续 bmad-architecture / bmad-ux / bmad-create-epics-and-stories 产出。
+
+**覆盖：** SPEC.md CAP-1（全部）、CAP-2（建立/修订部分）；PRD FR-1～FR-4、WF-1；覆盖 epics.md AR13、AR15、AR16 对应裁决的重新表态；覆盖 Architecture Spine AD-16 的"MVP 边界"标注（该行文本本身留给下一轮 architecture 阶段正式修订，不在本次 correct-course 直接改）。
+
+（2026-08-23 新增，见 `sprint-change-proposal-2026-08-23-configs-supply-assembly.md`）
+
 ## Epic 1：查看、选择并使用 OMP 配置
 
 用户可以看清一个配置包含什么，必要时并列比较多个配置，然后亲自选择一个具体修订，经一次确认 fresh 启动 OMP；进入 OMP 后使用原生 resume，并只查看配置应用与客户端启动状态。
