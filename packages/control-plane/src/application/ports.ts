@@ -95,3 +95,16 @@ export interface LaunchContextWriter {
   /** Writes the context and returns the path it was written to. */
   write(context: LaunchContext): Promise<string>;
 }
+
+/**
+ * Startup, best-effort self-update for the compiled `configs` binary
+ * (Story 2.2 / AD-15's narrow self-update exception). Like every other
+ * port in this file, the interface makes no product decisions -- in
+ * particular `checkAndApply` must never throw: the whole
+ * check/download/verify/replace chain is the adapter's responsibility to
+ * fail closed on, silently, so a broken network or a corrupted download
+ * never blocks or delays the command the user actually invoked.
+ */
+export interface SelfUpdatePort {
+  checkAndApply(currentVersion: string): Promise<void>;
+}
