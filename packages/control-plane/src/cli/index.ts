@@ -629,19 +629,57 @@ export async function main(argv: readonly string[], overrides: CliOverrides = {}
 // without reaching into `application/launch.ts` directly.
 export { InvalidTransitionError, LaunchPlanNotFoundError, StaleConfirmationError, UnsupportedClientError };
 
+/**
+ * Decides whether to surface `GithubReleaseUpdater.checkAndApply`'s result
+ * and, if so, prints it -- pulled out of the `import.meta.main` block below
+ * (which never runs under `bun test`, see `tests/cli/version.test.ts`) so
+ * this decision has its own direct test coverage instead of relying on the
+ * process entry point.
+ *
+ * Two reasons a non-`null` `updatedVersion` still must not print:
+ * - `argv[0] === '--version'`: `main()` intercepts `--version` into a
+ *   single bare version-number line, byte-for-byte compared by
+ *   `release-configs.yml`'s smoke test (`actual="$(./dist/... --version)"`).
+ *   The running process is still the pre-replacement code, so it would
+ *   print the *old* version right after claiming an update -- prepending
+ *   any other line here would also just break that contract outright. This
+ *   is the only subcommand suppressed; every other subcommand still prints
+ *   normally.
+ * - Printing itself can fail (e.g. `EPIPE` if stdout was already closed by
+ *   the time this runs) -- caught and silently discarded right here, not
+ *   left to the outer `import.meta.main` try/catch, so a failed print can
+ *   never get misreported as `unexpectedFailure` and abort the command the
+ *   user actually invoked.
+ */
+export function reportSelfUpdateResult(updatedVersion: string | null, argv: readonly string[]): void {
+  if (updatedVersion === null || argv[0] === '--version') {
+    return;
+  }
+  try {
+    console.log(t('selfUpdate.updated', { version: updatedVersion }));
+  } catch {
+    // Best-effort only -- see doc comment above.
+  }
+}
+
 if (import.meta.main) {
   try {
-    // Story 2.2: a one-time, inline, best-effort self-update check --
-    // only ever runs against a compiled release binary (never a source/
-    // test run, which always reports `CONFIGS_VERSION === 'dev'`), and
-    // never throws or produces output (`GithubReleaseUpdater.
-    // checkAndApply`'s own top-level try/catch). `main()`/`runTui()`
-    // themselves stay unaware of self-update entirely.
+    const argv = process.argv.slice(2);
+
+    // Story 2.2 (revised by correct-course 2026-08-23): a one-time,
+    // inline, best-effort self-update check -- only ever runs against a
+    // compiled release binary (never a source/test run, which always
+    // reports `CONFIGS_VERSION === 'dev'`), and never throws
+    // (`GithubReleaseUpdater.checkAndApply`'s own top-level try/catch).
+    // Whether/what to print from its result is `reportSelfUpdateResult`'s
+    // decision (see its doc comment for the `--version`/print-failure
+    // exceptions), not this block's. `main()`/`runTui()` themselves stay
+    // unaware of self-update entirely.
     if (CONFIGS_VERSION !== 'dev') {
-      await new GithubReleaseUpdater().checkAndApply(CONFIGS_VERSION);
+      const updatedVersion = await new GithubReleaseUpdater().checkAndApply(CONFIGS_VERSION);
+      reportSelfUpdateResult(updatedVersion, argv);
     }
 
-    const argv = process.argv.slice(2);
     // `[DELTA]` IA first layer: zero-arg + interactive TTY (both stdin and
     // stdout) enters the TUI and never touches the pure-text dispatch
     // logic below; any explicit subcommand, or a non-interactive/non-TTY

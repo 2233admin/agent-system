@@ -187,7 +187,15 @@ export interface LaunchContextWriter {
  * check/download/verify/replace chain is the adapter's responsibility to
  * fail closed on, silently, so a broken network or a corrupted download
  * never blocks or delays the command the user actually invoked.
+ *
+ * Returns the new version string (bare, e.g. `"1.1.0"`, no `configs-v`/`v`
+ * prefix) when -- and only when -- the binary was actually replaced;
+ * every other outcome (dev mode, no release, not newer, unsupported
+ * platform, missing asset, checksum mismatch, or any thrown error) returns
+ * `null`. The port itself makes no display decision from this value -- it
+ * only reports whether/what happened; the caller (`cli/index.ts`) decides
+ * whether and how to surface it.
  */
 export interface SelfUpdatePort {
-  checkAndApply(currentVersion: string): Promise<void>;
+  checkAndApply(currentVersion: string): Promise<string | null>;
 }
