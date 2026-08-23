@@ -21,7 +21,6 @@
  * themselves (Design Notes).
  */
 
-import './stdin-bootstrap';
 import React, { useState } from 'react';
 import { EventEmitter } from 'node:events';
 import { Box, render, Text, useInput } from 'ink';
