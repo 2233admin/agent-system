@@ -205,6 +205,7 @@ function fakeFullDeps(): {
 class FakeTuiStdin extends EventEmitter {
   readonly isTTY = true;
   readonly events: string[] = [];
+  readonly rawModeCalls: boolean[] = [];
   resumeCallCount = 0;
   pauseCallCount = 0;
   private resumed = false;
@@ -240,7 +241,8 @@ class FakeTuiStdin extends EventEmitter {
     return this;
   }
 
-  setRawMode(_enabled: boolean): this {
+  setRawMode(enabled: boolean): this {
+    this.rawModeCalls.push(enabled);
     return this;
   }
 
@@ -612,6 +614,7 @@ describe('runTuiWithDeps orchestration (mocked deps + injected alt-screen/decisi
       expect(stdin.listenerCount('data')).toBe(1);
 
       stdin.pushInput(Buffer.from([0x03]));
+      expect(stdin.rawModeCalls).toEqual([true, false]);
       expect(stdin.listenerCount('readable')).toBe(0);
       expect(stdin.listenerCount('data')).toBe(0);
       expect(stdin.pauseCallCount).toBe(1);

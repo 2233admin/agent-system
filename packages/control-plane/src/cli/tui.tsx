@@ -55,6 +55,10 @@ function exitAltScreen(): void {
 class TuiStdinBridge extends EventEmitter {
   readonly isTTY: boolean;
   private readonly bootstrapRawMode: boolean;
+  // Bun/Orca can reset the console input mode when setRawMode(true) is
+  // repeated. The bridge enables raw mode before attaching data, so make
+  // Ink's second enable call idempotent.
+  private rawModeEnabled = false;
   private readonly chunks: Array<string | Buffer> = [];
   private readonly onSourceData = (chunk: string | Uint8Array): void => {
     this.chunks.push(typeof chunk === 'string' ? chunk : Buffer.from(chunk));
@@ -67,6 +71,7 @@ class TuiStdinBridge extends EventEmitter {
     this.bootstrapRawMode = process.platform === 'win32' && this.isTTY;
     if (this.bootstrapRawMode) {
       source.setRawMode(true);
+      this.rawModeEnabled = true;
     }
     source.setEncoding('utf8');
     source.on('data', this.onSourceData);
@@ -86,7 +91,10 @@ class TuiStdinBridge extends EventEmitter {
   }
 
   setRawMode(enabled: boolean): this {
-    this.source.setRawMode(enabled);
+    if (!this.bootstrapRawMode || enabled !== this.rawModeEnabled) {
+      this.source.setRawMode(enabled);
+      this.rawModeEnabled = enabled;
+    }
     return this;
   }
 
@@ -105,8 +113,9 @@ class TuiStdinBridge extends EventEmitter {
 
   dispose(): void {
     this.source.removeListener('data', this.onSourceData);
-    if (this.bootstrapRawMode) {
+    if (this.bootstrapRawMode && this.rawModeEnabled) {
       this.source.setRawMode(false);
+      this.rawModeEnabled = false;
     }
     this.chunks.length = 0;
     this.removeAllListeners();
