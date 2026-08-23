@@ -53,7 +53,7 @@ development_status:
 
   epic-4: in-progress
   4-1-建立-claude-code-adapter-骨架与硬控制能力探测: done
-  4-2-装配-claude-code-的确定性-adapterplan: backlog
+  4-2-装配-claude-code-的确定性-adapterplan: done
   4-3-fresh-target-的启动与观察: backlog
   4-4-already-running-session-target-的-requires-restart-路径: backlog
   4-5-cap-parity-验证与本仓自身切换: backlog
