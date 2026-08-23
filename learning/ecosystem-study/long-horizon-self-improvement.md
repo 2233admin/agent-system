@@ -212,11 +212,11 @@ A7 与该调研的共同约束应是：行为候选优先修正现有单一来�
 
 ### 本轮复用的当前知识
 
-- [长程工作权威](../../authority/02-long-horizon-work.md)：长期任务核心风险是漂移、中断和局部目标替代原目标；当前 MVP 是防漂移闭环。
-- [思考方法权威](../../authority/03-thinking-methods.md)：APS 是任务内控制器；self-improvement 只处理跨任务可复用行为改进，不能夺取知识、权威或生命周期职责。
-- [研发记忆权威](../../authority/09-rd-memory.md)：研发记忆保存过程与原因，但不是权威、任务状态、知识或行为。
-- [经营总账权威](../../authority/10-operating-ledger.md)：执行、诉求与证据分离；Project 只作观察面，维护不自动触发执行。
-- [MVP 实现方向](../../authority/08-mvp-implementation-direction.md) 与[验证策略](../../authority/07-mvp-validation-strategy.md)：验证是否更难漂移、更早发现、更易恢复且成本更低；当前最多只有交付验收证据。
+- [长程工作权威](../../_archive/authority/02-long-horizon-work.md)：长期任务核心风险是漂移、中断和局部目标替代原目标；当前 MVP 是防漂移闭环。
+- [思考方法权威](../../_archive/authority/03-thinking-methods.md)：APS 是任务内控制器；self-improvement 只处理跨任务可复用行为改进，不能夺取知识、权威或生命周期职责。
+- [研发记忆权威](../../_archive/authority/09-rd-memory.md)：研发记忆保存过程与原因，但不是权威、任务状态、知识或行为。
+- [经营总账权威](../../_archive/authority/10-operating-ledger.md)：执行、诉求与证据分离；Project 只作观察面，维护不自动触发执行。
+- [MVP 实现方向](../../_archive/authority/08-mvp-implementation-direction.md) 与[验证策略](../../_archive/authority/07-mvp-validation-strategy.md)：验证是否更难漂移、更早发现、更易恢复且成本更低；当前最多只有交付验收证据。
 - [`A4/A6` 能力缺口研究固定段落](https://github.com/Eridanus117/agent-control/blob/36c9393147dc2701c32e4259121f9aee60422222/learning/ecosystem-study/capability-gaps.md#L44-L55) 与 [`A5` 上下文工程研究固定段落](https://github.com/Eridanus117/agent-control/blob/7b982e2e07f6979a4a7eab294c3bd291f3c60fd6/learning/ecosystem-study/context-engineering.md#L143-L219)：复用其 grader、轨迹／结果、上下文防火墙与 handoff 结论。
 - 已安装 `self-improvement` 0.1.4 及其 `references/iteration-receipt.md`：作为 2026-08-12 的机器直接观察；版本变化后必须重读，不把本报告摘要当成当前 Skill。
 

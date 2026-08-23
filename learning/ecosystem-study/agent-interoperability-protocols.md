@@ -30,7 +30,7 @@
 ### 复用的已有结论
 
 - [A3 多 Agent 编排研究](./multi-agent-orchestration.md)已经比较框架内的控制拓扑、恢复、终止、独立审阅和跨源事件包；推荐“协议级提取、自然运行取证”，不引入第二套框架。【E1】
-- [协作权威](../../authority/04-collaboration.md)已经确认：GitHub 保存持久合同，Orca 保存过程执行态；Orca 是当前成熟的可选后端，但长期依赖、自建或退出仍未决定。【E1】
+- [协作权威](../../_archive/authority/04-collaboration.md)已经确认：GitHub 保存持久合同，Orca 保存过程执行态；Orca 是当前成熟的可选后端，但长期依赖、自建或退出仍未决定。【E1】
 - [A 路线候选清单](./capability-gaps.md)已有 A2-1 能力画像、A2-3 窄交接、A2-6 退出演练与 A2-7 跨源事实卡；本次不重建这些候选。【E1】
 
 ### 本次只补的变化与缺口

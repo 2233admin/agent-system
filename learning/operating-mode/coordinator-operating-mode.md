@@ -35,9 +35,9 @@
 
 ### 已有
 
-- GitHub Issue、仓内权威和知识资产已承担持久合同；[协调者换代协议](../../knowledge/coordinator-succession-protocol.md) 已定义恢复锚点、显式交接和 generation 概念。**证据：本次直接验证。**
+- GitHub Issue、仓内权威和知识资产已承担持久合同；[协调者换代协议](../../_archive/knowledge/coordinator-succession-protocol.md) 已定义恢复锚点、显式交接和 generation 概念。**证据：本次直接验证。**
 - Orca 已有 Run、Task、Dispatch、Delivery 和编排消息；当前 Run 可读到 `consumer_generation: 2`，任务列表为 233 项。它证明运行面已能持久记录大量事实，但“任务很多”本身不等于每条事实都进入模型上下文。**证据：本次直接验证。**
-- [当前监控指令](../../work/current-monitoring-directive.md) 明确了 5 分钟节奏、合格 Session 数、孤儿 worktree 判断门与“Session 退出后循环消失”。**证据：本次直接验证。**
+- [当前监控指令](../../work/history/current-monitoring-directive.md) 明确了 5 分钟节奏、合格 Session 数、孤儿 worktree 判断门与“Session 退出后循环消失”。**证据：本次直接验证。**
 - `orca automations list --json` 返回空列表；因此当前 5 分钟机制至少不属于 Orca Automation。其具体 CronCreate 载体来自本任务输入和当前指令，本文未做独立实现审计。**证据：本次直接验证 + 任务输入。**
 
 ### 缺少

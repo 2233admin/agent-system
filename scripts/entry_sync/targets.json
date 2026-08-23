@@ -83,7 +83,7 @@
             "heading": "仓库任务路由",
             "level": 2
           },
-          "reason": "仓库入口保留先读 README 与 authority/00-map.md 的仓内路由。"
+          "reason": "仓库入口保留先读 README 与 _archive/authority/00-map.md 的仓内路由。"
         },
         {
           "mode": "target_specific",

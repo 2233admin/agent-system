@@ -137,7 +137,7 @@ Anthropic 按安装组打包，Superpowers 用多个流程 Skill 串联，wshobs
 
 ### 我们已经做得更好的地方
 
-- **授权和任务合同更强**：公共 Skill 多关注“怎么做”；我方把当前权威、有效派发、共享写入所有权、远端回读和不扩张授权纳入行为合同，能防止一个好流程越权执行。[E1：我方权威根](../../authority/00-map.md)
+- **授权和任务合同更强**：公共 Skill 多关注“怎么做”；我方把当前权威、有效派发、共享写入所有权、远端回读和不扩张授权纳入行为合同，能防止一个好流程越权执行。[E1：我方权威根](../../_archive/authority/00-map.md)
 - **常驻规则有守恒律**：官方给平台上限和建议，我方进一步规定 1,000 UTF-8 字节描述门、新规则必须说明置换对象，并用测试防止依赖截断生存；这比“尽量简洁”更可执行。[E1]
 - **证据不越级**：我方明确区分格式、安装、生命周期、行为、投入产出，以及“实现完成 → 当前交付验收 → 样本有效 → 产品采用 → 长期依赖”；外部项目常把“生产级”“认证”或收录标签混在一个传播面上。[E1：符合性模型](https://github.com/Eridanus117/agent-plugins/blob/e9e2d034004597d97ed312a97c66e8822f764ff8/docs/conformance.md)
 - **三方审阅不是多开三个 Reviewer**：wshobson 的多 Reviewer 模式擅长分维度、去重和校准严重度；我方 CF-6 还要求替代授权、独立运行身份、起草／实施者回避、先密封后公开、稳定键绑定和机械回读，并在未知／否决时回到负责人。当前能力证据仍诚实保持 M0，尚无自然成功样本。[E1：CF-6 卡片](https://github.com/Eridanus117/agent-plugins/blob/e9e2d034004597d97ed312a97c66e8822f764ff8/plugins/orchestrated-collaboration/skills/orchestrated-collaboration/references/collaboration-shapes/cf-6.md)

@@ -223,7 +223,7 @@ Orca 在迁移前任务中证明过可选后端能力；当前可用性必须按
 
 > 迁移来源：本节由 [`00-map.md`](./00-map.md) 按关联 [#181（常驻规则面分层收敛）](https://github.com/Eridanus117/agent-control/issues/181)原义迁回协作权威；置换对象是总图中的完整外延正文，不新增第七类。
 
-「共享单点」只有六类；本节是该清单在 `authority/` 中的唯一权威外延，版本化 [`../entrypoints/agent-system.md`](../entrypoints/agent-system.md) 的「共享写入前置检查」为运行入口镜像：
+「共享单点」只有六类；本节是该清单在 `authority/` 中的唯一权威外延，版本化 [`../entrypoints/agent-system.md`](../../entrypoints/agent-system.md) 的「共享写入前置检查」为运行入口镜像：
 
 1. Agent 系统的共享工作目录／分支；
 2. 当前任务；

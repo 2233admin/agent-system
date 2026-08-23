@@ -2,7 +2,7 @@
 
 - 运行日期：2026-08-13
 - 运行命令：`python tools/kb_retriever/examples/workflow_checkpoints.py`
-- 卡片来源：`knowledge/retrieval-cards.md`
+- 卡片来源：`_archive/knowledge/retrieval-cards.md`
 - 结果：3/3 个显式查询命中预期卡，进程返回码为 0。
 
 ## 命中结果

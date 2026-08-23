@@ -22,7 +22,7 @@ from kb_retriever.parser import parse_retrieval_cards  # noqa: E402
 from kb_retriever.retriever import KnowledgeRetriever  # noqa: E402
 
 
-CARDS_PATH = REPOSITORY_ROOT / "knowledge" / "retrieval-cards.md"
+CARDS_PATH = REPOSITORY_ROOT / "_archive" / "knowledge" / "retrieval-cards.md"
 NATURAL_BYPASS_EVALUATOR = (
     TOOL_ROOT / "examples" / "evaluate_natural_bypass.py"
 )

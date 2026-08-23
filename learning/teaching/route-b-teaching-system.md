@@ -232,7 +232,7 @@ LearnerConceptState
   → 返回一个概念的一项教学资产 + 来源／版本／证据
 ```
 
-若未来要复用现有实现，需要新增独立的 teaching-card schema／adapter，并验证 parser 与输出合同；`knowledge/retrieval-cards.md` 不能兼任课程图，`oneLineAction` 也不能兼任完整教学资产。没有确认改述漏检以前，概念数量本身不构成向量检索升级理由。
+若未来要复用现有实现，需要新增独立的 teaching-card schema／adapter，并验证 parser 与输出合同；`_archive/knowledge/retrieval-cards.md` 不能兼任课程图，`oneLineAction` 也不能兼任完整教学资产。没有确认改述漏检以前，概念数量本身不构成向量检索升级理由。
 
 **主要风险。** 错误先修边会让路径看起来“结构化却走错”；细粒度状态可能增加维护税；如果负责人不愿做短检查或复习，图会退化成更复杂的目录。
 

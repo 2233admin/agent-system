@@ -7,7 +7,7 @@
 > **资产入口**：
 > [81 项思维模型与方法全景地图](https://github.com/Eridanus117/private-kb/blob/d9ca20c1900afce01506b18f8081c2539a32a6e8/sources/thinking/INDEX.md)；
 > 需要更深的适用与禁用边界时再看
-> [K21 可浏览思考工具箱](../knowledge/thinking-toolkit.md)。
+> [K21 可浏览思考工具箱](../_archive/knowledge/thinking-toolkit.md)。
 
 ## 本轮完成定义
 

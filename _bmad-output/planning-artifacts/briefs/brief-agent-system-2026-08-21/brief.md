@@ -137,7 +137,7 @@ Profile 或 Assembly 配置只用于组合这些源资产，不是第四类源�
 
 ## 事实来源
 
-1. [CAP 中文使用指南：Profile、能力闭包与三层证据](../../../../docs/cap-guide.zh-CN.md)
+1. [CAP 中文使用指南：Profile、能力闭包与三层证据](../../../../_archive/docs/cap-guide.zh-CN.md)
 2. [Claude Code：Instructions / memory 层级与检查](https://code.claude.com/docs/en/memory)
 3. [Claude Code：Skills 的发现、优先级与调用](https://code.claude.com/docs/en/skills)
 4. [Claude Code：MCP scope、状态与工具可用性](https://code.claude.com/docs/en/mcp)

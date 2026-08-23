@@ -90,7 +90,7 @@ def main() -> int:
         if outcome.match is None:
             failures += 1
             print(f"  未命中：{outcome.reason}")
-            print("  处置：转回 knowledge/README.md 人工选择当前 K 包。")
+            print("  处置：转回 _archive/knowledge/README.md 人工选择当前 K 包。")
             continue
 
         result = outcome.match

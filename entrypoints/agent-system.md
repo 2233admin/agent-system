@@ -10,9 +10,9 @@
 
 ## Agent 系统任务路由
 
-> **权威变更（2026-08-22，负责人确认）：** 下一句"读取 `authority/00-map.md`"已不再产生产品政策——`authority/`、`src/agent_system/`、`docs/`、`knowledge/` 全部降级为历史资产。当前产品政策、需求、架构与范围的唯一权威来源改为 BMad 工作流产出（`_bmad-output/specs/spec-agent-system/SPEC.md`、`_bmad-output/planning-artifacts/epics.md`、`_bmad-output/planning-artifacts/architecture/**/ARCHITECTURE-SPINE.md`、`_bmad-output/implementation-artifacts/sprint-status.yaml`），详见 [`AGENTS.md` 的同名章节](../AGENTS.md#当前权威声明2026-08-22负责人确认)。以下 GitHub Issue 授权边界、迁移标签处理等流程规则本身不受影响，仍然适用。
+> **权威变更（2026-08-22，负责人确认；2026-08-23 物理归档）：** 下一句"读取 `authority/00-map.md`"已不再产生产品政策——`authority/`、`src/agent_system/`、`docs/`、`knowledge/` 全部降级为历史资产，并已于 2026-08-23 物理搬迁到 `_archive/` 同名子路径（如 `_archive/authority/00-map.md`）。当前产品政策、需求、架构与范围的唯一权威来源改为 BMad 工作流产出（`_bmad-output/specs/spec-agent-system/SPEC.md`、`_bmad-output/planning-artifacts/epics.md`、`_bmad-output/planning-artifacts/architecture/**/ARCHITECTURE-SPINE.md`、`_bmad-output/implementation-artifacts/sprint-status.yaml`），详见 [`AGENTS.md` 的同名章节](../AGENTS.md#当前权威声明2026-08-22负责人确认)。以下 GitHub Issue 授权边界、迁移标签处理等流程规则本身不受影响，仍然适用。
 
-当任务落在本仓时，先读取仓库根 `README.md` 与（现仅作历史索引的）`authority/00-map.md`，再按模式继续：
+当任务落在本仓时，先读取仓库根 `README.md` 与（现仅作历史索引的）`_archive/authority/00-map.md`，再按模式继续：
 
 1. 负责人明确激活公开、自足的 GitHub Issue：读取远端当前正文、状态、标签和明确引用，只在合同授权范围内实施并验证。版本化变更通过可核验 PR 交付；只读研究通过自足证据评论交付。
 2. Issue 带 `迁移索引/待分诊` 标签：默认只分诊和只读核验，不从旧正文、私有评论或开放状态恢复授权。
@@ -87,7 +87,7 @@ Agent 系统 MVP、工作流替代或高价值多 PR 父任务在宣称完成、
 
 ## 经营总账维护
 
-当负责人明确要求查看、整理或更新经营组合时，直接读取并按 `authority/10-operating-ledger.md` 执行。当前没有公共经营 Project；私有旧 Project 只作历史样本。与 Agent 系统经营无关的普通任务不触发。
+当负责人明确要求查看、整理或更新经营组合时，直接读取并按 `_archive/authority/10-operating-ledger.md` 执行。当前没有公共经营 Project；私有旧 Project 只作历史样本。与 Agent 系统经营无关的普通任务不触发。
 
 Project 是观察面，不是权威、授权或事件后端；维护完成不自动规划、派发、启动、合并或建设轮询／Webhook／调度器，也不自动激活下一项工作。
 
