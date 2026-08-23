@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 
-import { compareRevisions } from '../../src/domain/config';
+import { buildSupersedesChain, compareRevisions } from '../../src/domain/config';
 import type { CapabilityReference, StableConfigRevision } from '../../src/domain/config';
 import { known, unknown } from '../../src/domain/facts';
 
@@ -141,5 +141,70 @@ describe('compareRevisions', () => {
     const result = compareRevisions([a]);
     expect(result.revisionIds).toEqual(['rev-a']);
     expect(result.scalarFields.every((f) => f.status === 'same')).toBe(true);
+  });
+});
+
+describe('buildSupersedesChain', () => {
+  test('装配来源-正常/替代链-无前驱无后继: no predecessor and no successor renders empty arrays with no dangling markers', () => {
+    const a = revision({ configName: 'general', revisionId: 'rev-a', supersedesRevisionId: null });
+    const chain = buildSupersedesChain([a], 'rev-a');
+    expect(chain.predecessors).toEqual([]);
+    expect(chain.successors).toEqual([]);
+    expect(chain.danglingPredecessorId).toBeNull();
+    expect(chain.danglingSuccessorId).toBeNull();
+  });
+
+  test('替代链-有前驱: A <- B <- C (each supersedes the previous); viewing C lists predecessors oldest -> newest as [A, B]', () => {
+    const a = revision({ configName: 'general', revisionId: 'rev-a', supersedesRevisionId: null });
+    const b = revision({ configName: 'general', revisionId: 'rev-b', supersedesRevisionId: 'rev-a' });
+    const c = revision({ configName: 'general', revisionId: 'rev-c', supersedesRevisionId: 'rev-b' });
+    const chain = buildSupersedesChain([a, b, c], 'rev-c');
+    expect(chain.predecessors.map((link) => link.revisionId)).toEqual(['rev-a', 'rev-b']);
+    expect(chain.danglingPredecessorId).toBeNull();
+  });
+
+  test('替代链-有后继: same A <- B <- C chain; viewing A lists successors nearest -> farthest as [B, C]', () => {
+    const a = revision({ configName: 'general', revisionId: 'rev-a', supersedesRevisionId: null });
+    const b = revision({ configName: 'general', revisionId: 'rev-b', supersedesRevisionId: 'rev-a' });
+    const c = revision({ configName: 'general', revisionId: 'rev-c', supersedesRevisionId: 'rev-b' });
+    const chain = buildSupersedesChain([a, b, c], 'rev-a');
+    expect(chain.successors.map((link) => link.revisionId)).toEqual(['rev-b', 'rev-c']);
+    expect(chain.danglingSuccessorId).toBeNull();
+  });
+
+  test('替代链-悬空引用: supersedesRevisionId points at an id absent from the loaded set -- that direction stops and is marked dangling, never throws', () => {
+    const b = revision({ configName: 'general', revisionId: 'rev-b', supersedesRevisionId: 'rev-ghost' });
+    const chain = buildSupersedesChain([b], 'rev-b');
+    expect(chain.predecessors).toEqual([]);
+    expect(chain.danglingPredecessorId).toBe('rev-ghost');
+    // The other direction is unaffected by the dangling predecessor.
+    expect(chain.successors).toEqual([]);
+    expect(chain.danglingSuccessorId).toBeNull();
+  });
+
+  test('替代链-悬空引用（有部分可解析前驱）: a dangling pointer further back still preserves the already-resolved predecessors', () => {
+    const a = revision({ configName: 'general', revisionId: 'rev-a', supersedesRevisionId: 'rev-ghost' });
+    const b = revision({ configName: 'general', revisionId: 'rev-b', supersedesRevisionId: 'rev-a' });
+    const chain = buildSupersedesChain([a, b], 'rev-b');
+    expect(chain.predecessors.map((link) => link.revisionId)).toEqual(['rev-a']);
+    expect(chain.danglingPredecessorId).toBe('rev-ghost');
+  });
+
+  test('替代链-环路: a cycle in supersedesRevisionId stops traversal instead of looping forever', () => {
+    const a = revision({ configName: 'general', revisionId: 'rev-a', supersedesRevisionId: 'rev-b' });
+    const b = revision({ configName: 'general', revisionId: 'rev-b', supersedesRevisionId: 'rev-a' });
+    const chain = buildSupersedesChain([a, b], 'rev-a');
+    // Must terminate (this call itself not hanging is the primary
+    // assertion); the exact partial result is secondary.
+    expect(chain.predecessors.map((link) => link.revisionId)).toEqual(['rev-b']);
+    expect(chain.danglingPredecessorId).toBeNull();
+  });
+
+  test('the queried revision itself is never included in either direction', () => {
+    const a = revision({ configName: 'general', revisionId: 'rev-a', supersedesRevisionId: null });
+    const b = revision({ configName: 'general', revisionId: 'rev-b', supersedesRevisionId: 'rev-a' });
+    const chain = buildSupersedesChain([a, b], 'rev-a');
+    expect(chain.successors.some((link) => link.revisionId === 'rev-a')).toBe(false);
+    expect(chain.predecessors.some((link) => link.revisionId === 'rev-a')).toBe(false);
   });
 });

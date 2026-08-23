@@ -26,10 +26,21 @@ import type {
   ComparisonResult,
   ScalarFieldComparison,
   StableConfigRevision,
+  SupersedesChain,
+  SupersedesLink,
 } from '../domain/config';
 import type { LaunchPlan, LaunchStatus } from '../domain/activation';
 import type { CompareConfigRevisionsResult, ConfigQueryError } from '../application/queries';
-import type { InvalidCandidateError, InvalidTriggerCategoryError, MissingEvidenceError, NoCandidateSourceError } from '../application/ports';
+import type {
+  InvalidCandidateError,
+  InvalidTriggerCategoryError,
+  MissingEvidenceError,
+  MissingSupersedesError,
+  NoCandidateSourceError,
+  SupersedesConfigMismatchError,
+  SupersedesConflictError,
+  SupersedesNotFoundError,
+} from '../application/ports';
 import { attention, colorForPhase, dim } from './colors';
 import { t } from './i18n';
 
@@ -70,10 +81,19 @@ export function formatDefaultMarker(revision: StableConfigRevision): string {
   return revision.defaultMarker.value ? t('marker.default') : t('marker.generic');
 }
 
+/**
+ * `[Story 3.3]` Appends the assembly-provenance pair (`sourceRef`/
+ * `contentFingerprint`) after the existing source-category/summary
+ * fields -- never inferred, always the `Fact` persisted on the reference
+ * itself (Unknown renders via `formatFact`, same as every other field
+ * here).
+ */
 function formatCapabilityRef(ref: CapabilityReference): string {
   const source = formatFact(ref.sourceCategory);
   const summary = formatFact(ref.summary);
-  return `    - ${ref.name} [${t('capabilityRef.source')}: ${source}] ${summary}`;
+  const sourceRef = formatFact(ref.sourceRef);
+  const contentFingerprint = formatFact(ref.contentFingerprint);
+  return `    - ${ref.name} [${t('capabilityRef.source')}: ${source}] ${summary} [${t('capabilityRef.sourceRef')}: ${sourceRef}] [${t('capabilityRef.contentFingerprint')}: ${contentFingerprint}]`;
 }
 
 export function formatCapabilityGroup(kind: CapabilityKind, refs: readonly CapabilityReference[]): string {
@@ -108,6 +128,12 @@ export function renderDetail(revision: StableConfigRevision): string {
     `${t('detail.revision')} ${revision.revisionId}  [${marker}]`,
     `${t('detail.status')} ${formatAvailability(revision)}`,
     `${t('detail.boundary')} ${formatFact(revision.scopeBoundary)}`,
+    // `[Story 3.3]` `triggerCategory` is a closed enum value (like
+    // `ComparisonStatus`/`SourceCategory`) -- never translated, only the
+    // label preceding it is. `evidenceRef` is an opaque reference string,
+    // printed as-is.
+    `${t('detail.triggerCategory')} ${revision.triggerCategory}`,
+    `${t('detail.evidenceRef')} ${revision.evidenceRef}`,
     '',
     formatCapabilityGroup('instruction', revision.instructions),
     formatCapabilityGroup('skill', revision.skills),
@@ -128,8 +154,21 @@ export function renderDetail(revision: StableConfigRevision): string {
  * write-path rejections, so `renderQueryFailure` stays the one shared
  * failure-rendering path for every typed rejection in this CLI instead of
  * `establish` inventing a parallel one.
+ *
+ * `[Story 3.2]` Widened again to also cover `configs revise`'s four
+ * additional supersedes-specific rejections -- same reasoning: one shared
+ * failure-rendering path, not a parallel one for `revise`.
  */
-export type QueryOrEstablishError = ConfigQueryError | InvalidTriggerCategoryError | MissingEvidenceError | NoCandidateSourceError | InvalidCandidateError;
+export type QueryOrEstablishError =
+  | ConfigQueryError
+  | InvalidTriggerCategoryError
+  | MissingEvidenceError
+  | NoCandidateSourceError
+  | InvalidCandidateError
+  | MissingSupersedesError
+  | SupersedesNotFoundError
+  | SupersedesConfigMismatchError
+  | SupersedesConflictError;
 
 /**
  * `[Review fix]` Exhaustiveness guard: if `QueryOrEstablishError` ever
@@ -158,6 +197,18 @@ function formatErrorReason(error: QueryOrEstablishError): string {
       return t('establish.noCandidateSource');
     case 'invalid-candidate':
       return t('establish.invalidCandidate', { reason: error.reason });
+    case 'missing-supersedes':
+      return t('revise.missingSupersedes');
+    case 'supersedes-not-found':
+      return t('revise.supersedesNotFound', { revisionId: error.revisionId });
+    case 'supersedes-config-mismatch':
+      return t('revise.supersedesConfigMismatch', {
+        revisionId: error.revisionId,
+        expected: error.expectedConfigName,
+        actual: error.actualConfigName,
+      });
+    case 'supersedes-conflict':
+      return t('revise.supersedesConflict', { revisionId: error.revisionId });
     default:
       return assertNeverErrorKind(error);
   }
@@ -180,6 +231,50 @@ export function renderQueryFailure(label: string, error: QueryOrEstablishError):
  */
 export function renderEstablishSuccess(revision: StableConfigRevision): string {
   return [t('establish.successPrefix'), renderDetail(revision)].join('\n');
+}
+
+/**
+ * `[Story 3.2]` Same shape as `renderEstablishSuccess` (reuses
+ * `renderDetail` verbatim -- no "替代自：" line yet, that's Story 3.3's
+ * `renderDetail` change), just a different success prefix so `revise`'s
+ * output is distinguishable from `establish`'s.
+ */
+export function renderReviseSuccess(revision: StableConfigRevision): string {
+  return [t('revise.successPrefix'), renderDetail(revision)].join('\n');
+}
+
+/**
+ * `[Story 3.3]` Renders a chain direction (`predecessors`/`successors`) as
+ * a single comma-joined line: the resolved links in their given order,
+ * followed by an "unresolvable" marker naming the dangling id if that
+ * direction's traversal stopped on one (Boundaries & Constraints: a
+ * dangling `supersedesRevisionId` never aborts rendering -- it is reported
+ * inline and the rest of the output is unaffected). An empty direction
+ * with no dangling id renders the explicit "(none)" text -- AD-8: never
+ * silently omit the line.
+ */
+function formatChainDirection(links: readonly SupersedesLink[], danglingId: string | null): string {
+  const entries = links.map((link) => link.revisionId);
+  if (danglingId !== null) {
+    entries.push(t('detail.chainUnresolvable', { revisionId: danglingId }));
+  }
+  return entries.length > 0 ? entries.join(', ') : t('detail.chainNone');
+}
+
+/**
+ * `[Story 3.3]` Deliberately independent of `renderDetail` (Boundaries &
+ * Constraints) rather than folded into it: `configs show` calls it as a
+ * second, separate append after `renderDetail`'s output, and the
+ * concurrently-developed Story 3.2 (`configs revise`, which will produce
+ * non-null `supersedesRevisionId`s) is expected to reuse this same
+ * function verbatim in its own success output instead of reimplementing
+ * chain rendering.
+ */
+export function renderSupersedesChainSection(chain: SupersedesChain): string {
+  return [
+    `${t('detail.supersededFrom')} ${formatChainDirection(chain.predecessors, chain.danglingPredecessorId)}`,
+    `${t('detail.supersededBy')} ${formatChainDirection(chain.successors, chain.danglingSuccessorId)}`,
+  ].join('\n');
 }
 
 function formatScalarField(field: ScalarFieldComparison): string {

@@ -42,6 +42,8 @@ const zh: Dict = {
   'marker.default': '默认',
   'marker.generic': '通用',
   'capabilityRef.source': '来源',
+  'capabilityRef.sourceRef': '来源引用',
+  'capabilityRef.contentFingerprint': '内容指纹',
 
   'list.revisionLabel': '修订版本',
   'list.statusLabel': '状态',
@@ -51,6 +53,12 @@ const zh: Dict = {
   'detail.revision': '修订版本：',
   'detail.status': '状态：',
   'detail.boundary': '边界：',
+  'detail.triggerCategory': '触发类别：',
+  'detail.evidenceRef': '证据引用：',
+  'detail.supersededFrom': '替代自：',
+  'detail.supersededBy': '后继：',
+  'detail.chainNone': '（无）',
+  'detail.chainUnresolvable': '无法解析（{revisionId}）',
 
   'queryFailure.notFound': '未找到。恢复：运行 `configs list` 查看可用的修订版本 id。',
   'queryFailure.unsupported': '不受支持（{reason}）。恢复：重新导入该修订版本，或检查其存储数据；其他配置不受影响。',
@@ -122,6 +130,13 @@ const zh: Dict = {
     'configs establish：未提供候选内容——请传入 --from <path>，或通过 stdin 管道输入候选 JSON（当前 stdin 是交互式终端）；未写入任何内容。',
   'establish.invalidCandidate': 'configs establish：候选内容不合法（以下为英文字段路径/类型提示，非待翻译文案）：`{reason}`；未写入任何内容。',
 
+  'revise.successPrefix': '已建立替代修订：',
+  'revise.missingSupersedes': 'configs revise：缺少 --supersedes 目标修订 id——必须通过 --supersedes <revisionId> 传入非空值；未写入任何内容。',
+  'revise.supersedesNotFound': 'configs revise：--supersedes 指向的修订 "{revisionId}" 不存在；未写入任何内容。',
+  'revise.supersedesConfigMismatch':
+    'configs revise：--supersedes 指向的修订 "{revisionId}" 属于配置 "{actual}"，与候选内容的配置 "{expected}" 不一致；未写入任何内容。',
+  'revise.supersedesConflict': 'configs revise：--supersedes 指向的修订 "{revisionId}" 已被另一条修订替代；未写入任何内容。',
+
   'selfUpdate.updated': 'configs：已更新到 v{version}（下次启动生效）',
 };
 
@@ -143,6 +158,8 @@ const en: Dict = {
   'marker.default': 'default',
   'marker.generic': 'generic',
   'capabilityRef.source': 'source',
+  'capabilityRef.sourceRef': 'source ref',
+  'capabilityRef.contentFingerprint': 'content fingerprint',
 
   'list.revisionLabel': 'revision',
   'list.statusLabel': 'status',
@@ -152,6 +169,12 @@ const en: Dict = {
   'detail.revision': 'Revision:',
   'detail.status': 'Status:',
   'detail.boundary': 'Boundary:',
+  'detail.triggerCategory': 'Trigger category:',
+  'detail.evidenceRef': 'Evidence ref:',
+  'detail.supersededFrom': 'Superseded from:',
+  'detail.supersededBy': 'Superseded by:',
+  'detail.chainNone': '(none)',
+  'detail.chainUnresolvable': 'unresolvable ({revisionId})',
 
   'queryFailure.notFound': 'not found. Recovery: run `configs list` to see available revision ids.',
   'queryFailure.unsupported': 'unsupported ({reason}). Recovery: re-seed this revision or inspect its stored data; other configurations are unaffected.',
@@ -222,6 +245,13 @@ const en: Dict = {
   'establish.noCandidateSource':
     'configs establish: no candidate source was provided -- pass --from <path>, or pipe candidate JSON via stdin (stdin is currently an interactive terminal); nothing was written.',
   'establish.invalidCandidate': 'configs establish: candidate is invalid: `{reason}`; nothing was written.',
+
+  'revise.successPrefix': 'Established superseding revision:',
+  'revise.missingSupersedes': 'configs revise: missing --supersedes target revision id -- pass a non-empty value via --supersedes <revisionId>; nothing was written.',
+  'revise.supersedesNotFound': 'configs revise: supersedes target revision "{revisionId}" was not found; nothing was written.',
+  'revise.supersedesConfigMismatch':
+    'configs revise: supersedes target revision "{revisionId}" belongs to configuration "{actual}", which does not match the candidate\'s configuration "{expected}"; nothing was written.',
+  'revise.supersedesConflict': 'configs revise: supersedes target revision "{revisionId}" has already been superseded by another revision; nothing was written.',
 
   'selfUpdate.updated': 'configs: updated to v{version} (takes effect next launch)',
 };

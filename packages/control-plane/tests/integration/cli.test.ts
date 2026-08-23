@@ -230,6 +230,63 @@ describe('configs show', () => {
     expect(goodCode).toBe(0);
     expect(logs.join('\n')).toContain('Configuration: general');
   });
+
+  test('装配来源-正常: detail includes trigger category, evidence ref, and each capability reference\'s source ref/content fingerprint', async () => {
+    seed([
+      sampleRevision({
+        configName: 'general',
+        revisionId: 'rev-general',
+        triggerCategory: 'known-insufficiency',
+        evidenceRef: 'issue/123',
+        skills: [ref('skill', 'openspec-explore')],
+      }),
+    ]);
+
+    const code = await main(['show', 'rev-general']);
+    expect(code).toBe(0);
+    const output = logs.join('\n');
+    expect(output).toContain('known-insufficiency');
+    expect(output).toContain('issue/123');
+    expect(output).toContain('ref/openspec-explore');
+    expect(output).toContain('fingerprint/openspec-explore');
+  });
+
+  test('替代链-无前驱无后继: an unsuperseded, never-superseded revision explicitly prints "(none)" for both directions', async () => {
+    seed([sampleRevision({ configName: 'general', revisionId: 'rev-solo', supersedesRevisionId: null })]);
+
+    const code = await main(['show', 'rev-solo']);
+    expect(code).toBe(0);
+    const output = logs.join('\n');
+    expect(output).toContain('Superseded from: (none)');
+    expect(output).toContain('Superseded by: (none)');
+  });
+
+  test('替代链-有前驱有后继: A <- B <- C; viewing C lists predecessors oldest -> newest, viewing A lists successors nearest -> farthest', async () => {
+    seed([
+      sampleRevision({ configName: 'general', revisionId: 'rev-a', supersedesRevisionId: null }),
+      sampleRevision({ configName: 'general', revisionId: 'rev-b', supersedesRevisionId: 'rev-a' }),
+      sampleRevision({ configName: 'general', revisionId: 'rev-c', supersedesRevisionId: 'rev-b' }),
+    ]);
+
+    const codeC = await main(['show', 'rev-c']);
+    expect(codeC).toBe(0);
+    expect(logs.join('\n')).toContain('Superseded from: rev-a, rev-b');
+
+    logs = [];
+    const codeA = await main(['show', 'rev-a']);
+    expect(codeA).toBe(0);
+    expect(logs.join('\n')).toContain('Superseded by: rev-b, rev-c');
+  });
+
+  test('替代链-悬空引用: a supersedesRevisionId pointing outside the stored set is marked unresolvable, not thrown; command still exits 0', async () => {
+    seed([sampleRevision({ configName: 'general', revisionId: 'rev-dangling', supersedesRevisionId: 'rev-ghost' })]);
+
+    const code = await main(['show', 'rev-dangling']);
+    expect(code).toBe(0);
+    const output = logs.join('\n');
+    expect(output).toContain('unresolvable (rev-ghost)');
+    expect(output).toContain('Configuration: general');
+  });
 });
 
 describe('configs compare', () => {

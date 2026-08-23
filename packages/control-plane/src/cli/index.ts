@@ -3,10 +3,13 @@
  * `configs` CLI entry point. Dispatches the read-only subcommands from
  * Story 1.1 (`list`, `show <id>`, `compare <id...>`), Story 1.2's
  * activation subcommands (`use <id>`, `status [<planId>]`, `switch <id>`),
- * and Story 3.1's non-interactive write subcommand
- * (`establish --trigger-category <cat> --evidence <ref> [--from <path>]`).
- * No other subcommand exists -- in particular there is no `configs sync`/
- * `configs import` (see `src/adapters/sources/cap-fs.ts` for why).
+ * Story 3.1's non-interactive write subcommand
+ * (`establish --trigger-category <cat> --evidence <ref> [--from <path>]`),
+ * and Story 3.2's non-interactive supersede subcommand
+ * (`revise --trigger-category <cat> --evidence <ref> --supersedes
+ * <revisionId> [--from <path>]`). No other subcommand exists -- in
+ * particular there is no `configs sync`/`configs import` (see
+ * `src/adapters/sources/cap-fs.ts` for why).
  */
 
 import type { ClientId } from '../domain/client';
@@ -25,6 +28,7 @@ import {
   ConfigUnsupportedError,
   compareConfigRevisions,
   getConfigRevisionDetail,
+  getSupersedesChain,
   listConfigRevisions,
   type ConfigQueryError,
 } from '../application/queries';
@@ -32,9 +36,14 @@ import {
   InvalidCandidateError,
   InvalidTriggerCategoryError,
   MissingEvidenceError,
+  MissingSupersedesError,
   NoCandidateSourceError,
+  SupersedesConfigMismatchError,
+  SupersedesConflictError,
+  SupersedesNotFoundError,
   parseCandidateRevision,
   parseEvidenceRef,
+  parseSupersedesRevisionId,
   parseTriggerCategory,
 } from '../application/establish';
 import { isStdinTTY, readCandidateFile, readStdinText } from './candidate-source';
@@ -66,6 +75,8 @@ import {
   renderLaunchStatus,
   renderList,
   renderQueryFailure,
+  renderReviseSuccess,
+  renderSupersedesChainSection,
   renderSwitchAccepted,
   renderUnsupportedClient,
 } from './render';
@@ -77,7 +88,7 @@ import { runTui } from './tui';
 // language-dependent, so this is composed via `usageLine()` rather than
 // being a static constant.
 const USAGE_SYNTAX =
-  'configs <list|show <id>|compare <id> <id> [...ids]|use <id> [--client <id>] [--yes] [-- ...args]|status [<planId>]|switch <id> [--client <id>] [--yes] [-- ...args]|establish --trigger-category <cat> --evidence <ref> [--from <path>]>';
+  'configs <list|show <id>|compare <id> <id> [...ids]|use <id> [--client <id>] [--yes] [-- ...args]|status [<planId>]|switch <id> [--client <id>] [--yes] [-- ...args]|establish --trigger-category <cat> --evidence <ref> [--from <path>]|revise --trigger-category <cat> --evidence <ref> --supersedes <revisionId> [--from <path>]>';
 
 function usageLine(): string {
   return `${t('usage.prefix')} ${USAGE_SYNTAX}`;
@@ -107,6 +118,13 @@ type ParsedCommand =
       readonly kind: 'establish';
       readonly triggerCategoryRaw: string | undefined;
       readonly evidenceRaw: string | undefined;
+      readonly fromPath: string | null;
+    }
+  | {
+      readonly kind: 'revise';
+      readonly triggerCategoryRaw: string | undefined;
+      readonly evidenceRaw: string | undefined;
+      readonly supersedesRaw: string | undefined;
       readonly fromPath: string | null;
     };
 
@@ -247,6 +265,100 @@ function parseEstablish(rest: readonly string[]): ParsedCommand {
   return { kind: 'establish', triggerCategoryRaw, evidenceRaw, fromPath };
 }
 
+/**
+ * `[Story 3.2]` Same pure-syntactic-only shape as `parseEstablish` (no
+ * enum/non-empty/stdin checks here -- see that function's doc comment for
+ * why), plus one more flag: `--supersedes <revisionId>`. Semantic
+ * validation (in the Boundaries & Constraints order: trigger -> evidence
+ * -> supersedes non-empty -> TTY guard -> candidate) happens in
+ * `runRevise`.
+ */
+function parseRevise(rest: readonly string[]): ParsedCommand {
+  let triggerCategoryRaw: string | undefined;
+  let evidenceRaw: string | undefined;
+  let supersedesRaw: string | undefined;
+  let fromPath: string | null = null;
+
+  for (let i = 0; i < rest.length; i += 1) {
+    const token = rest[i];
+    if (token === '--trigger-category') {
+      if (triggerCategoryRaw !== undefined) {
+        return {
+          kind: 'usage-error',
+          message: `${t('parseError.establishFlagRepeated', { flag: '--trigger-category' })}\n${usageLine()}`,
+        };
+      }
+      const value = rest[i + 1];
+      if (value === undefined) {
+        return {
+          kind: 'usage-error',
+          message: `${t('parseError.establishFlagRequiresValue', { flag: '--trigger-category' })}\n${usageLine()}`,
+        };
+      }
+      triggerCategoryRaw = value;
+      i += 1;
+      continue;
+    }
+    if (token === '--evidence') {
+      if (evidenceRaw !== undefined) {
+        return {
+          kind: 'usage-error',
+          message: `${t('parseError.establishFlagRepeated', { flag: '--evidence' })}\n${usageLine()}`,
+        };
+      }
+      const value = rest[i + 1];
+      if (value === undefined) {
+        return {
+          kind: 'usage-error',
+          message: `${t('parseError.establishFlagRequiresValue', { flag: '--evidence' })}\n${usageLine()}`,
+        };
+      }
+      evidenceRaw = value;
+      i += 1;
+      continue;
+    }
+    if (token === '--supersedes') {
+      if (supersedesRaw !== undefined) {
+        return {
+          kind: 'usage-error',
+          message: `${t('parseError.establishFlagRepeated', { flag: '--supersedes' })}\n${usageLine()}`,
+        };
+      }
+      const value = rest[i + 1];
+      if (value === undefined) {
+        return {
+          kind: 'usage-error',
+          message: `${t('parseError.establishFlagRequiresValue', { flag: '--supersedes' })}\n${usageLine()}`,
+        };
+      }
+      supersedesRaw = value;
+      i += 1;
+      continue;
+    }
+    if (token === '--from') {
+      if (fromPath !== null) {
+        return {
+          kind: 'usage-error',
+          message: `${t('parseError.establishFlagRepeated', { flag: '--from' })}\n${usageLine()}`,
+        };
+      }
+      const value = rest[i + 1];
+      if (value === undefined) {
+        return {
+          kind: 'usage-error',
+          message: `${t('parseError.establishFlagRequiresValue', { flag: '--from' })}\n${usageLine()}`,
+        };
+      }
+      fromPath = value;
+      i += 1;
+      continue;
+    }
+    return { kind: 'usage-error', message: `${t('parseError.unknownFlag', { flag: token! })}\n${usageLine()}` };
+  }
+
+  return { kind: 'revise', triggerCategoryRaw, evidenceRaw, supersedesRaw, fromPath };
+}
+
 function parseCommand(argv: readonly string[]): ParsedCommand {
   const [command, ...rest] = argv;
   switch (command) {
@@ -272,6 +384,8 @@ function parseCommand(argv: readonly string[]): ParsedCommand {
       return { kind: 'status', planId: rest[0] ?? null };
     case 'establish':
       return parseEstablish(rest);
+    case 'revise':
+      return parseRevise(rest);
     default:
       // `command` is always defined here: `main()` intercepts `argv.length
       // === 0` before `parseCommand` is ever called, so this `default`
@@ -497,7 +611,11 @@ async function runEstablish(parsed: Extract<ParsedCommand, { kind: 'establish' }
     parseCandidateRevision(candidate);
 
     writer = new SqliteConfigRevisionWriter(defaultDbPath());
-    const revision = await writer.create({ triggerCategory, evidenceRef, candidate });
+    // `[Story 3.2]` `establish` explicitly passes `null` rather than
+    // relying on a default -- `EstablishConfigRevisionParams.supersedesRevisionId`
+    // is a required field precisely so every call site must make this
+    // choice visibly.
+    const revision = await writer.create({ triggerCategory, evidenceRef, candidate, supersedesRevisionId: null });
 
     console.log(renderEstablishSuccess(revision));
     return 0;
@@ -519,6 +637,144 @@ async function runEstablish(parsed: Extract<ParsedCommand, { kind: 'establish' }
     throw error;
   } finally {
     writer?.close();
+  }
+}
+
+/**
+ * `[Story 3.2]` Non-interactive `configs revise`. Same shape as
+ * `runEstablish` (never calls `openDeps()`; validates before ever opening
+ * any SQLite file), extended with one more validation stage: Boundaries &
+ * Constraints requires trigger -> evidence -> `--supersedes` non-empty ->
+ * TTY guard -> candidate read/parse, in exactly that order, so a missing
+ * flag never blocks on a stdin read regardless of which flag is missing.
+ *
+ * The `--supersedes` target is checked twice (see the spec's Design
+ * Notes): first via a read-only `SqliteConfigRevisionRepository.findById`
+ * (existence + `configName` match) *before* the writer/db-file-migrating
+ * `SqliteConfigRevisionWriter` is ever constructed; then again, for real,
+ * inside `SqliteConfigRevisionWriter.create()`'s insert transaction, which
+ * is the only check that actually closes the TOCTOU window between the
+ * two (surfaced here as `SupersedesConflictError`).
+ */
+async function runRevise(parsed: Extract<ParsedCommand, { kind: 'revise' }>): Promise<number> {
+  let repository: SqliteConfigRevisionRepository | undefined;
+  let writer: SqliteConfigRevisionWriter | undefined;
+  // `[Review fix]` Set once `parseCandidateRevision` has succeeded, so the
+  // three post-parse errors below (`SupersedesNotFoundError`/
+  // `SupersedesConfigMismatchError`/`SupersedesConflictError`) can use the
+  // real `configName` as `renderQueryFailure`'s label, same as `establish`
+  // would if it had a comparable post-parse failure; the five earlier
+  // failures (no candidate parsed yet) keep the fixed `'revise'` fallback.
+  let parsedConfigName: string | undefined;
+  try {
+    const triggerCategory = parseTriggerCategory(parsed.triggerCategoryRaw);
+    const evidenceRef = parseEvidenceRef(parsed.evidenceRaw);
+    const supersedesRevisionId = parseSupersedesRevisionId(parsed.supersedesRaw);
+
+    if (parsed.fromPath === null && isStdinTTY()) {
+      throw new NoCandidateSourceError();
+    }
+
+    let rawText: string;
+    try {
+      rawText = parsed.fromPath !== null ? await readCandidateFile(parsed.fromPath) : await readStdinText();
+    } catch (error) {
+      throw new InvalidCandidateError(`candidate could not be read: ${(error as Error).message}`);
+    }
+
+    let candidate: unknown;
+    try {
+      candidate = JSON.parse(rawText);
+    } catch (error) {
+      throw new InvalidCandidateError(`candidate JSON could not be parsed: ${(error as Error).message}`);
+    }
+
+    // Validate the whole candidate before either database file is ever
+    // touched -- same reasoning as `runEstablish`.
+    const parsedCandidate = parseCandidateRevision(candidate);
+    parsedConfigName = parsedCandidate.configName;
+
+    // Read-only existence/configName check -- before `SqliteConfigRevisionWriter`
+    // (and therefore its migration against the real db file) is ever
+    // constructed. This alone cannot close the concurrent-supersede TOCTOU
+    // window -- see the doc comment above -- but it gives a precise error
+    // for the common, non-concurrent case with zero writes.
+    repository = new SqliteConfigRevisionRepository(defaultDbPath());
+    const target = await repository.findById(supersedesRevisionId);
+    if (target === null) {
+      throw new SupersedesNotFoundError(supersedesRevisionId);
+    }
+    if (target.configName !== parsedCandidate.configName) {
+      throw new SupersedesConfigMismatchError(supersedesRevisionId, parsedCandidate.configName, target.configName);
+    }
+
+    // `[Review fix]` The existence/configName check above is the only
+    // reason this connection was opened -- close it immediately once that
+    // check has passed, rather than holding it open (overlapping,
+    // pointlessly, with `writer`'s separate connection to the same db
+    // file) for the rest of this function. Nulled out so `finally` below
+    // doesn't try to close it a second time.
+    repository.close();
+    repository = undefined;
+
+    writer = new SqliteConfigRevisionWriter(defaultDbPath());
+    const revision = await writer.create({ triggerCategory, evidenceRef, candidate, supersedesRevisionId });
+
+    console.log(renderReviseSuccess(revision));
+    return 0;
+  } catch (error) {
+    // `[Review fix]` `findById` (`SqliteConfigRevisionRepository.findById`'s
+    // `mapRowStrict`) can throw `ConfigUnsupportedError` if the
+    // `--supersedes` target row itself has an unsupported schema version
+    // or corrupt capability JSON -- the same typed rejection `show`/
+    // `compare` already handle via `isConfigQueryError`. Without this
+    // branch that error would fall through to the unhandled `throw error`
+    // below and crash the process instead of a clean exit-1 failure block.
+    if (isConfigQueryError(error)) {
+      console.log(renderQueryFailure(parsedConfigName ?? 'revise', error));
+      return 1;
+    }
+    if (
+      error instanceof InvalidTriggerCategoryError ||
+      error instanceof MissingEvidenceError ||
+      error instanceof MissingSupersedesError ||
+      error instanceof NoCandidateSourceError ||
+      error instanceof InvalidCandidateError
+    ) {
+      // No parsed candidate (and therefore no `configName`) is available at
+      // any of these failure points -- e.g. a missing trigger category
+      // fails before the candidate is ever read -- so the label falls back
+      // to the fixed string `'revise'`, same as `establish`.
+      console.log(renderQueryFailure('revise', error));
+      return 1;
+    }
+    if (
+      error instanceof SupersedesNotFoundError ||
+      error instanceof SupersedesConfigMismatchError ||
+      error instanceof SupersedesConflictError
+    ) {
+      // These three only ever occur after `parseCandidateRevision` has
+      // already succeeded, so `parsedConfigName` is always set here --
+      // reusing it as the label matches the spec's Design Notes (mirroring
+      // `establish`'s label-fallback reasoning).
+      console.log(renderQueryFailure(parsedConfigName ?? 'revise', error));
+      return 1;
+    }
+    throw error;
+  } finally {
+    // `[Review fix]` Each close is best-effort and independent -- a thrown
+    // `repository.close()` must never prevent `writer.close()` from also
+    // running (and vice versa), or a database file handle could leak.
+    try {
+      repository?.close();
+    } catch {
+      // Best-effort only.
+    }
+    try {
+      writer?.close();
+    } catch {
+      // Best-effort only.
+    }
   }
 }
 
@@ -559,6 +815,17 @@ export async function main(argv: readonly string[], overrides: CliOverrides = {}
   if (parsed.kind === 'establish') {
     return await runEstablish(parsed);
   }
+  // `[Story 3.2]` `revise` also bypasses `openDeps()` for the same reason
+  // -- it needs neither `launchPlanRepository` nor any OMP-launch port,
+  // and must be able to fail (missing trigger/evidence/supersedes, TTY
+  // guard) without opening any SQLite file at all. Unlike a pure
+  // read-only command, though, `revise` *does* open its own
+  // `SqliteConfigRevisionRepository`/`SqliteConfigRevisionWriter` once it
+  // passes those early guards (to run `findById` and `create`) -- see
+  // `runRevise`'s doc comment.
+  if (parsed.kind === 'revise') {
+    return await runRevise(parsed);
+  }
 
   const deps = await openDeps(overrides);
   if (deps === null) {
@@ -576,7 +843,12 @@ export async function main(argv: readonly string[], overrides: CliOverrides = {}
       case 'show': {
         try {
           const revision = await getConfigRevisionDetail(deps.configRepository, parsed.id);
-          console.log(renderDetail(revision));
+          // `[Story 3.3]` Appended after `renderDetail`'s existing detail
+          // block, via the independent `renderSupersedesChainSection` --
+          // never merged into `renderDetail` itself (Boundaries &
+          // Constraints).
+          const chain = await getSupersedesChain(deps.configRepository, parsed.id);
+          console.log([renderDetail(revision), renderSupersedesChainSection(chain)].join('\n\n'));
           return 0;
         } catch (error) {
           if (isConfigQueryError(error)) {

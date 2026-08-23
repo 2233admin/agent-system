@@ -22,13 +22,31 @@
 import { known, unknown } from '../domain/facts';
 import type { Fact } from '../domain/facts';
 import type { CapabilityKind, CapabilityReference, SourceCategory, TriggerCategory } from '../domain/config';
-import { InvalidCandidateError, InvalidTriggerCategoryError, MissingEvidenceError, NoCandidateSourceError } from './ports';
+import {
+  InvalidCandidateError,
+  InvalidTriggerCategoryError,
+  MissingEvidenceError,
+  MissingSupersedesError,
+  NoCandidateSourceError,
+  SupersedesConfigMismatchError,
+  SupersedesConflictError,
+  SupersedesNotFoundError,
+} from './ports';
 
 // Re-exported so `cli/index.ts` and tests can import every establish-time
 // concern (validation + the errors it throws) from this one module,
 // without needing to know the errors themselves live in `ports.ts`
 // (alongside `ConfigRevisionWriter`, the other application-layer port).
-export { InvalidCandidateError, InvalidTriggerCategoryError, MissingEvidenceError, NoCandidateSourceError };
+export {
+  InvalidCandidateError,
+  InvalidTriggerCategoryError,
+  MissingEvidenceError,
+  MissingSupersedesError,
+  NoCandidateSourceError,
+  SupersedesConfigMismatchError,
+  SupersedesConflictError,
+  SupersedesNotFoundError,
+};
 
 export const TRIGGER_CATEGORIES: readonly TriggerCategory[] = ['new-scenario', 'known-insufficiency', 'bad-case'];
 
@@ -51,6 +69,21 @@ export function parseEvidenceRef(raw: string | undefined): string {
     throw new MissingEvidenceError();
   }
   return raw;
+}
+
+/**
+ * `[Story 3.2]` `configs revise`'s `--supersedes <revisionId>` -- trimmed,
+ * then required non-empty (same shape as `parseEvidenceRef`). Only
+ * validates presence/non-emptiness here; whether the id actually resolves
+ * to an existing revision (and whether its `configName` matches the
+ * candidate) is checked separately, against the repository, before any
+ * write is attempted (see `cli/index.ts`'s `runRevise`).
+ */
+export function parseSupersedesRevisionId(raw: string | undefined): string {
+  if (raw === undefined || raw.trim().length === 0) {
+    throw new MissingSupersedesError();
+  }
+  return raw.trim();
 }
 
 function fail(reason: string): never {
