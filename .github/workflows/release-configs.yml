@@ -81,6 +81,19 @@ jobs:
           fi
           echo "smoke test OK: $actual"
 
+          # `--version` never touches SQLite, so it can't catch a broken
+          # runtime path to an embedded/bundled asset (e.g. the migration
+          # .sql files) -- that class of bug shipped in every release before
+          # this smoke test existed. Run a real command against a fresh,
+          # isolated state dir so migrations actually execute end to end.
+          export HOME="$(mktemp -d)"
+          if ! list_output="$(./dist/configs-linux-x64 list 2>&1)"; then
+            echo "::error::compiled binary failed to run 'list' against a fresh state dir:" >&2
+            echo "$list_output" >&2
+            exit 1
+          fi
+          echo "smoke test OK: 'list' ran against a fresh state dir"
+
       - name: Generate SHA256SUMS.txt
         run: |
           cd dist

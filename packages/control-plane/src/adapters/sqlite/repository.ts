@@ -1,7 +1,14 @@
 import { Database } from 'bun:sqlite';
-import { mkdirSync, readFileSync } from 'node:fs';
+import { mkdirSync } from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+// Embedded as text at bundle/compile time (Bun's `with { type: 'text' }`
+// import attribute) rather than resolved at runtime via `import.meta.url` +
+// `readFileSync` -- a runtime filesystem path is meaningless once this
+// module is compiled into a standalone `bun build --compile` executable,
+// where `import.meta.url` resolves into Bun's embedded virtual filesystem
+// and no `migrations/*.sql` file exists on disk next to the binary at all.
+import INIT_SQL from '../../../migrations/0001_init.sql' with { type: 'text' };
+import SUPPLY_SQL from '../../../migrations/0003_supply.sql' with { type: 'text' };
 
 import { type Fact, isKnown, known, unknown } from '../../domain/facts';
 import type { CapabilityReference, SourceCategory, StableConfigRevision } from '../../domain/config';
@@ -37,11 +44,6 @@ export interface RevisionRow {
   evidence_ref: string;
   /** `[Story 3.1]` Nullable; this Story always writes/reads `null` here -- Story 3.2 populates it. */
   supersedes_revision_id: string | null;
-}
-
-function migrationSqlPath(fileName: string): string {
-  const here = path.dirname(fileURLToPath(import.meta.url));
-  return path.join(here, '..', '..', '..', 'migrations', fileName);
 }
 
 function factColumnToFact<T>(
@@ -317,9 +319,8 @@ const REVISION_COLUMNS = [
  * it -- any other error still propagates.
  */
 export function runConfigRevisionMigrations(db: Database): void {
-  const initSql = readFileSync(migrationSqlPath('0001_init.sql'), 'utf8');
   db.transaction(() => {
-    db.exec(initSql);
+    db.exec(INIT_SQL);
   })();
 
   const alreadyMigrated =
@@ -332,10 +333,9 @@ export function runConfigRevisionMigrations(db: Database): void {
     return;
   }
 
-  const supplySql = readFileSync(migrationSqlPath('0003_supply.sql'), 'utf8');
   try {
     db.transaction(() => {
-      db.exec(supplySql);
+      db.exec(SUPPLY_SQL);
     })();
   } catch (error) {
     const message = (error as Error).message ?? '';
