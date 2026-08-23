@@ -229,6 +229,65 @@ export interface OmpCapabilityProbePort {
 }
 
 /**
+ * `[Story 4.1]` The only way this package ever starts or inspects the
+ * `claude` (Claude Code) binary. Like `OmpProcessPort`, adapters must spawn
+ * it directly via an argv array (never a shell). `captureHelpText` is the
+ * probe's only source of native-surface evidence -- it returns the raw
+ * `--help` output for `claude` (or a subcommand, via `args`) so capability
+ * interpretation stays in the probe while process invocation stays here.
+ */
+export interface ClaudeProcessPort {
+  detectVersion(): Promise<Fact<string>>;
+  captureHelpText(args: readonly string[]): Promise<Fact<string>>;
+}
+
+/**
+ * `[Story 4.1]` Which of AD-11's independent validation tiers produced a
+ * `ClaudeCapabilityProbeResult.status`. This Story's probe only ever
+ * performs `mechanical` verification (static `--help` inspection) -- it
+ * never spawns a real interactive session to observe an enforced effect.
+ * Carrying this alongside `status` stops a downstream consumer from
+ * over-reading `supported` as "Claude Code enforces this": it only means
+ * "the native interface for this control still exists and matches a
+ * once-verified baseline". `controlled-integration`/`real-task` results are
+ * Story 4.3/4.4 territory.
+ */
+export type ClaudeCapabilityValidationMethod = 'mechanical' | 'controlled-integration' | 'real-task';
+
+/**
+ * `[Story 4.1]` One probed hard-control capability (AD-19's 2026-08-23
+ * Epic-4 update): a stable `capabilityId`, a human-readable `subject`,
+ * whether it is `required` (fail-closed) or optional (`degraded`-eligible),
+ * the observed `status`, which `validationMethod` produced it, and an
+ * `evidenceRef` describing what was actually observed. `evidenceRef` must
+ * always describe real, captured evidence (or the reason none could be
+ * captured) -- never a placeholder string. `observedAt` is when this
+ * specific judgment was made (mirrors `Fact`'s own Known/Unknown timestamp
+ * discipline, since this result shape is not itself a `Fact<T>`).
+ */
+export interface ClaudeCapabilityProbeResult {
+  readonly capabilityId: string;
+  readonly subject: string;
+  readonly required: boolean;
+  readonly status: CapabilityProbeLevel;
+  readonly validationMethod: ClaudeCapabilityValidationMethod;
+  readonly evidenceRef: string;
+  readonly observedAt: string;
+}
+
+/**
+ * `[Story 4.1]` Probes every candidate hard-control capability the Claude
+ * Code adapter cares about (permission mode, MCP scoping, setting-source
+ * scoping, hook deny effect -- see Design Notes). Must never accept prompt
+ * text, documentation claims or unverified assumptions as `supported`
+ * evidence; a capability that cannot be mechanically verified resolves to
+ * `unknown`, never a default `supported`.
+ */
+export interface ClaudeCapabilityProbePort {
+  probeHardControlCapabilities(): Promise<readonly ClaudeCapabilityProbeResult[]>;
+}
+
+/**
  * The one-time, versioned file the thin OMP extension reads on
  * `session_start` (delivered via `AGENT_SYSTEM_LAUNCH_CONTEXT`). Never a
  * vehicle for task content -- see Design Notes.
