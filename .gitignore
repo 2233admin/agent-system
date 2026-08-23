@@ -25,3 +25,11 @@ WATCHDOG.yml
 .omp/skills/openspec-*/
 .qoder/commands/opsx/
 .qoder/skills/openspec-*/
+
+# BMAD installation is local tooling, not tracked (each machine installs its
+# own copy) -- EXCEPT _bmad/custom/, the sanctioned location for team-wide
+# customization overrides (bmad-customize skill), which must be shared via
+# git so every clone/session sees the same overrides. Personal (*.user.toml)
+# overrides inside _bmad/custom/ stay untracked via its own .gitignore.
+/_bmad/*
+!/_bmad/custom/
