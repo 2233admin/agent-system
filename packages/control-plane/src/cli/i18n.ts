@@ -104,7 +104,7 @@ const zh: Dict = {
   'parseError.unknownClient': '未知客户端：{client}',
   'parseError.unknownCommand': '未知命令：{command}',
   'parseError.denylistedForwardedArg':
-    'configs {command}：转发参数 "{arg}" 不被允许——如果原样传给真实的 `omp` 二进制文件，会破坏本 Story 单一扩展来源/隔离 profile/不自动恢复这几条保证',
+    'configs {command}：转发参数 "{arg}" 不被允许——如果原样传给真实的 `omp` 二进制文件，会破坏本 Story 单一扩展来源/复用默认 profile/不自动恢复这几条保证',
   'openDeps.failed': 'configs：无法打开配置存储：{message}',
   'unexpectedFailure': 'configs：意外失败：{message}',
   'launchPlan.notFound': '未找到启动计划 {target}。请先运行 `configs use <id>`。',
@@ -205,7 +205,7 @@ const en: Dict = {
   'parseError.unknownClient': 'unknown client: {client}',
   'parseError.unknownCommand': 'unknown command: {command}',
   'parseError.denylistedForwardedArg':
-    "configs {command}: forwarded argument \"{arg}\" is not allowed -- it would defeat this Story's single-extension-source/isolated-profile/no-auto-resume guarantees when passed through to the real `omp` binary",
+    "configs {command}: forwarded argument \"{arg}\" is not allowed -- it would defeat this Story's single-extension-source/default-profile/no-auto-resume guarantees when passed through to the real `omp` binary",
   'openDeps.failed': 'configs: could not open configuration storage: {message}',
   'unexpectedFailure': 'configs: unexpected failure: {message}',
   'launchPlan.notFound': 'No launch plan found {target}. Run `configs use <id>` first.',

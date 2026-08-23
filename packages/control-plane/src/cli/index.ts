@@ -156,7 +156,7 @@ function parseUseOrSwitch(kind: 'use' | 'switch', rest: readonly string[]): Pars
   // Rejected here -- before any repository is opened, any plan is created
   // or `omp` is spawned -- because a forwarded `-e`/`--extension`,
   // `--profile`, `-c`/`--continue`, `-r`/`--resume` or `--session-dir`
-  // would defeat this Story's single-extension-source/isolated-profile/
+  // would defeat this Story's single-extension-source/default-profile/
   // no-auto-resume guarantees if let through opaquely (see
   // `findDenylistedForwardedArg`'s docstring in `adapters/omp/process-port.ts`).
   const denylisted = findDenylistedForwardedArg(forwardedArgs);
