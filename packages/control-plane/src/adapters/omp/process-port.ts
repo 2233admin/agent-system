@@ -1,9 +1,26 @@
+import { mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+// Embedded as text at bundle/compile time (Bun's `with { type: 'text' }`
+// import attribute) rather than resolved at runtime via `import.meta.url` +
+// `fileURLToPath` -- a runtime filesystem path is meaningless once this
+// module is compiled into a standalone `bun build --compile` executable,
+// where `import.meta.url` resolves into Bun's embedded virtual filesystem
+// and no `extensions/agent-status-extension.ts` file exists on disk next to
+// the binary at all (same class of bug as `adapters/sqlite/repository.ts`'s
+// migration `.sql` imports). `omp` loads this file as an external process
+// via `-e <path>`, so it needs a real on-disk path regardless -- see
+// `defaultExtensionPath` below.
+import AGENT_STATUS_EXTENSION_MODULE from './extensions/agent-status-extension.ts' with { type: 'text' };
+// TypeScript resolves the specifier above to the real module and types it
+// as its actual default export (the registration function), ignoring the
+// `type: 'text'` attribute -- this cast corrects the compile-time type to
+// match the runtime string value without needing a second copy of the source.
+const AGENT_STATUS_EXTENSION_SOURCE = AGENT_STATUS_EXTENSION_MODULE as unknown as string;
 
 import { type Fact, known, unknown } from '../../domain/facts';
 import type { StableConfigRevision } from '../../domain/config';
 import type { OmpProcessPort, OmpSpawnParams, OmpSpawnResult } from '../../application/ports';
+import { defaultDbPath } from '../../cli/db-path';
 
 /**
  * Pure argv builder -- exported so tests can assert exact argv contents
@@ -103,10 +120,21 @@ export function findDenylistedForwardedArg(forwardedArgs: readonly string[]): st
 }
 
 
-/** Resolves the on-disk path of the thin status/switch extension shipped with this package. */
+/**
+ * Materializes the thin status/switch extension's embedded source onto a
+ * real on-disk path and returns that path, so `omp` (a separate process,
+ * loading it via `-e <path>`) can always find it -- whether this module is
+ * running from source or from inside a `bun build --compile` standalone
+ * binary. Writes under the same state root the SQLite database lives under
+ * (`cli/db-path.ts`'s convention), overwriting on every call so an upgraded
+ * binary's newer extension source always replaces a stale on-disk copy.
+ */
 export function defaultExtensionPath(): string {
-  const here = path.dirname(fileURLToPath(import.meta.url));
-  return path.join(here, 'extensions', 'agent-status-extension.ts');
+  const dir = path.join(path.dirname(defaultDbPath()), 'extensions');
+  mkdirSync(dir, { recursive: true });
+  const filePath = path.join(dir, 'agent-status-extension.ts');
+  writeFileSync(filePath, AGENT_STATUS_EXTENSION_SOURCE, 'utf8');
+  return filePath;
 }
 
 const OMP_VERSION_PATTERN = /^omp\/(\S+)/;
