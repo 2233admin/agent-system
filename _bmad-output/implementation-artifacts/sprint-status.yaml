@@ -29,18 +29,18 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 # - Retrospective appends its action items to action_items; the status view surfaces open ones
 generated: 08-22-2026 00:00
-last_updated: 08-23-2026 16:53
+last_updated: 08-23-2026 17:55
 project: agent-system
 project_key: NOKEY
 tracking_system: file-system
 story_location: _bmad-output/implementation-artifacts
 development_status:
-  epic-1: in-progress
+  epic-1: done
   1-1-查看与比较配置内容: done
   1-2-选择配置并使用-omp: done
   epic-1-retrospective: done
 
-  epic-2: in-progress
+  epic-2: done
   2-1-打包与发布流水线: done
   2-2-自更新客户端: done
   epic-2-retrospective: done
@@ -104,12 +104,12 @@ action_items:
       in only one copy."
     owner: "control-plane maintainer"
     status: done
-    note: "Extracted factColumns/factColumnToFact into a new
-      packages/control-plane/src/adapters/sqlite/fact-columns.ts module; repository.ts,
-      launch-repository.ts, and config-revision-writer.ts now import it instead of each
-      defining/re-exporting their own copy. Pure dedup, no behavior change -- bunx tsc
-      --noEmit clean, bun test 272 pass / 0 fail (up from the 150/150 baseline at the
-      Epic 1 retro, reflecting Story 3.1 additions since)."
+    note: "Extracted factColumns/factColumnToFact into a new packages/control-plane/src/adapters/sqlite/fact-columns.ts
+      module; repository.ts, launch-repository.ts, and config-revision-writer.ts now
+      import it instead of each defining/re-exporting their own copy. Pure dedup,
+      no behavior change -- bunx tsc --noEmit clean, bun test 272 pass / 0 fail (up
+      from the 150/150 baseline at the Epic 1 retro, reflecting Story 3.1 additions
+      since)."
     ref: "_bmad-output/implementation-artifacts/epic-1-retro-2026-08-22.md"
   - id: "epic-1-retro-item-5-sprint_status-py-s-update-command-has-no"
     epic: 1
