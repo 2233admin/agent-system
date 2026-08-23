@@ -1,10 +1,51 @@
+import { Database } from 'bun:sqlite';
 import { describe, expect, test } from 'bun:test';
+import { mkdtempSync, rmSync } from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 
-import { SqliteConfigRevisionRepository } from '../../src/adapters/sqlite/repository';
+import INIT_SQL from '../../migrations/0001_init.sql' with { type: 'text' };
+
+import { SqliteConfigRevisionRepository, runConfigRevisionMigrations } from '../../src/adapters/sqlite/repository';
 import type { RevisionRow } from '../../src/adapters/sqlite/repository';
 import { ConfigUnsupportedError } from '../../src/application/queries';
 import { isKnown, isUnknown, known, unknown } from '../../src/domain/facts';
 import type { StableConfigRevision } from '../../src/domain/config';
+
+/** Same convention as `tests/contracts/config-revision-writer.test.ts` -- a real temp file so two separate `Database` connections observe the same on-disk file (`:memory:` gives each connection its own isolated database). */
+function withTempDbPath<T>(fn: (dbPath: string) => T): T {
+  const tmpDir = mkdtempSync(path.join(os.tmpdir(), 'control-plane-migration-'));
+  const dbPath = path.join(tmpDir, 'db.sqlite3');
+  try {
+    return fn(dbPath);
+  } finally {
+    rmSync(tmpDir, { recursive: true, force: true });
+  }
+}
+
+function tableColumnNames(dbPath: string, table: string): string[] {
+  const db = new Database(dbPath);
+  try {
+    return db
+      .query<{ name: string }, []>(`SELECT name FROM pragma_table_info('${table}')`)
+      .all()
+      .map((row) => row.name);
+  } finally {
+    db.close();
+  }
+}
+
+function tableIndexNames(dbPath: string, table: string): string[] {
+  const db = new Database(dbPath);
+  try {
+    return db
+      .query<{ name: string }, []>(`SELECT name FROM pragma_index_list('${table}')`)
+      .all()
+      .map((row) => row.name);
+  } finally {
+    db.close();
+  }
+}
 
 function sampleRevision(overrides: Partial<StableConfigRevision> & { configName: string; revisionId: string }): StableConfigRevision {
   return {
@@ -224,5 +265,137 @@ describe('SqliteConfigRevisionRepository (:memory:, STRICT)', () => {
     } finally {
       repo.close();
     }
+  });
+
+  // `[Review fix]` `runConfigRevisionMigrations` used to gate all three
+  // `0003_supply.sql` `ALTER TABLE`s on a single `trigger_category`
+  // existence check, batched inside one transaction -- a database that
+  // already had `supersedes_revision_id` (from an earlier partial run) but
+  // not `trigger_category`/`evidence_ref` would hit "duplicate column
+  // name" partway through that batch, rolling the *whole* transaction
+  // back and silently swallowing the failure, leaving
+  // `trigger_category`/`evidence_ref` permanently missing.
+  test('a half-migrated database (only supersedes_revision_id present) gets trigger_category/evidence_ref backfilled, not silently left missing', () => {
+    withTempDbPath((dbPath) => {
+      const seed = new Database(dbPath, { create: true });
+      try {
+        seed.exec(INIT_SQL);
+        seed.exec('ALTER TABLE stable_config_revision ADD COLUMN supersedes_revision_id TEXT');
+      } finally {
+        seed.close();
+      }
+      expect(tableColumnNames(dbPath, 'stable_config_revision')).not.toContain('trigger_category');
+      expect(tableColumnNames(dbPath, 'stable_config_revision')).not.toContain('evidence_ref');
+
+      // Opening a real repository against this half-migrated file must not
+      // throw, and must actually finish the migration rather than treating
+      // the pre-existing `supersedes_revision_id` column as "fully done".
+      const repo = new SqliteConfigRevisionRepository(dbPath);
+      try {
+        const columns = tableColumnNames(dbPath, 'stable_config_revision');
+        expect(columns).toContain('trigger_category');
+        expect(columns).toContain('evidence_ref');
+        expect(columns).toContain('supersedes_revision_id');
+        // `[Review fix]` No prior test asserted the two `0003_supply.sql`
+        // indexes actually get created (they're the non-`ADD COLUMN`
+        // statements in the same per-statement loop).
+        const indexes = tableIndexNames(dbPath, 'stable_config_revision');
+        expect(indexes).toContain('idx_stable_config_revision_config_name_revision_id');
+        expect(indexes).toContain('idx_stable_config_revision_supersedes_revision_id');
+      } finally {
+        repo.close();
+      }
+    });
+  });
+
+  // `[Review fix]` The other half-migrated test above only exercises one
+  // partial-state shape (only `supersedes_revision_id` present). Per-column
+  // gating needs coverage of a different partial shape too -- here,
+  // `trigger_category` present but `evidence_ref`/`supersedes_revision_id`
+  // still missing -- to actually exercise more than one column's gate.
+  test('a half-migrated database (only trigger_category present) gets evidence_ref/supersedes_revision_id and both indexes backfilled', () => {
+    withTempDbPath((dbPath) => {
+      const seed = new Database(dbPath, { create: true });
+      try {
+        seed.exec(INIT_SQL);
+        seed.exec(
+          "ALTER TABLE stable_config_revision ADD COLUMN trigger_category TEXT NOT NULL DEFAULT 'new-scenario' CHECK (trigger_category IN ('new-scenario', 'known-insufficiency', 'bad-case'))",
+        );
+      } finally {
+        seed.close();
+      }
+      expect(tableColumnNames(dbPath, 'stable_config_revision')).toContain('trigger_category');
+      expect(tableColumnNames(dbPath, 'stable_config_revision')).not.toContain('evidence_ref');
+      expect(tableColumnNames(dbPath, 'stable_config_revision')).not.toContain('supersedes_revision_id');
+
+      const repo = new SqliteConfigRevisionRepository(dbPath);
+      try {
+        const columns = tableColumnNames(dbPath, 'stable_config_revision');
+        expect(columns).toContain('trigger_category');
+        expect(columns).toContain('evidence_ref');
+        expect(columns).toContain('supersedes_revision_id');
+        const indexes = tableIndexNames(dbPath, 'stable_config_revision');
+        expect(indexes).toContain('idx_stable_config_revision_config_name_revision_id');
+        expect(indexes).toContain('idx_stable_config_revision_supersedes_revision_id');
+      } finally {
+        repo.close();
+      }
+    });
+  });
+
+  // `[Review fix]` Reproduces real lock contention on the `ALTER TABLE`
+  // step specifically (not `0001_init.sql`'s `CREATE TABLE`/`CREATE INDEX
+  // IF NOT EXISTS`, which is naturally re-entrant and out of this fix's
+  // scope) between two live connections on the same on-disk file -- one
+  // holds a write lock (`BEGIN IMMEDIATE`) once the table already exists,
+  // forcing the other's `ALTER TABLE` specifically to fail with
+  // `SQLITE_BUSY`/"database is locked". That must be tolerated the same
+  // way `"duplicate column name"` already is, not propagate and crash the
+  // caller. (The full two-real-process race, including `0001_init.sql`'s
+  // own re-entrant `CREATE TABLE`, is covered end-to-end by
+  // `tests/integration/cli-establish.test.ts`'s subprocess test.)
+  test('a concurrent connection holding the write lock during the ALTER TABLE step causes SQLITE_BUSY/"database is locked", which is tolerated rather than thrown', () => {
+    withTempDbPath((dbPath) => {
+      const seed = new Database(dbPath, { create: true });
+      try {
+        seed.exec(INIT_SQL);
+      } finally {
+        seed.close();
+      }
+
+      const holder = new Database(dbPath);
+      try {
+        holder.exec('BEGIN IMMEDIATE');
+        try {
+          const racer = new Database(dbPath);
+          racer.exec('PRAGMA busy_timeout = 200;');
+          try {
+            expect(() => racer.exec("ALTER TABLE stable_config_revision ADD COLUMN trigger_category TEXT NOT NULL DEFAULT 'new-scenario'"))
+              .toThrow(/database is locked|SQLITE_BUSY/i);
+          } finally {
+            racer.close();
+          }
+        } finally {
+          holder.exec('COMMIT');
+        }
+      } finally {
+        holder.close();
+      }
+
+      // The lock-contention error reproduced above is exactly what
+      // `isConcurrentMigrationRace` (via `runConfigRevisionMigrations`)
+      // must swallow instead of propagating -- verified end-to-end: once
+      // the lock is released, opening a real repository against this
+      // still-unmigrated file completes the migration without throwing.
+      const repo = new SqliteConfigRevisionRepository(dbPath);
+      try {
+        const columns = tableColumnNames(dbPath, 'stable_config_revision');
+        expect(columns).toContain('trigger_category');
+        expect(columns).toContain('evidence_ref');
+        expect(columns).toContain('supersedes_revision_id');
+      } finally {
+        repo.close();
+      }
+    });
   });
 });

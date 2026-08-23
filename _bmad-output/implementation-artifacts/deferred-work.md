@@ -106,3 +106,27 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-configs-self-update-visible-success.md`
   summary: `checkAndApply` 在每次编译二进制的进程启动时都会跑，两个几乎同时启动的 `configs` 进程可能对同一个 `execPath` 竞争 `replaceBinary` 的写入/重命名——这是 Story 2.2 就存在的既有竞态，本次改动只是让成功提示打印出来后，这个竞态第一次变得"外部可观察"（比如两个进程都打印了更新提示，或其中一个悄悄拿到 `null`）。
   evidence: blind-hunter 审查层（自更新可见提示这轮）发现。竞态本身不是本次改动引入的，只是可见度变了；修复需要引入跨进程锁或去重机制，是需要额外设计判断的加固方向，不是本次可无争议机械修的 patch。
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-3-1-code-review-fixes.md`
+  summary: `configs establish`（`cli/index.ts:497` 与 `config-revision-writer.ts:46`）对同一个 candidate 对象完整跑了两遍 `parseCandidateRevision` 校验，前一次的结果被直接丢弃，只为了在开库/跑迁移之前提前失败。
+  evidence: spec-3-1-code-review-fixes.md 的 token 预算超出 1600 上限，负责人选择按 [S] 拆分——本项收敛方式牵涉是否放宽 `EstablishConfigRevisionParams.candidate` 目前故意保持的 `unknown` 类型契约，是一个需要负责人拍板的端口契约设计决定，不是纯粹的机械 patch，留给后续单独一轮处理。
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-3-1-code-review-fixes.md`
+  summary: `SqliteConfigRevisionWriter`（`config-revision-writer.ts:31-39`）与 `SqliteConfigRevisionRepository`（`repository.ts:358-369`）的构造函数逐字重复实现了同一套连接建立逻辑（mkdir 守卫、`new Database`、两条 PRAGMA、跑迁移），应抽取共享 helper。
+  evidence: 同上，随 spec-3-1-code-review-fixes.md 一起被 [S] 拆分推迟；调查还顺带发现 `launch-repository.ts` 有第三处相同重复，抽取共享 helper 时应一并纳入设计范围，不是本次 code review 6 条确认发现之一，留给同一轮后续处理。
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-3-1-code-review-fixes.md`
+  summary: `parseEstablish`（`cli/index.ts:183-248`）的三个 flag 解析块"已设置"哨兵值不一致——`--trigger-category`/`--evidence` 用 `!== undefined`，`--from` 用 `!== null`——应统一约定，并同步更新 `ParsedCommand` 类型声明与 `runEstablish` 里对 `fromPath` 的比较。
+  evidence: 同上，随 spec-3-1-code-review-fixes.md 一起被 [S] 拆分推迟；纯代码一致性问题，不影响当前行为正确性，不阻塞本轮 correctness 修复。
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-3-1-code-review-fixes.md`
+  summary: `runConfigRevisionMigrations`（`repository.ts`）新的按语句循环把 `0003_supply.sql` 拆成逐条独立执行，不再包在单个 `db.transaction()` 里，也不再有 `alreadyMigrated` 早退——文件级原子性因此丢失（真实、非竞态的失败会留下部分迁移状态），且这两点均未在紧邻的 docstring 里说明；`splitSqlStatements` 是朴素按 `;` 切分（只去掉整行 `--` 注释），不处理字符串字面量内的分号或 `/* ... */` 块注释；`SUPPLY_ADD_COLUMN_RE` 硬编码了 `ALTER TABLE stable_config_revision ADD COLUMN` 的具体格式假设，未来若该文件格式漂移（引号/大小写变化、新表的列），真正的 `ADD COLUMN` 语句可能匹配失败，落进"已幂等无需门控"分支被无条件重跑，重新引入本轮要修的 duplicate-column-name 崩溃。
+  evidence: blind-hunter 与 edge-case-hunter 审查层（Story 3.1 code-review-fixes 这轮）独立发现同一族问题。当前 `migrations/0003_supply.sql` 的实际内容不含字符串字面量分号、块注释或格式漂移，因此不可达、不是活跃缺陷；修一个通用健壮的 SQL 语句拆分器超出本轮"修 4 条 correctness bug"的范围，值得下次改动 `0003_supply.sql` 或新增迁移文件之前先处理。
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-3-1-code-review-fixes.md`
+  summary: `columnExists`（`repository.ts`）把 `table` 参数直接字符串插值进 `pragma_table_info('${table}')`，而不是参数化，与本文件自己声明的 STRICT/参数化查询约定不一致；`PRAGMA busy_timeout = 5000;` 作为魔法字面量在两个构造函数（`config-revision-writer.ts`、`repository.ts`）里各写一份，未解释也不可配置；`isConcurrentMigrationRace` 靠小写子串匹配 `error.message`（延续了本文件迁移前就存在的 `(error as Error).message ?? ''` 写法），而不是结构化的 `.code`（bun:sqlite 通常暴露 `SQLITE_BUSY` 等 code），对驱动措辞变化脆弱。
+  evidence: blind-hunter 与 edge-case-hunter 审查层发现。`columnExists` 当前唯一调用方传字面量，无注入风险，纯风格一致性问题；`busy_timeout` 重复与已记录的"Writer/Repository 构造函数重复实现连接逻辑"是同一根因（缺共享连接建立 helper），修那条时可以一并处理；`isConcurrentMigrationRace` 的字符串匹配模式本身是延续自本 Story 之前就有的既有写法，不是本轮改动引入的新风险。
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-3-1-code-review-fixes.md`
+  summary: `tests/contracts/repository.test.ts` 新增的 `withTempDbPath` helper 与 `tests/contracts/config-revision-writer.test.ts` 已有的 `withTempDb` 几乎逐字重复（新增处的注释自己也写"Same convention as..."），应抽成一个共享测试工具而不是逐文件复制；`tests/integration/cli-establish.test.ts` 新增的真实双进程并发测试用 `Promise.all([procA.exited, procB.exited])` 等待退出，没有 `finally`/超时清理——如果测试超时或某个 promise reject，另一个已 spawn 的 `bun` 子进程不会被杀掉，可能残留。
+  evidence: blind-hunter 审查层（Story 3.1 code-review-fixes 这轮）发现。均为测试基础设施质量问题，不影响当前测试的正确性或本轮 4 条 correctness 修复本身，只在测试超时/失败这类少见路径下才会体现（进程残留），本轮不顺手处理。

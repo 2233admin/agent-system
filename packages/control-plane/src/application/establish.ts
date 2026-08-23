@@ -85,6 +85,16 @@ function parseFact<T>(
     fail(`${fieldPath}.kind must be "known" or "unknown"`);
   }
   if (factObj.kind === 'unknown') {
+    // `[Review fix]` Mirrors the `known` branch below: a field that is
+    // *absent* degrades to the default (AD-8), but a field that *is
+    // present* with the wrong type fails the whole candidate -- it must
+    // never be silently overwritten with a fabricated default.
+    if (factObj.reason !== undefined && typeof factObj.reason !== 'string') {
+      fail(`${fieldPath}.reason must be a string`);
+    }
+    if (factObj.observedAt !== undefined && typeof factObj.observedAt !== 'string') {
+      fail(`${fieldPath}.observedAt must be a string`);
+    }
     const reason = typeof factObj.reason === 'string' ? factObj.reason : 'unspecified';
     const observedAt = typeof factObj.observedAt === 'string' ? factObj.observedAt : MISSING_FIELD_OBSERVED_AT;
     return unknown(reason, observedAt);
