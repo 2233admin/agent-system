@@ -15,6 +15,93 @@ export interface ConfigRevisionRepository {
 }
 
 /**
+ * The three allowed reasons a low-frequency configuration establish/revise
+ * command may write a new revision (AD-16/AD-21). Merely discovering an
+ * asset, its historical existence, or technical feasibility is never a
+ * valid trigger on its own.
+ */
+export type TriggerCategory = 'new-scenario' | 'known-insufficiency' | 'bad-case';
+
+export const TRIGGER_CATEGORIES: readonly TriggerCategory[] = ['new-scenario', 'known-insufficiency', 'bad-case'];
+
+/**
+ * The compound value `create` takes as its `trigger` argument (AD-21's
+ * `SUPPLY_TRIGGER`) -- category and evidence reference are packed together,
+ * never passed as two independent parameters. Typed as raw strings (not
+ * `TriggerCategory`) because this is unvalidated input arriving from the
+ * CLI/an Agent; `create` is what validates and rejects it.
+ */
+export interface RevisionTriggerInput {
+  readonly category: string;
+  readonly evidenceRef: string;
+}
+
+/**
+ * Everything `create` needs to persist a new revision except the id (which
+ * the port generates) and `supersedesRevisionId` (which is supplied
+ * separately as `create`'s own `supersedes` argument -- AD-21: the caller
+ * declares it explicitly, the port never infers "latest revision").
+ */
+export type NewConfigRevisionInput = Omit<StableConfigRevision, 'revisionId' | 'supersedesRevisionId'>;
+
+/**
+ * The declared trigger category was missing or was not one of
+ * `TRIGGER_CATEGORIES`. AD-16/AD-21: `create` must reject the entire write
+ * rather than persist a partial/guessed record.
+ */
+export class InvalidTriggerCategoryError extends Error {
+  readonly kind = 'invalid-trigger-category' as const;
+
+  constructor(readonly received: string) {
+    super(`invalid or missing trigger category: "${received}" (must be one of: ${TRIGGER_CATEGORIES.join(', ')})`);
+    this.name = 'InvalidTriggerCategoryError';
+  }
+}
+
+/** The evidence reference was missing or empty. AD-16/AD-21. */
+export class MissingEvidenceError extends Error {
+  readonly kind = 'missing-evidence' as const;
+
+  constructor() {
+    super('evidence reference is required and must not be empty');
+    this.name = 'MissingEvidenceError';
+  }
+}
+
+/**
+ * The candidate JSON supplied to `configs establish` (via `--from`/stdin)
+ * did not match the shape `create` requires. Thrown by the CLI's own
+ * parsing step -- not by the write port itself -- but declared alongside
+ * the port's other typed rejections so `cli/render.ts` can fold all three
+ * into the same closed failure-rendering path.
+ */
+export class InvalidCandidateError extends Error {
+  readonly kind = 'invalid-candidate' as const;
+
+  constructor(readonly reason: string) {
+    super(`invalid candidate content: ${reason}`);
+    this.name = 'InvalidCandidateError';
+  }
+}
+
+/**
+ * Insert-only write port for `StableConfigRevision`s (AD-21), deliberately
+ * separate from the read-only `ConfigRevisionRepository`. Only `create`
+ * exists -- no update/delete method -- so revision immutability is
+ * guaranteed by the interface shape, not just by a runtime check. `create`
+ * validates trigger/evidence and generates `revisionId` itself (never
+ * trusting a caller-supplied id) atomically with the insert; `supersedes`
+ * is the caller's own explicit declaration (`null` for a new configuration).
+ */
+export interface ConfigRevisionWriter {
+  create(
+    revision: NewConfigRevisionInput,
+    trigger: RevisionTriggerInput,
+    supersedes: string | null,
+  ): Promise<StableConfigRevision>;
+}
+
+/**
  * Persistence port for `LaunchPlan`s. Like `ConfigRevisionRepository`,
  * adapters must not make product decisions -- "not found" is `null`; the
  * application layer turns that into a typed error.

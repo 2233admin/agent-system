@@ -4,7 +4,7 @@ import { SqliteConfigRevisionRepository } from '../../src/adapters/sqlite/reposi
 import type { RevisionRow } from '../../src/adapters/sqlite/repository';
 import { BunOmpProcessPort, buildOmpArgv, defaultExtensionPath } from '../../src/adapters/omp/process-port';
 import { ConfigUnsupportedError } from '../../src/application/queries';
-import { known } from '../../src/domain/facts';
+import { known, unknown } from '../../src/domain/facts';
 import type { StableConfigRevision } from '../../src/domain/config';
 
 /**
@@ -23,6 +23,7 @@ function sampleRevision(overrides: Partial<StableConfigRevision> & { configName:
     defaultMarker: overrides.defaultMarker ?? known(false),
     scopeBoundary: overrides.scopeBoundary ?? known('a scope boundary'),
     availability: overrides.availability ?? known('resolved'),
+    supersedesRevisionId: overrides.supersedesRevisionId ?? null,
     instructions: overrides.instructions ?? [],
     skills: overrides.skills ?? [],
     mcp: overrides.mcp ?? [],
@@ -48,6 +49,7 @@ function rawRow(overrides: Partial<RevisionRow> & { revision_id: string }): Revi
     availability_value: overrides.availability_value ?? 'resolved',
     availability_reason: overrides.availability_reason ?? null,
     availability_observed_at: overrides.availability_observed_at ?? null,
+    supersedes_revision_id: overrides.supersedes_revision_id ?? null,
     instructions_json: overrides.instructions_json ?? '[]',
     skills_json: overrides.skills_json ?? '[]',
     mcp_json: overrides.mcp_json ?? '[]',
@@ -65,8 +67,22 @@ describe('DB -> argv: SqliteConfigRevisionRepository round-trip into buildOmpArg
           configName: 'general',
           revisionId: 'rev-1',
           skills: [
-            { kind: 'skill', name: 'openspec-explore', sourceCategory: known('project-capability'), summary: known('skill') },
-            { kind: 'skill', name: 'grilling', sourceCategory: known('project-capability'), summary: known('skill') },
+            {
+              kind: 'skill',
+              name: 'openspec-explore',
+              sourceCategory: known('project-capability'),
+              summary: known('skill'),
+              sourceRef: unknown('not-provided', 'now'),
+              contentFingerprint: unknown('not-provided', 'now'),
+            },
+            {
+              kind: 'skill',
+              name: 'grilling',
+              sourceCategory: known('project-capability'),
+              summary: known('skill'),
+              sourceRef: unknown('not-provided', 'now'),
+              contentFingerprint: unknown('not-provided', 'now'),
+            },
           ],
         }),
       ]);
@@ -166,7 +182,16 @@ describe('DB -> argv: SqliteConfigRevisionRepository round-trip into buildOmpArg
         sampleRevision({
           configName: 'general',
           revisionId: 'rev-1',
-          skills: [{ kind: 'skill', name: 'openspec-explore', sourceCategory: known('project-capability'), summary: known('skill') }],
+          skills: [
+            {
+              kind: 'skill',
+              name: 'openspec-explore',
+              sourceCategory: known('project-capability'),
+              summary: known('skill'),
+              sourceRef: unknown('not-provided', 'now'),
+              contentFingerprint: unknown('not-provided', 'now'),
+            },
+          ],
         }),
       ]);
       const revision = await repo.findById('rev-1');

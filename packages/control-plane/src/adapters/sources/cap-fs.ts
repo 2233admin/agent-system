@@ -87,6 +87,7 @@ function mapCapabilityNames(
   names: readonly string[],
   kind: CapabilityKind,
   importNames: ReadonlySet<string>,
+  observedAt: string,
 ): CapabilityReference[] {
   return names.map((name) => {
     const sourceCategory: SourceCategory = importNames.has(name) ? 'project-skill-import' : 'project-capability';
@@ -95,6 +96,11 @@ function mapCapabilityNames(
       name,
       sourceCategory: known(sourceCategory),
       summary: known(`${kind} reference: ${name}`),
+      // `[DELTA]` AD-21 (Story 3.1): `.cap/` never declares a concrete
+      // source address or content fingerprint for its entries -- Unknown,
+      // not omitted, per AD-8.
+      sourceRef: unknown('cap-fs-does-not-declare-a-source-address', observedAt),
+      contentFingerprint: unknown('cap-fs-does-not-declare-a-content-fingerprint', observedAt),
     };
   });
 }
@@ -142,18 +148,21 @@ export async function loadCapConfigRevisions(capRoot: string): Promise<StableCon
       defaultMarker: unknown('cap-manifest-defaults-field-is-not-a-per-profile-role-marker', observedAt),
       scopeBoundary: known(buildScopeBoundary(role, profile)),
       availability: resolved ? known('resolved') : unknown('not-resolved', observedAt),
+      supersedesRevisionId: null,
       instructions: [
         {
           kind: 'instruction',
           name: profile.prompt,
           sourceCategory: known<SourceCategory>('project-prompt'),
           summary: known(`prompt file reference: ${profile.prompt}`),
+          sourceRef: unknown('cap-fs-does-not-declare-a-source-address', observedAt),
+          contentFingerprint: unknown('cap-fs-does-not-declare-a-content-fingerprint', observedAt),
         },
       ],
-      skills: mapCapabilityNames(inventory?.skills ?? [], 'skill', importNames),
-      mcp: mapCapabilityNames(inventory?.mcps ?? [], 'mcp', importNames),
-      hooks: mapCapabilityNames(inventory?.hooks ?? [], 'hook', importNames),
-      plugins: mapCapabilityNames(inventory?.plugins ?? [], 'plugin', importNames),
+      skills: mapCapabilityNames(inventory?.skills ?? [], 'skill', importNames, observedAt),
+      mcp: mapCapabilityNames(inventory?.mcps ?? [], 'mcp', importNames, observedAt),
+      hooks: mapCapabilityNames(inventory?.hooks ?? [], 'hook', importNames, observedAt),
+      plugins: mapCapabilityNames(inventory?.plugins ?? [], 'plugin', importNames, observedAt),
     });
   }
 

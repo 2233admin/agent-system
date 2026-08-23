@@ -56,6 +56,11 @@ const zh: Dict = {
   'queryFailure.unsupported': '不受支持（{reason}）。恢复：重新导入该修订版本，或检查其存储数据；其他配置不受影响。',
   'queryFailure.prefix': '配置 "{revisionId}"：{reason}',
 
+  'establish.success': '已建立新配置修订：',
+  'establish.missingTriggerCategory': '缺少触发类别（必须是 new-scenario、known-insufficiency 或 bad-case 之一）。',
+  'establish.missingEvidence': '缺少证据引用。',
+  'establish.invalidCandidate': '候选内容格式不正确（{reason}）。',
+
   'comparison.header': '正在比较 {count} 个修订版本：{ids}',
   'comparison.missingIn': '缺失于：{ids}',
   'comparison.noValid': '没有解析出任何可比较的有效配置修订版本。',
@@ -103,6 +108,7 @@ const zh: Dict = {
   'parseError.unknownFlag': '未知参数：{flag}',
   'parseError.unknownClient': '未知客户端：{client}',
   'parseError.unknownCommand': '未知命令：{command}',
+  'parseError.flagRequiresValue': '{flag} 需要一个值',
   'parseError.denylistedForwardedArg':
     'configs {command}：转发参数 "{arg}" 不被允许——如果原样传给真实的 `omp` 二进制文件，会破坏本 Story 单一扩展来源/隔离 profile/不自动恢复这几条保证',
   'openDeps.failed': 'configs：无法打开配置存储：{message}',
@@ -143,6 +149,11 @@ const en: Dict = {
   'queryFailure.notFound': 'not found. Recovery: run `configs list` to see available revision ids.',
   'queryFailure.unsupported': 'unsupported ({reason}). Recovery: re-seed this revision or inspect its stored data; other configurations are unaffected.',
   'queryFailure.prefix': 'Configuration "{revisionId}": {reason}',
+
+  'establish.success': 'Established a new configuration revision:',
+  'establish.missingTriggerCategory': 'missing trigger category (must be one of new-scenario, known-insufficiency, bad-case).',
+  'establish.missingEvidence': 'missing evidence reference.',
+  'establish.invalidCandidate': 'invalid candidate content ({reason}).',
 
   'comparison.header': 'Comparing {count} revision(s): {ids}',
   'comparison.missingIn': 'missing in: {ids}',
@@ -191,6 +202,7 @@ const en: Dict = {
   'parseError.unknownFlag': 'unknown flag: {flag}',
   'parseError.unknownClient': 'unknown client: {client}',
   'parseError.unknownCommand': 'unknown command: {command}',
+  'parseError.flagRequiresValue': '{flag} requires a value',
   'parseError.denylistedForwardedArg':
     "configs {command}: forwarded argument \"{arg}\" is not allowed -- it would defeat this Story's single-extension-source/isolated-profile/no-auto-resume guarantees when passed through to the real `omp` binary",
   'openDeps.failed': 'configs: could not open configuration storage: {message}',

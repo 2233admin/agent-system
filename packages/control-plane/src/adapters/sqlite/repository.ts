@@ -1,15 +1,15 @@
 import { Database } from 'bun:sqlite';
-import { mkdirSync, readFileSync } from 'node:fs';
+import { mkdirSync } from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 
 import { type Fact, isKnown, known, unknown } from '../../domain/facts';
 import type { CapabilityReference, StableConfigRevision } from '../../domain/config';
 import type { ConfigRevisionRepository } from '../../application/ports';
 import { ConfigUnsupportedError } from '../../application/queries';
+import { runConfigRevisionMigrations } from './migrations';
 
 /** The only `stable_config_revision.schema_version` this Story can read. */
-const SUPPORTED_SCHEMA_VERSION = 1;
+export const SUPPORTED_SCHEMA_VERSION = 1;
 
 export interface RevisionRow {
   revision_id: string;
@@ -27,16 +27,13 @@ export interface RevisionRow {
   availability_value: string | null;
   availability_reason: string | null;
   availability_observed_at: string | null;
+  /** `[DELTA]` AD-21 (Story 3.1): `null` for a newly-established configuration. */
+  supersedes_revision_id: string | null;
   instructions_json: string;
   skills_json: string;
   mcp_json: string;
   hooks_json: string;
   plugins_json: string;
-}
-
-function migrationSqlPath(): string {
-  const here = path.dirname(fileURLToPath(import.meta.url));
-  return path.join(here, '..', '..', '..', 'migrations', '0001_init.sql');
 }
 
 function factColumnToFact<T>(
@@ -137,6 +134,7 @@ function mapRowStrict(row: RevisionRow): StableConfigRevision {
       row.availability_observed_at,
       () => 'resolved' as const,
     ) as Fact<'resolved'>,
+    supersedesRevisionId: row.supersedes_revision_id,
     instructions,
     skills,
     mcp,
@@ -161,6 +159,7 @@ function mapRowLenient(row: RevisionRow): StableConfigRevision {
       defaultMarker: unknown(`unsupported schema_version ${row.schema_version}`, now),
       scopeBoundary: unknown(`unsupported schema_version ${row.schema_version}`, now),
       availability: unknown(`unsupported schema_version ${row.schema_version}`, now),
+      supersedesRevisionId: row.supersedes_revision_id,
       instructions: [],
       skills: [],
       mcp: [],
@@ -201,6 +200,7 @@ function mapRowLenient(row: RevisionRow): StableConfigRevision {
       row.availability_observed_at,
       () => 'resolved' as const,
     ) as Fact<'resolved'>,
+    supersedesRevisionId: row.supersedes_revision_id,
     instructions: parseLenient(row.instructions_json),
     skills: parseLenient(row.skills_json),
     mcp: parseLenient(row.mcp_json),
@@ -222,7 +222,7 @@ function factColumns(fact: Fact<unknown>): {
   return { status: 'unknown', value: null, reason: fact.reason, observedAt: fact.observedAt };
 }
 
-const REVISION_COLUMNS = [
+export const REVISION_COLUMNS = [
   'revision_id',
   'config_name',
   'schema_version',
@@ -238,6 +238,7 @@ const REVISION_COLUMNS = [
   'availability_value',
   'availability_reason',
   'availability_observed_at',
+  'supersedes_revision_id',
   'instructions_json',
   'skills_json',
   'mcp_json',
@@ -264,14 +265,7 @@ export class SqliteConfigRevisionRepository implements ConfigRevisionRepository 
     // without this, `stable_config_revision`'s `REFERENCES stable_config`
     // is decorative only.
     this.db.exec('PRAGMA foreign_keys = ON;');
-    this.runMigration();
-  }
-
-  private runMigration(): void {
-    const sql = readFileSync(migrationSqlPath(), 'utf8');
-    this.db.transaction(() => {
-      this.db.exec(sql);
-    })();
+    runConfigRevisionMigrations(this.db);
   }
 
   async listAll(): Promise<readonly StableConfigRevision[]> {
@@ -318,6 +312,7 @@ export class SqliteConfigRevisionRepository implements ConfigRevisionRepository 
         string | null,
         string | null,
         string | null,
+        string | null,
         string,
         string,
         string,
@@ -327,7 +322,7 @@ export class SqliteConfigRevisionRepository implements ConfigRevisionRepository 
       ]
     >(
       `INSERT OR REPLACE INTO stable_config_revision (${REVISION_COLUMNS})
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     );
 
     this.db.transaction(() => {
@@ -356,6 +351,7 @@ export class SqliteConfigRevisionRepository implements ConfigRevisionRepository 
           availability.value,
           availability.reason,
           availability.observedAt,
+          revision.supersedesRevisionId,
           JSON.stringify(revision.instructions),
           JSON.stringify(revision.skills),
           JSON.stringify(revision.mcp),
@@ -390,6 +386,7 @@ export class SqliteConfigRevisionRepository implements ConfigRevisionRepository 
         string | null,
         string | null,
         string | null,
+        string | null,
         string,
         string,
         string,
@@ -399,7 +396,7 @@ export class SqliteConfigRevisionRepository implements ConfigRevisionRepository 
       ]
     >(
       `INSERT OR REPLACE INTO stable_config_revision (${REVISION_COLUMNS})
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     );
     this.db.transaction(() => {
       insertConfig.run(row.config_name);
@@ -419,6 +416,7 @@ export class SqliteConfigRevisionRepository implements ConfigRevisionRepository 
         row.availability_value,
         row.availability_reason,
         row.availability_observed_at,
+        row.supersedes_revision_id,
         row.instructions_json,
         row.skills_json,
         row.mcp_json,

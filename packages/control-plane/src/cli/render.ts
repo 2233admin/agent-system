@@ -29,6 +29,7 @@ import type {
 } from '../domain/config';
 import type { LaunchPlan, LaunchStatus } from '../domain/activation';
 import type { CompareConfigRevisionsResult, ConfigQueryError } from '../application/queries';
+import type { InvalidCandidateError, InvalidTriggerCategoryError, MissingEvidenceError } from '../application/ports';
 import { attention, colorForPhase, dim } from './colors';
 import { t } from './i18n';
 
@@ -121,16 +122,46 @@ export function renderDetail(revision: StableConfigRevision): string {
   return lines.join('\n');
 }
 
-function formatErrorReason(error: ConfigQueryError): string {
-  if (error.kind === 'config-not-found') {
-    return t('queryFailure.notFound');
+/**
+ * `[DELTA]` Story 3.1: widened beyond `ConfigQueryError` (`show`/`compare`'s
+ * two read-path rejections) to also cover `configs establish`'s three
+ * write-path rejections, so `renderQueryFailure` can stay the one shared
+ * failure-rendering path for both instead of `establish` inventing a
+ * parallel one.
+ */
+export type QueryOrEstablishError = ConfigQueryError | InvalidTriggerCategoryError | MissingEvidenceError | InvalidCandidateError;
+
+function formatErrorReason(error: QueryOrEstablishError): string {
+  switch (error.kind) {
+    case 'config-not-found':
+      return t('queryFailure.notFound');
+    case 'config-unsupported':
+      return t('queryFailure.unsupported', { reason: error.reason });
+    case 'invalid-trigger-category':
+      return t('establish.missingTriggerCategory');
+    case 'missing-evidence':
+      return t('establish.missingEvidence');
+    case 'invalid-candidate':
+      return t('establish.invalidCandidate', { reason: error.reason });
   }
-  return t('queryFailure.unsupported', { reason: error.reason });
 }
 
-/** Shared failure rendering for `show`/`compare`: identifier + typed reason + recovery entry. */
-export function renderQueryFailure(revisionId: string, error: ConfigQueryError): string {
-  return t('queryFailure.prefix', { revisionId, reason: formatErrorReason(error) });
+/**
+ * Shared failure rendering for `show`/`compare`/`establish`: a label
+ * (revision id for `show`/`compare`, config name -- or a fixed fallback --
+ * for `establish`) + typed reason + recovery entry.
+ */
+export function renderQueryFailure(label: string, error: QueryOrEstablishError): string {
+  return t('queryFailure.prefix', { revisionId: label, reason: formatErrorReason(error) });
+}
+
+/**
+ * `[DELTA]` Story 3.1 (UX-DR3): the one-line success prefix printed before
+ * `configs establish` reuses `renderDetail` for the new revision's detail
+ * block -- same view as `configs show <new id>`.
+ */
+export function renderEstablishSuccess(revision: StableConfigRevision): string {
+  return [t('establish.success'), renderDetail(revision)].join('\n');
 }
 
 function formatScalarField(field: ScalarFieldComparison): string {

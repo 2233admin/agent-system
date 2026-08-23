@@ -28,6 +28,7 @@ describe('real omp binary smoke test', () => {
       defaultMarker: known(false),
       scopeBoundary: known('smoke test'),
       availability: known('resolved'),
+      supersedesRevisionId: null,
       instructions: [],
       skills: [],
       mcp: [],

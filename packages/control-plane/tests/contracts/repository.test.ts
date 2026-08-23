@@ -13,6 +13,7 @@ function sampleRevision(overrides: Partial<StableConfigRevision> & { configName:
     defaultMarker: overrides.defaultMarker ?? known(false),
     scopeBoundary: overrides.scopeBoundary ?? known('a scope boundary'),
     availability: overrides.availability ?? known('resolved'),
+    supersedesRevisionId: overrides.supersedesRevisionId ?? null,
     instructions: overrides.instructions ?? [],
     skills: overrides.skills ?? [],
     mcp: overrides.mcp ?? [],
@@ -51,7 +52,16 @@ describe('SqliteConfigRevisionRepository (:memory:, STRICT)', () => {
         defaultMarker: known(true),
         scopeBoundary: known('Role `general`; prompt: .cap/prompts/general.md'),
         availability: unknown('not-resolved', '2026-08-22T00:00:00.000Z'),
-        skills: [{ kind: 'skill', name: 'openspec-explore', sourceCategory: known('project-capability'), summary: known('skill reference: openspec-explore') }],
+        skills: [
+          {
+            kind: 'skill',
+            name: 'openspec-explore',
+            sourceCategory: known('project-capability'),
+            summary: known('skill reference: openspec-explore'),
+            sourceRef: unknown('not-provided', 'now'),
+            contentFingerprint: unknown('not-provided', 'now'),
+          },
+        ],
       });
       repo.seed([revision]);
 
@@ -105,6 +115,7 @@ describe('SqliteConfigRevisionRepository (:memory:, STRICT)', () => {
         availability_value: 'resolved',
         availability_reason: null,
         availability_observed_at: null,
+        supersedes_revision_id: null,
         instructions_json: '[]',
         skills_json: '[]',
         mcp_json: '[]',
@@ -139,6 +150,7 @@ describe('SqliteConfigRevisionRepository (:memory:, STRICT)', () => {
         availability_value: 'resolved',
         availability_reason: null,
         availability_observed_at: null,
+        supersedes_revision_id: null,
         instructions_json: '[]',
         skills_json: '[]',
         mcp_json: '[]',
@@ -177,6 +189,7 @@ describe('SqliteConfigRevisionRepository (:memory:, STRICT)', () => {
         availability_value: 'resolved',
         availability_reason: null,
         availability_observed_at: null,
+        supersedes_revision_id: null,
         instructions_json: 'not-json',
         skills_json: '[]',
         mcp_json: '[]',

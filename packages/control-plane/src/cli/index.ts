@@ -2,21 +2,36 @@
 /**
  * `configs` CLI entry point. Dispatches the read-only subcommands from
  * Story 1.1 (`list`, `show <id>`, `compare <id...>`) plus Story 1.2's
- * activation subcommands: `use <id>`, `status [<planId>]`, `switch <id>`.
- * No other subcommand exists -- in particular there is no `configs sync`/
- * `configs import` (see `src/adapters/sources/cap-fs.ts` for why).
+ * activation subcommands: `use <id>`, `status [<planId>]`, `switch <id>`;
+ * plus Story 3.1's non-interactive assembly command `establish`. No other
+ * subcommand exists -- in particular there is no `configs sync`/`configs
+ * import` (see `src/adapters/sources/cap-fs.ts` for why).
  */
 
 import type { ClientId } from '../domain/client';
 import { resolveClientSupport } from '../domain/client';
 import type { LaunchPlan } from '../domain/activation';
+import { CAPABILITY_KINDS } from '../domain/config';
+import type { CapabilityKind, CapabilityReference, SourceCategory } from '../domain/config';
+import { known, unknown } from '../domain/facts';
+import type { Fact } from '../domain/facts';
 import { SqliteConfigRevisionRepository } from '../adapters/sqlite/repository';
+import { SqliteConfigRevisionWriter } from '../adapters/sqlite/revision-writer';
 import { SqliteLaunchPlanRepository } from '../adapters/sqlite/launch-repository';
 import { BunOmpProcessPort, defaultExtensionPath, findDenylistedForwardedArg } from '../adapters/omp/process-port';
 import { BunOmpCapabilityProbe } from '../adapters/omp/capability-probe';
 import { FsLaunchContextWriter } from '../adapters/launch-context/fs-launch-context-writer';
 import { GithubReleaseUpdater } from '../adapters/self-update/github-release-updater';
-import type { ConfigRevisionRepository, LaunchPlanRepository, OmpCapabilityProbePort, OmpProcessPort, LaunchContextWriter } from '../application/ports';
+import type {
+  ConfigRevisionRepository,
+  ConfigRevisionWriter,
+  LaunchPlanRepository,
+  NewConfigRevisionInput,
+  OmpCapabilityProbePort,
+  OmpProcessPort,
+  LaunchContextWriter,
+} from '../application/ports';
+import { InvalidCandidateError, InvalidTriggerCategoryError, MissingEvidenceError } from '../application/ports';
 import {
   ConfigNotFoundError,
   ConfigUnsupportedError,
@@ -47,6 +62,7 @@ import {
   renderCompareResult,
   renderConfirmationSummary,
   renderDetail,
+  renderEstablishSuccess,
   renderHandoffLine,
   renderLaunchFailure,
   renderLaunchStatus,
@@ -63,7 +79,7 @@ import { runTui } from './tui';
 // language-dependent, so this is composed via `usageLine()` rather than
 // being a static constant.
 const USAGE_SYNTAX =
-  'configs <list|show <id>|compare <id> <id> [...ids]|use <id> [--client <id>] [--yes] [-- ...args]|status [<planId>]|switch <id> [--client <id>] [--yes] [-- ...args]>';
+  'configs <list|show <id>|compare <id> <id> [...ids]|use <id> [--client <id>] [--yes] [-- ...args]|status [<planId>]|switch <id> [--client <id>] [--yes] [-- ...args]|establish --trigger-category <cat> --evidence <ref> [--from <path>]>';
 
 function usageLine(): string {
   return `${t('usage.prefix')} ${USAGE_SYNTAX}`;
@@ -88,7 +104,13 @@ type ParsedCommand =
   | { readonly kind: 'show'; readonly id: string }
   | { readonly kind: 'compare'; readonly ids: readonly string[] }
   | { readonly kind: 'use' | 'switch'; readonly id: string; readonly client: ClientId; readonly yes: boolean; readonly forwardedArgs: readonly string[] }
-  | { readonly kind: 'status'; readonly planId: string | null };
+  | { readonly kind: 'status'; readonly planId: string | null }
+  | {
+      readonly kind: 'establish';
+      readonly triggerCategory: string | null;
+      readonly evidenceRef: string | null;
+      readonly fromPath: string | null;
+    };
 
 function parseUseOrSwitch(kind: 'use' | 'switch', rest: readonly string[]): ParsedCommand {
   const ddIndex = rest.indexOf('--');
@@ -150,6 +172,43 @@ function parseUseOrSwitch(kind: 'use' | 'switch', rest: readonly string[]): Pars
   return { kind, id, client: clientRaw as ClientId, yes, forwardedArgs };
 }
 
+/**
+ * `[DELTA]` Story 3.1: `establish`'s three flags are all optional at the
+ * *parse* level -- omitting `--trigger-category`/`--evidence` is not a
+ * usage error (exit 2). Per the I/O matrix, it is a domain-level rejection
+ * (exit 1, zero writes) surfaced once `create()` validates the resulting
+ * `RevisionTriggerInput` -- see `main()`'s `establish` case. Only a flag
+ * given with no following value (e.g. a dangling `--evidence`) is a usage
+ * error here, same convention as `--client` in `parseUseOrSwitch`.
+ */
+function parseEstablish(rest: readonly string[]): ParsedCommand {
+  let triggerCategory: string | null = null;
+  let evidenceRef: string | null = null;
+  let fromPath: string | null = null;
+
+  for (let i = 0; i < rest.length; i += 1) {
+    const token = rest[i]!;
+    if (token === '--trigger-category' || token === '--evidence' || token === '--from') {
+      const value = rest[i + 1];
+      if (value === undefined) {
+        return { kind: 'usage-error', message: `${t('parseError.flagRequiresValue', { flag: token })}\n${usageLine()}` };
+      }
+      if (token === '--trigger-category') {
+        triggerCategory = value;
+      } else if (token === '--evidence') {
+        evidenceRef = value;
+      } else {
+        fromPath = value;
+      }
+      i += 1;
+      continue;
+    }
+    return { kind: 'usage-error', message: `${t('parseError.unknownFlag', { flag: token })}\n${usageLine()}` };
+  }
+
+  return { kind: 'establish', triggerCategory, evidenceRef, fromPath };
+}
+
 function parseCommand(argv: readonly string[]): ParsedCommand {
   const [command, ...rest] = argv;
   switch (command) {
@@ -173,6 +232,8 @@ function parseCommand(argv: readonly string[]): ParsedCommand {
       return parseUseOrSwitch('switch', rest);
     case 'status':
       return { kind: 'status', planId: rest[0] ?? null };
+    case 'establish':
+      return parseEstablish(rest);
     default:
       // `command` is always defined here: `main()` intercepts `argv.length
       // === 0` before `parseCommand` is ever called, so this `default`
@@ -183,10 +244,29 @@ function parseCommand(argv: readonly string[]): ParsedCommand {
   }
 }
 
+export interface ClosableConfigRevisionWriter extends ConfigRevisionWriter {
+  close(): void;
+}
+
 export interface CliOverrides {
   readonly ompPort?: OmpProcessPort;
   readonly capabilityProbe?: OmpCapabilityProbePort;
   readonly contextWriter?: LaunchContextWriter;
+  /**
+   * `[DELTA]` Story 3.1: injectable write port for `establish` -- kept out
+   * of `FullDeps` (unlike `configRepository`/`launchPlanRepository`)
+   * because it is opened only for `establish`'s own case in `main()`, never
+   * shared with `list`/`show`/`compare`/`use`/`switch`/`status` or the TUI
+   * (Epic 3 context: the TUI never gains an assembly screen).
+   */
+  readonly configWriter?: ClosableConfigRevisionWriter;
+  /**
+   * `[DELTA]` Story 3.1: source of `establish`'s candidate JSON when
+   * `--from <path>` is not given. Defaults to reading real stdin to
+   * completion; overridable so tests can supply candidate content without a
+   * real OS pipe.
+   */
+  readonly readCandidateInput?: () => Promise<string>;
 }
 
 /**
@@ -349,6 +429,158 @@ async function runLaunchFlow(
   return 1;
 }
 
+/**
+ * Reads real stdin to completion. Used as `establish`'s default candidate
+ * source when `--from <path>` is not given (`CliOverrides.readCandidateInput`
+ * lets tests substitute this without a real OS pipe).
+ */
+async function readStdinText(): Promise<string> {
+  const chunks: Buffer[] = [];
+  for await (const chunk of process.stdin) {
+    chunks.push(chunk as Buffer);
+  }
+  return Buffer.concat(chunks).toString('utf8');
+}
+
+/**
+ * Parses one `Fact<T>`-shaped JSON value: `{"kind":"known","value":...}` or
+ * `{"kind":"unknown","reason":"...","observedAt":"..."}` -- the same shape
+ * `known()`/`unknown()` (`domain/facts.ts`) produce, so a candidate that was
+ * itself built from this codebase's own types round-trips unchanged.
+ * Throws `InvalidCandidateError` on any other shape rather than guessing --
+ * this Story defines the candidate shape for the first time, so there is no
+ * pre-existing external schema to reconcile with (Boundaries: "Ask First"
+ * is about a *conflicting already-established* schema, which does not apply
+ * here).
+ */
+function parseFact(raw: unknown, fieldPath: string): Fact<unknown> {
+  if (raw === null || typeof raw !== 'object') {
+    throw new InvalidCandidateError(`"${fieldPath}" must be a Fact object (kind "known" or "unknown")`);
+  }
+  const obj = raw as Record<string, unknown>;
+  if (obj.kind === 'known') {
+    if (!('value' in obj)) {
+      throw new InvalidCandidateError(`"${fieldPath}.value" is required when "${fieldPath}.kind" is "known"`);
+    }
+    return known(obj.value);
+  }
+  if (obj.kind === 'unknown') {
+    if (typeof obj.reason !== 'string' || typeof obj.observedAt !== 'string') {
+      throw new InvalidCandidateError(`"${fieldPath}" must have string "reason" and "observedAt" when "kind" is "unknown"`);
+    }
+    return unknown(obj.reason, obj.observedAt);
+  }
+  throw new InvalidCandidateError(`"${fieldPath}.kind" must be "known" or "unknown"`);
+}
+
+function parseCapabilityRefEntry(raw: unknown, fieldPath: string): CapabilityReference {
+  if (raw === null || typeof raw !== 'object') {
+    throw new InvalidCandidateError(`"${fieldPath}" must be an object`);
+  }
+  const obj = raw as Record<string, unknown>;
+  if (typeof obj.kind !== 'string' || !CAPABILITY_KINDS.includes(obj.kind as CapabilityKind)) {
+    throw new InvalidCandidateError(`"${fieldPath}.kind" must be one of: ${CAPABILITY_KINDS.join(', ')}`);
+  }
+  if (typeof obj.name !== 'string' || obj.name.trim().length === 0) {
+    throw new InvalidCandidateError(`"${fieldPath}.name" must be a non-empty string`);
+  }
+  return {
+    kind: obj.kind as CapabilityKind,
+    name: obj.name,
+    sourceCategory: parseFact(obj.sourceCategory, `${fieldPath}.sourceCategory`) as Fact<SourceCategory>,
+    summary: parseFact(obj.summary, `${fieldPath}.summary`) as Fact<string>,
+    sourceRef: parseFact(obj.sourceRef, `${fieldPath}.sourceRef`) as Fact<string>,
+    contentFingerprint: parseFact(obj.contentFingerprint, `${fieldPath}.contentFingerprint`) as Fact<string>,
+  };
+}
+
+function parseCapabilityArray(raw: unknown, fieldPath: string): CapabilityReference[] {
+  if (raw === undefined) {
+    return [];
+  }
+  if (!Array.isArray(raw)) {
+    throw new InvalidCandidateError(`"${fieldPath}" must be an array`);
+  }
+  return raw.map((entry, index) => parseCapabilityRefEntry(entry, `${fieldPath}[${index}]`));
+}
+
+/**
+ * Parses `establish`'s candidate JSON (from `--from <path>` or stdin) into
+ * a `NewConfigRevisionInput`. Never reads `revisionId`/`supersedesRevisionId`
+ * from the candidate -- the port generates the former, and `establish`
+ * always passes `null` for the latter (Boundaries: "固定传 supersedes=null").
+ */
+function parseCandidateJson(raw: string): NewConfigRevisionInput {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (error) {
+    throw new InvalidCandidateError(`candidate content is not valid JSON: ${(error as Error).message}`);
+  }
+  if (parsed === null || typeof parsed !== 'object') {
+    throw new InvalidCandidateError('candidate content must be a JSON object');
+  }
+  const obj = parsed as Record<string, unknown>;
+  if (typeof obj.configName !== 'string' || obj.configName.trim().length === 0) {
+    throw new InvalidCandidateError('"configName" must be a non-empty string');
+  }
+  return {
+    configName: obj.configName,
+    defaultMarker: parseFact(obj.defaultMarker, 'defaultMarker') as Fact<boolean>,
+    scopeBoundary: parseFact(obj.scopeBoundary, 'scopeBoundary') as Fact<string>,
+    availability: parseFact(obj.availability, 'availability') as Fact<'resolved'>,
+    instructions: parseCapabilityArray(obj.instructions, 'instructions'),
+    skills: parseCapabilityArray(obj.skills, 'skills'),
+    mcp: parseCapabilityArray(obj.mcp, 'mcp'),
+    hooks: parseCapabilityArray(obj.hooks, 'hooks'),
+    plugins: parseCapabilityArray(obj.plugins, 'plugins'),
+  };
+}
+
+/**
+ * MVP/Story 3.1: `configs establish` -- non-interactive, no `--yes`
+ * equivalent (the human decision already happened in the Agent session
+ * that produced this candidate). Always passes `supersedes=null` (a brand
+ * new configuration; superseding an existing revision is `configs revise`,
+ * Story 3.2). Opens its own write-port connection, independent of
+ * `FullDeps`'s read-only repositories, and closes it before returning.
+ */
+async function runEstablish(
+  overrides: CliOverrides,
+  params: { readonly triggerCategory: string | null; readonly evidenceRef: string | null; readonly fromPath: string | null },
+): Promise<number> {
+  let writer: ClosableConfigRevisionWriter;
+  try {
+    writer = overrides.configWriter ?? new SqliteConfigRevisionWriter(defaultDbPath());
+  } catch (error) {
+    console.error(t('openDeps.failed', { message: (error as Error).message }));
+    return 1;
+  }
+
+  let candidate: NewConfigRevisionInput | null = null;
+  try {
+    let raw: string;
+    try {
+      raw = params.fromPath !== null ? await Bun.file(params.fromPath).text() : await (overrides.readCandidateInput ?? readStdinText)();
+    } catch (error) {
+      throw new InvalidCandidateError(`could not read candidate content: ${(error as Error).message}`);
+    }
+    candidate = parseCandidateJson(raw);
+    const trigger = { category: params.triggerCategory ?? '', evidenceRef: params.evidenceRef ?? '' };
+    const newRevision = await writer.create(candidate, trigger, null);
+    console.log(renderEstablishSuccess(newRevision));
+    return 0;
+  } catch (error) {
+    if (error instanceof InvalidTriggerCategoryError || error instanceof MissingEvidenceError || error instanceof InvalidCandidateError) {
+      console.log(renderQueryFailure(candidate?.configName ?? 'establish', error));
+      return 1;
+    }
+    throw error;
+  } finally {
+    writer.close();
+  }
+}
+
 export async function main(argv: readonly string[], overrides: CliOverrides = {}): Promise<number> {
   // `[DELTA]` IA first layer: `configs` with no subcommand at all is no
   // longer a usage error -- it prints the same usage text as a normal,
@@ -438,6 +670,13 @@ export async function main(argv: readonly string[], overrides: CliOverrides = {}
           throw error;
         }
       }
+
+      case 'establish':
+        return await runEstablish(overrides, {
+          triggerCategory: parsed.triggerCategory,
+          evidenceRef: parsed.evidenceRef,
+          fromPath: parsed.fromPath,
+        });
     }
   } finally {
     deps.configRepository.close();

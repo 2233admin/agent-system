@@ -29,12 +29,21 @@ export type SourceCategory =
  * identifier, its source category and an allowed-public summary are ever
  * carried -- never private prompt text, credentials, transcripts or tool
  * payloads.
+ *
+ * `[DELTA]` AD-21 (Story 3.1): `sourceRef` (which concrete source -- e.g. a
+ * clone URL/commit or local path) and `contentFingerprint` are new,
+ * orthogonal to `sourceCategory` (which answers "what *kind* of source").
+ * Same `Fact<T>` Known/Unknown shape as `sourceCategory`/`summary` -- no
+ * separate `evidenceRef` sibling field, and no format is enforced; both may
+ * be `Unknown` but must never be omitted.
  */
 export interface CapabilityReference {
   readonly kind: CapabilityKind;
   readonly name: string;
   readonly sourceCategory: Fact<SourceCategory>;
   readonly summary: Fact<string>;
+  readonly sourceRef: Fact<string>;
+  readonly contentFingerprint: Fact<string>;
 }
 
 /**
@@ -55,6 +64,15 @@ export interface StableConfigRevision {
   readonly defaultMarker: Fact<boolean>;
   readonly scopeBoundary: Fact<string>;
   readonly availability: ConfigAvailability;
+  /**
+   * `[DELTA]` AD-21 (Story 3.1): the `revisionId` this revision replaces, or
+   * `null` for a newly-established configuration. Always a definite,
+   * caller-declared value written atomically by the write port (never
+   * inferred/guessed) -- so it is a plain nullable id, not a `Fact`, unlike
+   * the Known/Unknown fields above. Displaying it ("replaced from ...") is
+   * Story 3.3's concern; this Story only carries the field through.
+   */
+  readonly supersedesRevisionId: string | null;
   readonly instructions: readonly CapabilityReference[];
   readonly skills: readonly CapabilityReference[];
   readonly mcp: readonly CapabilityReference[];
@@ -114,7 +132,7 @@ export interface ComparisonResult {
   readonly capabilities: readonly CapabilityGroupComparison[];
 }
 
-const CAPABILITY_KINDS: readonly CapabilityKind[] = ['instruction', 'skill', 'mcp', 'hook', 'plugin'];
+export const CAPABILITY_KINDS: readonly CapabilityKind[] = ['instruction', 'skill', 'mcp', 'hook', 'plugin'];
 
 function scalarStatus(entries: readonly ScalarFieldEntry[]): ComparisonStatus {
   if (entries.some((entry) => isUnknown(entry.value))) {

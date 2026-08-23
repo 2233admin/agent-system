@@ -7,7 +7,7 @@ import path from 'node:path';
 import { main } from '../../src/cli/index';
 import { SqliteConfigRevisionRepository } from '../../src/adapters/sqlite/repository';
 import { t } from '../../src/cli/i18n';
-import { known } from '../../src/domain/facts';
+import { known, unknown } from '../../src/domain/facts';
 import type { StableConfigRevision } from '../../src/domain/config';
 import type {
   CapabilityProbeResult,
@@ -27,8 +27,18 @@ function sampleRevision(overrides: Partial<StableConfigRevision> & { configName:
     defaultMarker: overrides.defaultMarker ?? known(false),
     scopeBoundary: overrides.scopeBoundary ?? known('a scope boundary'),
     availability: overrides.availability ?? known('resolved'),
+    supersedesRevisionId: overrides.supersedesRevisionId ?? null,
     instructions: overrides.instructions ?? [],
-    skills: overrides.skills ?? [{ kind: 'skill', name: 'openspec-explore', sourceCategory: known('project-capability'), summary: known('skill') }],
+    skills: overrides.skills ?? [
+      {
+        kind: 'skill',
+        name: 'openspec-explore',
+        sourceCategory: known('project-capability'),
+        summary: known('skill'),
+        sourceRef: unknown('not-provided', 'now'),
+        contentFingerprint: unknown('not-provided', 'now'),
+      },
+    ],
     mcp: overrides.mcp ?? [],
     hooks: overrides.hooks ?? [],
     plugins: overrides.plugins ?? [],
@@ -205,7 +215,16 @@ describe('configs use', () => {
       sampleRevision({
         configName: 'general',
         revisionId: 'rev-1',
-        instructions: [{ kind: 'instruction', name: 'i1', sourceCategory: known('project-prompt'), summary: known('i1') }],
+        instructions: [
+          {
+            kind: 'instruction',
+            name: 'i1',
+            sourceCategory: known('project-prompt'),
+            summary: known('i1'),
+            sourceRef: unknown('not-provided', 'now'),
+            contentFingerprint: unknown('not-provided', 'now'),
+          },
+        ],
       }),
     ]);
 
