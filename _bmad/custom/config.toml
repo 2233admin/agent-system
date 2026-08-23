@@ -4,14 +4,17 @@
 # Example: override an agent descriptor, or add a new agent.
 #
 
-[core]
-communication_language = "Chinese"
-# [agents.bmad-agent-pm]
-# description = "Prefers short, bulleted PRDs over narrative drafts."
-
 # _bmad/config.toml's [core] never carries communication_language (only
 # document_output_language) even though _bmad/bmm/config.yaml declares it as
 # Chinese; scripts that read the central config chain (e.g. render_skill.py)
 # fail without it. Pinned here to match the already-confirmed bmm value.
+#
+# Same gap for user_skill_level: only _bmad/bmm/config.yaml declares it
+# ("intermediate"); the central [core] chain render_skill.py reads never
+# carries it, so skill rendering HALTs with "missing config value
+# `user_skill_level`". Pinned here to match the already-confirmed bmm value.
 [core]
 communication_language = "Chinese"
+user_skill_level = "intermediate"
+# [agents.bmad-agent-pm]
+# description = "Prefers short, bulleted PRDs over narrative drafts."
