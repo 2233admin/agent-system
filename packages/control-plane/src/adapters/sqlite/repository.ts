@@ -10,10 +10,11 @@ import path from 'node:path';
 import INIT_SQL from '../../../migrations/0001_init.sql' with { type: 'text' };
 import SUPPLY_SQL from '../../../migrations/0003_supply.sql' with { type: 'text' };
 
-import { type Fact, isKnown, known, unknown } from '../../domain/facts';
+import { type Fact, unknown } from '../../domain/facts';
 import type { CapabilityReference, SourceCategory, StableConfigRevision } from '../../domain/config';
 import type { ConfigRevisionRepository } from '../../application/ports';
 import { ConfigUnsupportedError } from '../../application/queries';
+import { factColumns, factColumnToFact } from './fact-columns';
 
 /** The only `stable_config_revision.schema_version` this Story can read. */
 const SUPPORTED_SCHEMA_VERSION = 1;
@@ -44,19 +45,6 @@ export interface RevisionRow {
   evidence_ref: string;
   /** `[Story 3.1]` Nullable; this Story always writes/reads `null` here -- Story 3.2 populates it. */
   supersedes_revision_id: string | null;
-}
-
-function factColumnToFact<T>(
-  status: string,
-  value: T | null,
-  reason: string | null,
-  observedAt: string | null,
-  parseValue: (raw: T) => unknown,
-): Fact<unknown> {
-  if (status === 'known' && value !== null) {
-    return known(parseValue(value));
-  }
-  return unknown(reason ?? 'unspecified', observedAt ?? new Date(0).toISOString());
 }
 
 /**
@@ -249,24 +237,6 @@ function mapRowLenient(row: RevisionRow): StableConfigRevision {
     evidenceRef: row.evidence_ref,
     supersedesRevisionId: row.supersedes_revision_id,
   };
-}
-
-/**
- * `[Story 3.1]` Exported so `adapters/sqlite/config-revision-writer.ts` can
- * reuse the exact same `Fact` -> SQL-column mapping instead of
- * reimplementing it.
- */
-export function factColumns(fact: Fact<unknown>): {
-  status: 'known' | 'unknown';
-  value: string | null;
-  reason: string | null;
-  observedAt: string | null;
-} {
-  if (isKnown(fact)) {
-    const value = typeof fact.value === 'string' ? fact.value : JSON.stringify(fact.value);
-    return { status: 'known', value, reason: null, observedAt: null };
-  }
-  return { status: 'unknown', value: null, reason: fact.reason, observedAt: fact.observedAt };
 }
 
 const REVISION_COLUMNS = [

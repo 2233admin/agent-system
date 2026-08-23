@@ -6,10 +6,10 @@ import path from 'node:path';
 // module is compiled into a standalone `bun build --compile` executable.
 import LAUNCH_SQL from '../../../migrations/0002_launch.sql' with { type: 'text' };
 
-import { type Fact, isKnown, known, unknown } from '../../domain/facts';
 import type { ClientId } from '../../domain/client';
 import type { LaunchPhase, LaunchPlan, ObservedOutcome } from '../../domain/activation';
 import type { LaunchPlanRepository } from '../../application/ports';
+import { factColumns, factColumnToFact } from './fact-columns';
 
 export interface LaunchPlanRow {
   plan_id: string;
@@ -34,32 +34,6 @@ export interface LaunchPlanRow {
   observed_outcome_observed_at: string | null;
 }
 
-function factColumns(fact: Fact<unknown>): {
-  status: 'known' | 'unknown';
-  value: string | null;
-  reason: string | null;
-  observedAt: string | null;
-} {
-  if (isKnown(fact)) {
-    const value = typeof fact.value === 'string' ? fact.value : JSON.stringify(fact.value);
-    return { status: 'known', value, reason: null, observedAt: null };
-  }
-  return { status: 'unknown', value: null, reason: fact.reason, observedAt: fact.observedAt };
-}
-
-function factFromColumns<T>(
-  status: string,
-  value: string | null,
-  reason: string | null,
-  observedAt: string | null,
-  parseValue: (raw: string) => T,
-): Fact<T> {
-  if (status === 'known' && value !== null) {
-    return known(parseValue(value));
-  }
-  return unknown(reason ?? 'unspecified', observedAt ?? new Date(0).toISOString());
-}
-
 function rowToPlan(row: LaunchPlanRow): LaunchPlan {
   return {
     planId: row.plan_id,
@@ -70,21 +44,21 @@ function rowToPlan(row: LaunchPlanRow): LaunchPlan {
     planHash: row.plan_hash,
     phase: row.phase as LaunchPhase,
     createdAt: row.created_at,
-    confirmedAt: factFromColumns(
+    confirmedAt: factColumnToFact(
       row.confirmed_at_status,
       row.confirmed_at_value,
       row.confirmed_at_reason,
       row.confirmed_at_observed_at,
       (v) => v,
     ),
-    failureReason: factFromColumns(
+    failureReason: factColumnToFact(
       row.failure_reason_status,
       row.failure_reason_value,
       row.failure_reason_reason,
       row.failure_reason_observed_at,
       (v) => v,
     ),
-    observedOutcome: factFromColumns(
+    observedOutcome: factColumnToFact(
       row.observed_outcome_status,
       row.observed_outcome_value,
       row.observed_outcome_reason,

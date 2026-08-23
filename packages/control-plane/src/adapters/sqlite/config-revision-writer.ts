@@ -20,7 +20,8 @@ import path from 'node:path';
 import { parseCandidateRevision, parseEvidenceRef, parseTriggerCategory } from '../../application/establish';
 import type { EstablishConfigRevisionParams, ConfigRevisionWriter } from '../../application/ports';
 import type { StableConfigRevision } from '../../domain/config';
-import { factColumns, runConfigRevisionMigrations } from './repository';
+import { runConfigRevisionMigrations } from './repository';
+import { factColumns } from './fact-columns';
 
 /** The only `stable_config_revision.schema_version` this writer ever produces. */
 const SUPPORTED_SCHEMA_VERSION = 1;
