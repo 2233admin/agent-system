@@ -118,9 +118,12 @@ export interface GithubReleaseUpdaterDeps {
  * public entry point (`checkAndApply`) is wrapped in one top-level
  * try/catch: any failure at any step -- network, parsing, checksum
  * mismatch, unsupported platform, filesystem -- silently leaves the
- * current binary untouched and returns normally. Never throws, never
- * writes to stdout/stderr, never blocks longer than the configured
- * boundary timeouts.
+ * current binary untouched and resolves to `null`. Only the one branch
+ * where `replaceBinary` has actually succeeded resolves to the new
+ * version string instead. Never throws, never writes to stdout/stderr
+ * itself (the return value is data, not a display decision -- printing it
+ * is the caller's job), never blocks longer than the configured boundary
+ * timeouts.
  */
 export class GithubReleaseUpdater implements SelfUpdatePort {
   private readonly fetchFn: typeof fetch;
@@ -139,20 +142,20 @@ export class GithubReleaseUpdater implements SelfUpdatePort {
     this.assetTimeoutMs = deps.assetTimeoutMs ?? 30_000;
   }
 
-  async checkAndApply(currentVersion: string): Promise<void> {
+  async checkAndApply(currentVersion: string): Promise<string | null> {
     try {
       // Defensive early-out even though the only production caller
       // (`cli/index.ts`) already gates this -- `checkAndApply` itself
       // must never make a network request for a source/test run.
       if (currentVersion === 'dev') {
-        return;
+        return null;
       }
 
       const release = await this.fetchReleaseMetadata();
       if (release === null) {
         // 404 (no releases yet), non-2xx, or an unrecognized response
         // shape -- all treated identically as "no update available".
-        return;
+        return null;
       }
 
       const remoteVersion = parseVersionFromTag(release.tag_name);
@@ -160,35 +163,37 @@ export class GithubReleaseUpdater implements SelfUpdatePort {
         // Covers "already latest", "latest is older" (e.g. the release
         // workflow's own smoke-test step, which runs before the new
         // Release exists) and any unparsable version -- fail closed.
-        return;
+        return null;
       }
 
       const assetName = resolveAssetName(this.platform, this.arch);
       if (assetName === null) {
-        return;
+        return null;
       }
 
       const asset = findAsset(release.assets, assetName);
       const sumsAsset = findAsset(release.assets, SHA256SUMS_ASSET_NAME);
       if (asset === null || sumsAsset === null) {
-        return;
+        return null;
       }
 
       const sumsText = await this.downloadText(sumsAsset.browser_download_url);
       const expectedHash = parseSha256Sums(sumsText).get(assetName);
       if (expectedHash === undefined) {
-        return;
+        return null;
       }
 
       const bytes = await this.downloadBytes(asset.browser_download_url);
       if (sha256Hex(bytes) !== expectedHash) {
-        return;
+        return null;
       }
 
       await replaceBinary(this.execPath, currentVersion, bytes);
+      return remoteVersion;
     } catch {
       // Fail closed and silent -- see Boundaries & Constraints. The
       // current binary keeps running as-is for the rest of this process.
+      return null;
     }
   }
 

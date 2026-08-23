@@ -167,8 +167,9 @@ describe('GithubReleaseUpdater.checkAndApply', () => {
     const fetchFn = buildFetch({}, calls);
     const updater = new GithubReleaseUpdater({ fetchFn, execPath });
 
-    await updater.checkAndApply('dev');
+    const result = await updater.checkAndApply('dev');
 
+    expect(result).toBeNull();
     expect(calls).toEqual([]);
     expect(readFileSync(execPath, 'utf8')).toBe('old-binary-content');
   });
@@ -181,8 +182,9 @@ describe('GithubReleaseUpdater.checkAndApply', () => {
     );
     const updater = new GithubReleaseUpdater({ fetchFn, execPath, platform: 'linux', arch: 'x64' });
 
-    await updater.checkAndApply('1.0.0');
+    const result = await updater.checkAndApply('1.0.0');
 
+    expect(result).toBeNull();
     expect(readFileSync(execPath, 'utf8')).toBe('old-binary-content');
     expect(existsSync(`${execPath}.1.0.0.bak`)).toBe(false);
   });
@@ -192,8 +194,9 @@ describe('GithubReleaseUpdater.checkAndApply', () => {
     const fetchFn = buildFetch({ latest: { ok: false, status: 404 } }, calls);
     const updater = new GithubReleaseUpdater({ fetchFn, execPath, platform: 'linux', arch: 'x64' });
 
-    await updater.checkAndApply('1.0.0');
+    const result = await updater.checkAndApply('1.0.0');
 
+    expect(result).toBeNull();
     expect(calls.length).toBe(1);
     expect(readFileSync(execPath, 'utf8')).toBe('old-binary-content');
   });
@@ -222,8 +225,9 @@ describe('GithubReleaseUpdater.checkAndApply', () => {
     );
     const updater = new GithubReleaseUpdater({ fetchFn, execPath, platform: 'linux', arch: 'x64' });
 
-    await updater.checkAndApply('1.0.0');
+    const result = await updater.checkAndApply('1.0.0');
 
+    expect(result).toBe('1.1.0');
     expect(readFileSync(execPath, 'utf8')).toBe('new-binary-content');
     const backupPath = `${execPath}.1.0.0.bak`;
     expect(existsSync(backupPath)).toBe(true);
@@ -254,8 +258,9 @@ describe('GithubReleaseUpdater.checkAndApply', () => {
     );
     const updater = new GithubReleaseUpdater({ fetchFn, execPath, platform: 'linux', arch: 'x64' });
 
-    await updater.checkAndApply('1.0.0');
+    const result = await updater.checkAndApply('1.0.0');
 
+    expect(result).toBeNull();
     expect(readFileSync(execPath, 'utf8')).toBe('old-binary-content');
     expect(existsSync(`${execPath}.1.0.0.bak`)).toBe(false);
   });
@@ -266,9 +271,10 @@ describe('GithubReleaseUpdater.checkAndApply', () => {
     const updater = new GithubReleaseUpdater({ fetchFn, execPath, platform: 'linux', arch: 'x64', metadataTimeoutMs: 30 });
 
     const start = Date.now();
-    await updater.checkAndApply('1.0.0');
+    const result = await updater.checkAndApply('1.0.0');
     const elapsed = Date.now() - start;
 
+    expect(result).toBeNull();
     expect(elapsed).toBeLessThan(2_000);
     expect(readFileSync(execPath, 'utf8')).toBe('old-binary-content');
   });
@@ -282,9 +288,10 @@ describe('GithubReleaseUpdater.checkAndApply', () => {
     const updater = new GithubReleaseUpdater({ fetchFn, execPath, platform: 'linux', arch: 'x64', metadataTimeoutMs: 30 });
 
     const start = Date.now();
-    await updater.checkAndApply('1.0.0');
+    const result = await updater.checkAndApply('1.0.0');
     const elapsed = Date.now() - start;
 
+    expect(result).toBeNull();
     expect(elapsed).toBeLessThan(2_000);
     expect(readFileSync(execPath, 'utf8')).toBe('old-binary-content');
   });
@@ -297,8 +304,9 @@ describe('GithubReleaseUpdater.checkAndApply', () => {
     );
     const updater = new GithubReleaseUpdater({ fetchFn, execPath, platform: 'aix', arch: 'mips' });
 
-    await updater.checkAndApply('1.0.0');
+    const result = await updater.checkAndApply('1.0.0');
 
+    expect(result).toBeNull();
     expect(calls.length).toBe(1); // only the metadata request; never reaches asset resolution
     expect(readFileSync(execPath, 'utf8')).toBe('old-binary-content');
   });
@@ -320,8 +328,9 @@ describe('GithubReleaseUpdater.checkAndApply', () => {
     );
     const updater = new GithubReleaseUpdater({ fetchFn, execPath, platform: 'linux', arch: 'x64' });
 
-    await updater.checkAndApply('1.0.0');
+    const result = await updater.checkAndApply('1.0.0');
 
+    expect(result).toBeNull();
     expect(calls.length).toBe(1); // only the metadata request; never downloads the older asset
     expect(readFileSync(execPath, 'utf8')).toBe('old-binary-content');
   });
@@ -355,8 +364,9 @@ describe('GithubReleaseUpdater.checkAndApply', () => {
     );
     const updater = new GithubReleaseUpdater({ fetchFn, execPath, platform: 'linux', arch: 'x64' });
 
-    await updater.checkAndApply('1.0.0');
+    const result = await updater.checkAndApply('1.0.0');
 
+    expect(result).toBeNull();
     // Original binary untouched, no backup was ever created (rename never ran).
     expect(readFileSync(execPath, 'utf8')).toBe('old-binary-content');
     expect(existsSync(`${execPath}.1.0.0.bak`)).toBe(false);

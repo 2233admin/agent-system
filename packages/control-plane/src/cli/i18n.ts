@@ -121,6 +121,8 @@ const zh: Dict = {
   'establish.noCandidateSource':
     'configs establish：未提供候选内容——请传入 --from <path>，或通过 stdin 管道输入候选 JSON（当前 stdin 是交互式终端）；未写入任何内容。',
   'establish.invalidCandidate': 'configs establish：候选内容不合法（以下为英文字段路径/类型提示，非待翻译文案）：`{reason}`；未写入任何内容。',
+
+  'selfUpdate.updated': 'configs：已更新到 v{version}（下次启动生效）',
 };
 
 const en: Dict = {
@@ -220,6 +222,8 @@ const en: Dict = {
   'establish.noCandidateSource':
     'configs establish: no candidate source was provided -- pass --from <path>, or pipe candidate JSON via stdin (stdin is currently an interactive terminal); nothing was written.',
   'establish.invalidCandidate': 'configs establish: candidate is invalid: `{reason}`; nothing was written.',
+
+  'selfUpdate.updated': 'configs: updated to v{version} (takes effect next launch)',
 };
 
 const DICTS: Record<Lang, Dict> = { zh, en };
