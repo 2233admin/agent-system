@@ -125,6 +125,14 @@ MVP-FR10：Epic 1 / Story 1.2 — OMP-only 与未来 adapter 边界。
 
 （2026-08-23 新增，见 `sprint-change-proposal-2026-08-23-configs-supply-assembly.md`）
 
+### Epic 4：装配并激活 Claude Code/Codex 客户端（Agent System 第二客户端）
+
+`configs` 新增对 Claude Code 与 Codex CLI 的类型化 client adapter（复用 Architecture Spine AD-19 已定义的窄端口：probe → plan → launch/resume → interpret，capability 状态固定为 `supported | degraded | unsupported | unknown` 并绑定证据），以硬控制（native 权限/工具/MCP 层面可强制执行的边界）交付 Instructions/Skills/MCP 装配，取代现有 `.cap/`（`.cap/manifest.toml`、`profiles/*.toml`、`runtime/claude.toml`、`skill-imports.toml`）当前依赖 TOML 允许清单与未经证据绑定的软约束的装配方式。这条能力域此前被 PRD §4.4"已确认 MVP 客户端范围"与 §7"明确非目标"、Architecture Spine AD-1 与 Deferred 小节明确列为"第二客户端"，需等待"产品合同明确激活"才重新评估；本次由负责人在 correct-course 会话中依据 epic-1-retro-2026-08-22.md 的 open action item（CAP 长期独立兜底、缺乏 epic 覆盖、以软约束方式维护）与本仓持续的 ad hoc CAP 维护证据（如 `b9e95cd` 等散点提交），明确裁决触发该重开条件、正式激活第二客户端。装配（Claude Code/Codex adapter、硬控制能力合同）与迁移退役 `.cap/` 保持在同一能力域内处理，不与 Epic 3（OMP 配置供应与装配）合并——两者服务不同客户端、不追求跨客户端配置或 Session 等价（AD-1、AD-19）。具体 adapter 边界、Claude Code 特有的"通常已是交互中会话而非 fresh spawn"执行模型如何纳入 launch-scoped operation 状态机、`.cap/` 到新 adapter 的迁移与退役顺序、PRD Non-goals 与 Architecture AD-1/Deferred 的正式改写，均留给后续 bmad-prd（addendum）、bmad-architecture、bmad-create-epics-and-stories 产出。
+
+**覆盖：** PRD §4.4、§7 对应裁决的重新表态（第二客户端激活触发条件已满足）；Architecture Spine AD-1、AD-19、Deferred 小节"Claude Code/Codex adapter"条目的重新表态；覆盖 epic-1-retro-2026-08-22.md open action item `epic-1-retro-item-7`。
+
+（2026-08-23 新增，见 `sprint-change-proposal-2026-08-23-cap-claude-codex-adapter.md`）
+
 ## Epic 1：查看、选择并使用 OMP 配置
 
 用户可以看清一个配置包含什么，必要时并列比较多个配置，然后亲自选择一个具体修订，经一次确认 fresh 启动 OMP；进入 OMP 后使用原生 resume，并只查看配置应用与客户端启动状态。
@@ -239,3 +247,135 @@ MVP-FR10：Epic 1 / Story 1.2 — OMP-only 与未来 adapter 边界。
 **When** MVP 解析客户端
 **Then** 明确返回当前不支持，并指出未来 adapter 边界
 **And** 不提供占位实现、配置翻译、兼容 shim 或跨客户端 Session 恢复。
+
+> **2026-08-23 一致性提示：** 上一条 AC 写于 Claude Code/Codex 均未激活时。Epic 4（2026-08-23 裁决激活）已经给 Claude Code 建立正式 adapter，Codex 仍按原样不支持。Epic 4 交付后，本 Story 描述的“Claude Code 返回不支持”这一具体行为会被 Epic 4 的 Story 4.1～4.3 取代；本条 AC 按 correct-course 惯例保留原文不删（可追溯 Epic 1 当时的真实交付范围），不在本轮改写——按范围约定本轮只处理 Epic 4，不修改 Epic 1 正文。
+
+## Epic 4：装配并激活 Claude Code 客户端
+
+用户可以让本产品把已存在的装配意图（Instructions/Skills/MCP 引用）交付给 Claude Code，边界是宿主原生可强制执行的权限/工具/MCP 硬控制，不是 prompt 文字软约束；交付方式复用 Architecture Spine AD-19 的窄端口（probe → plan → launch/resume → interpret）与 AD-20 的会话模型（fresh target 复用 OMP 同款单次确认生命周期，already-running session target 诚实返回 `requires-restart`），最终按固定四步顺序取代现有 `.cap/`。Codex CLI 因缺乏真实装配证据（`.cap/runtime/` 无 `codex.toml`）不在本 Epic 范围内，继续按 Architecture Spine AD-1 的 2026-08-23 澄清保持非目标。
+
+**覆盖：** Architecture Spine AD-1（2026-08-23 澄清）、AD-19（MVP 边界更新）、AD-20（新增）；SPEC.md CAP-2/CAP-3/CAP-4 的 2026-08-23 MVP 归属更新；不覆盖 CAP-1（候选/推荐）、CAP-2 的建立/修订部分、CAP-4 的 ChangeAssessment、CAP-7（Bad Case 产品化）——这些对 Claude Code 同样不在 MVP，与 OMP 侧收窄口径一致。
+
+**实现与交互约束：** 新 adapter 落在 `packages/control-plane/src/adapters/clients/claude/`，复用既有 domain/application 层，不另起新包；不与 Epic 3（OMP 配置供应与装配）合并，不追求跨客户端配置或 Session 等价；不做候选/推荐、不做建立/修订工作流。`.cap/` 退役必须按 Architecture Spine"`.cap/` 退役顺序"小节的四步严格顺序执行（Story 4.1～4.2 对应"落地新 adapter"，4.3～4.4 对应验证 fresh/already-running 两条 target 路径，4.5 对应"parity 验证 + 本仓自身切换"，4.6 对应"退役 `.cap/` 本体"），不得先退役后设计替代，迁移期间本仓自身运行的 Claude Code session（包括当前维护本仓的这个 session）不得失去 skill/profile 装配能力。
+
+（2026-08-23 Story 拆分，见 `sprint-change-proposal-2026-08-23-cap-claude-codex-adapter.md`）
+
+### Story 4.1：建立 Claude Code adapter 骨架与硬控制能力探测
+
+作为维护本仓 Agent System 的负责人，
+我希望新的 Claude Code client adapter 能探测（probe）当前 Claude Code 环境实际支持哪些原生可强制执行的能力，
+以便后续装配只基于证据化的能力状态，不基于假设或 prompt 文字承诺。
+
+**实现需求：** Architecture Spine AD-19（capabilityStatus 合同）、AD-1（2026-08-23 澄清）。
+
+**Acceptance Criteria:**
+
+**Given** `packages/control-plane` 已有 `adapters/clients/omp/` 的既有实现
+**When** 新增 `adapters/clients/claude/` 并实现 probe 阶段
+**Then** probe 对每个候选硬控制能力（如 settings.json 权限字段、hook 拒绝返回值、MCP 配置项）返回 `supported | degraded | unsupported | unknown`，并绑定可回读证据
+**And** 不接受 prompt 文字承诺、文档声称或未核实的假设作为 `supported` 的证据；无法验证时返回 `unknown`，不得默认为 `supported`。
+
+**Given** probe 在本仓当前环境（Windows，Claude Code 2.1.236，见 `.cap/runtime/claude.toml` 已核实的版本证据）执行
+**When** 结果与 `.cap/runtime/claude.toml` 中已核实的字段（`permission_mode`、`enable_project_mcp`、`enable_user_assets`）比对
+**Then** probe 得到的能力集合与 `.cap/` 现有已核实字段一致或明确记录差异
+**And** 差异不得被静默丢弃，需记录为 Unknown 或已知不一致供后续 Story 处理。
+
+### Story 4.2：装配 Claude Code 的确定性 AdapterPlan
+
+作为维护本仓 Agent System 的负责人，
+我希望 adapter 能把一份已存在的装配意图（Instructions/Skills/MCP 引用）编译成 Claude Code 的确定性 `AdapterPlan`，
+以便同一份装配意图在相同输入下总是产出相同的 plan，且不产出任何候选或推荐。
+
+**实现需求：** Architecture Spine AD-19（AssemblyManifest/AdapterPlan 合同）；SPEC.md CAP-1（候选/推荐排除）、CAP-2（内容所有权，只读引用）。
+
+**Acceptance Criteria:**
+
+**Given** 一份已存在的装配意图（等价于 `.cap/manifest.toml` + `profiles/*.toml` + `skill-imports.toml` 当前表达的引用集合）
+**When** adapter 执行 plan 阶段
+**Then** 产出的 `AdapterPlan` 只包含硬控制字段（对应 Claude Code settings.json 权限字段、hook 配置等）与类型化的 Instructions/Skills/MCP 引用，不复制引用内容原文
+**And** 相同输入两次执行产出确定性相同的 plan（hash 相同），不引入候选、评分或推荐。
+
+**Given** 装配意图引用了某个 probe 阶段标记为 `unsupported` 或 `unknown` 的能力
+**When** plan 阶段处理该引用
+**Then** 按 Architecture Spine AD-10 fail-closed：必需能力缺失时整体 fail closed，仅可选项可标记为 `degraded` 并列出受影响能力
+**And** 不得静默忽略缺失能力或伪装成已装配。
+
+### Story 4.3：fresh target 的启动与观察
+
+作为长期使用 Claude Code 的个人实践者，
+我希望选择一个已存在的装配后，让本产品新启动一个 Claude Code 会话并应用该装配，
+以便我在一次确认后就能获得已装配好硬控制边界的新会话，而不必手动配置。
+
+**实现需求：** Architecture Spine AD-20（fresh target 复用 AD-7/AD-18 生命周期）。
+
+**Acceptance Criteria:**
+
+**Given** 用户在外部 CLI 选择一个已存在的 Claude Code 装配，且目标是新建会话（fresh）
+**When** 用户完成唯一一次确认
+**Then** 系统按 `prepared → awaiting-confirmation → applying → observing → succeeded | degraded | failed | incomplete` 生命周期新 spawn 一个 Claude Code 进程并应用该 plan
+**And** `observationStage` 可以推进到 `launched`/`observed`，与 OMP adapter 同构；不产生部分应用状态。
+
+**Given** fresh 启动过程中必需能力不可达或宿主拒绝应用硬控制边界
+**When** 启动流程失败
+**Then** 显示失败阶段、受影响能力、已知原因与恢复动作
+**And** 不伪造成功，不静默回退到未装配状态。
+
+### Story 4.4：already-running session target 的 requires-restart 路径
+
+作为维护本仓 Agent System 的负责人，
+我希望当目标是一个已经在运行的交互式 Claude Code 会话（例如当前维护本仓的这个 session）时，系统诚实告知需要重启，
+以便不会有人误以为热更新已经生效，从而在没有实际硬控制边界的情况下继续工作。
+
+**实现需求：** Architecture Spine AD-20（already-running session target）、AD-10（fail-closed）。
+
+**Acceptance Criteria:**
+
+**Given** 用户请求把某个装配应用到当前已在运行的交互式 Claude Code 会话
+**When** adapter 的 `plan` 阶段判断 target 类型
+**Then** 无法证明是 fresh target 时按更保守的 already-running 处理（fail closed，不擅自假定是 fresh）
+**And** `apply` 只解析为 AD-18 既有终态 `requires-restart`，不新增状态、不产生部分应用的 SQLite 事实。
+
+**Given** target 已被判定为 already-running session
+**When** 用户在重启前查询状态
+**Then** `observationStage` 保持 `planned`，不越过 `planned` 推进到 `launched`/`observed`/`verified`
+**And** 界面明确说明"需要重启才能生效"，不暗示已经热更新成功。
+
+### Story 4.5：`.cap/` parity 验证与本仓自身切换
+
+作为维护本仓 Agent System 的负责人，
+我希望新 adapter 产出的 plan 先与 `.cap/` 现有产物做一次对照验证，再把本仓自身的 Claude Code session 装配来源切换过去，
+以便确认新 adapter 真的覆盖了 `.cap/` 现有场景后才继续，不在验证前就切断退路。
+
+**实现需求：** Architecture Spine"`.cap/` 退役顺序"小节第 2、3 步。
+
+**Acceptance Criteria:**
+
+**Given** 新 adapter 已能对本仓现有 `.cap/profiles/general.toml`、`.cap/profiles/agent-assembler.toml` 两个 profile 产出 `AdapterPlan`
+**When** 执行一次性 parity 验证
+**Then** 新 adapter 产出的能力覆盖范围与 `.cap/` 现有 lock/render 产物逐项比对，记录一致项与差异项
+**And** 存在未解释差异时不得继续切换，需先处理差异或明确记录为可接受的已知差异。
+
+**Given** parity 验证通过
+**When** 本仓自身切换装配来源
+**Then** 本仓自身运行的 Claude Code session（包括当前维护本仓的这个 session）从 `.cap/` 切换到新 adapter 产出的 manifest/plan
+**And** 切换过程中不出现 skill/profile 装配能力中断的时间窗口；如无法保证不中断，先记录为阻塞项，不强行切换。
+
+### Story 4.6：退役 `.cap/` 本体
+
+作为维护本仓 Agent System 的负责人，
+我希望在确认本仓自身切换稳定后才移除 `.cap/`，
+以便 `.cap/` 的历史内容降级为证据参考而不是被仓促删除导致无法回溯。
+
+**实现需求：** Architecture Spine"`.cap/` 退役顺序"小节第 4 步。
+
+**Acceptance Criteria:**
+
+**Given** Story 4.5 的本仓自身切换已稳定运行
+**When** 执行 `.cap/` 退役
+**Then** 移除 `.cap/` 目录，并把治理它的 openspec change（`v3-assembly-executor` 等）收敛为归档状态
+**And** `.cap/` 历史内容降级为证据参考，不再作为任何当前需求或架构的权威来源，不早于 Story 4.5 稳定验证执行。
+
+**Given** Story 4.5 尚未验证稳定
+**When** 有人尝试执行退役
+**Then** 阻止退役，明确说明"不得先退役后设计替代"（Architecture Spine 约束）
+**And** 不产生"部分退役"的中间态。

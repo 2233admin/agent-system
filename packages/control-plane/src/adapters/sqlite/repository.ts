@@ -306,44 +306,100 @@ const REVISION_COLUMNS = [
  * `0001_init.sql` stays naturally idempotent (`CREATE TABLE`/`CREATE INDEX
  * IF NOT EXISTS`), so it is simply re-executed every time. `0003_supply.sql`
  * is not -- `ALTER TABLE ... ADD COLUMN` has no `IF NOT EXISTS` form in
- * SQLite -- so it is guarded by checking whether `trigger_category` already
- * exists before ever executing it.
+ * SQLite.
  *
- * `[Review fix]` That check-then-alter is two separate statements, not one
- * atomic operation -- two independent connections opening the same file at
- * roughly the same time can both observe "not migrated yet" and both
- * attempt the `ALTER TABLE`. Rather than trying to close that race with
- * cross-process locking, this treats SQLite's own rejection of the second,
- * losing `ALTER TABLE ... ADD COLUMN` (`"duplicate column name"`) as the
- * authoritative "someone else already migrated this" signal and swallows
+ * `[Review fix]` The three `ALTER TABLE ... ADD COLUMN` statements in
+ * `0003_supply.sql` are gated *individually*, one `pragma_table_info`
+ * existence check per column, rather than treating `trigger_category`'s
+ * presence as a proxy for "the whole file already ran". A single combined
+ * gate + one batched `db.exec(SUPPLY_SQL)` would run all three `ALTER`s
+ * inside one transaction; on a history-carrying database that already has
+ * some but not all of the three columns (e.g. only `supersedes_revision_id`
+ * from an earlier partial run), the batch's later statements throw
+ * `"duplicate column name"`, which rolls the *whole* transaction back --
+ * including the columns that statement would have legitimately added --
+ * and that failure was then swallowed as "someone else already migrated
+ * this", silently leaving the database still missing columns. Gating each
+ * `ALTER` independently means a half-migrated database gets exactly the
+ * columns it's missing, nothing rolled back, nothing swallowed.
+ *
+ * `[Review fix]` That per-column check-then-alter is still two separate
+ * statements, not one atomic operation -- two independent connections
+ * opening the same file at roughly the same time can both observe "this
+ * column not migrated yet" and both attempt the same `ALTER TABLE`. Rather
+ * than trying to close that race with cross-process locking, this sets
+ * `PRAGMA busy_timeout` (see both constructors below) so SQLite itself
+ * waits out short-lived lock contention instead of failing immediately,
+ * and -- as a fallback for whatever contention outlasts that timeout --
+ * treats SQLite's own rejection of the losing `ALTER TABLE ... ADD COLUMN`
+ * (`"duplicate column name"`) *or* a lock-contention error
+ * (`SQLITE_BUSY`/`"database is locked"`) as the authoritative "someone
+ * else already has this, or is already applying it" signal and swallows
  * it -- any other error still propagates.
  */
+const SUPPLY_ADD_COLUMN_RE = /^ALTER TABLE\s+stable_config_revision\s+ADD COLUMN\s+(\w+)/i;
+
+/** Splits a `.sql` file's text into individual statements, comments stripped. */
+function splitSqlStatements(sql: string): string[] {
+  return sql
+    .split('\n')
+    .filter((line) => !line.trim().startsWith('--'))
+    .join('\n')
+    .split(';')
+    .map((statement) => statement.trim())
+    .filter((statement) => statement.length > 0);
+}
+
+function columnExists(db: Database, table: string, column: string): boolean {
+  return (
+    (db
+      .query<{ present: number }, [string]>(`SELECT COUNT(*) AS present FROM pragma_table_info('${table}') WHERE name = ?`)
+      .get(column)?.present ?? 0) > 0
+  );
+}
+
+/**
+ * A concurrent connection racing this exact migration -- lock contention
+ * that outlasted `PRAGMA busy_timeout`, or the losing side of a
+ * `duplicate column name` race -- not a real failure.
+ */
+function isConcurrentMigrationRace(error: unknown): boolean {
+  const message = ((error as Error).message ?? '').toLowerCase();
+  return message.includes('duplicate column name') || message.includes('sqlite_busy') || message.includes('database is locked');
+}
+
 export function runConfigRevisionMigrations(db: Database): void {
   db.transaction(() => {
     db.exec(INIT_SQL);
   })();
 
-  const alreadyMigrated =
-    (db
-      .query<{ present: number }, []>(
-        "SELECT COUNT(*) AS present FROM pragma_table_info('stable_config_revision') WHERE name = 'trigger_category'",
-      )
-      .get()?.present ?? 0) > 0;
-  if (alreadyMigrated) {
-    return;
-  }
-
-  try {
-    db.transaction(() => {
-      db.exec(SUPPLY_SQL);
-    })();
-  } catch (error) {
-    const message = (error as Error).message ?? '';
-    if (!message.toLowerCase().includes('duplicate column name')) {
-      throw error;
+  for (const statement of splitSqlStatements(SUPPLY_SQL)) {
+    const addColumnMatch = SUPPLY_ADD_COLUMN_RE.exec(statement);
+    try {
+      if (addColumnMatch === null) {
+        // `CREATE UNIQUE INDEX IF NOT EXISTS ...` -- idempotent at the SQL
+        // level (no existence pre-check needed), but this loop now runs on
+        // *every* construction (not just the first-ever migration, since
+        // the single `alreadyMigrated` early-return above was removed by
+        // the per-column gating refactor) -- so it needs the same
+        // lock-contention tolerance as the `ADD COLUMN` branch below,
+        // otherwise `SQLITE_BUSY`/"database is locked" landing on an index
+        // statement would still propagate uncaught on every launch.
+        db.exec(statement);
+        continue;
+      }
+      const column = addColumnMatch[1]!;
+      if (columnExists(db, 'stable_config_revision', column)) {
+        continue;
+      }
+      db.exec(statement);
+    } catch (error) {
+      if (!isConcurrentMigrationRace(error)) {
+        throw error;
+      }
+      // A concurrent connection won the race for this column/index --
+      // idempotent no-op, not a failure.
     }
-    // A concurrent connection won the race and already applied this
-    // migration -- idempotent no-op, not a failure.
   }
 }
 
@@ -361,6 +417,11 @@ export class SqliteConfigRevisionRepository implements ConfigRevisionRepository 
     }
     this.db = new Database(dbPath, { create: true });
     this.db.exec('PRAGMA journal_mode = WAL;');
+    // `[Review fix]` Root-cause mitigation for concurrent migrations (see
+    // `runConfigRevisionMigrations`'s docstring): make SQLite itself wait
+    // out short-lived lock contention instead of failing immediately with
+    // `SQLITE_BUSY`/`"database is locked"`.
+    this.db.exec('PRAGMA busy_timeout = 5000;');
     // SQLite disables foreign key enforcement by default per connection --
     // without this, `stable_config_revision`'s `REFERENCES stable_config`
     // is decorative only.

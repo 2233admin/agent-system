@@ -140,6 +140,46 @@ describe('configs establish', () => {
     expect(existsSync(dbPath)).toBe(false);
   });
 
+  test('候选字段 kind==="unknown" 但 reason 字段存在且类型错误 (数字而非字符串): zero writes, typed "candidate is invalid" failure block, exit 1', async () => {
+    const candidatePath = path.join(tmpDir, 'unknown-fact-wrong-type-candidate.json');
+    await Bun.write(
+      candidatePath,
+      JSON.stringify({
+        configName: 'general',
+        // `[Review fix]` `reason` is *present* but the wrong type -- must
+        // be rejected outright, not silently overwritten with the
+        // "unspecified" default (that degrade path is reserved for a
+        // *missing* `reason`, not a malformed one).
+        scopeBoundary: { kind: 'unknown', reason: 12345, observedAt: '2026-08-23T00:00:00.000Z' },
+      }),
+    );
+
+    const code = await main(['establish', '--trigger-category', 'new-scenario', '--evidence', 'session-123', '--from', candidatePath]);
+    expect(code).toBe(1);
+    expect(logs.join('\n')).toContain('candidate is invalid');
+    expect(existsSync(dbPath)).toBe(false);
+  });
+
+  test('候选字段 kind==="unknown" 但 observedAt 字段存在且类型错误 (数字而非字符串): zero writes, typed "candidate is invalid" failure block, exit 1', async () => {
+    const candidatePath = path.join(tmpDir, 'unknown-fact-wrong-observedat-candidate.json');
+    await Bun.write(
+      candidatePath,
+      JSON.stringify({
+        configName: 'general',
+        // `[Review fix]` Same shape as the `reason`-type-error test above,
+        // but exercising `observedAt`'s twin branch in `parseFact` --
+        // present but wrong-typed must reject, not silently fall back to
+        // `MISSING_FIELD_OBSERVED_AT`.
+        scopeBoundary: { kind: 'unknown', reason: 'a valid reason', observedAt: 12345 },
+      }),
+    );
+
+    const code = await main(['establish', '--trigger-category', 'new-scenario', '--evidence', 'session-123', '--from', candidatePath]);
+    expect(code).toBe(1);
+    expect(logs.join('\n')).toContain('candidate is invalid');
+    expect(existsSync(dbPath)).toBe(false);
+  });
+
   test('候选内容是语法不合法的 JSON (截断/非法字符): rejected via the JSON.parse failure branch, not the field-type branch, zero writes, exit 1', async () => {
     const candidatePath = path.join(tmpDir, 'truncated-candidate.json');
     // Deliberately truncated/malformed -- not valid JSON at all (an
@@ -251,4 +291,59 @@ describe('configs establish', () => {
     const code = await main(['establish', '--trigger-category', 'new-scenario', '--evidence', 'x', '--yes']);
     expect(code).toBe(2);
   });
+
+  // `[Review fix]` Real two-*process* concurrency (not two connections in
+  // this same JS thread, which can never model genuine OS-level lock
+  // contention resolving mid-wait) -- two independent `bun` subprocesses,
+  // each running the actual compiled CLI entrypoint via `import.meta.main`,
+  // both racing `runConfigRevisionMigrations` (via the `establish` command)
+  // against the very same brand-new db file. Neither may exit non-zero
+  // because of lock contention (`PRAGMA busy_timeout` plus the
+  // busy/duplicate-column tolerance in `repository.ts`); both establishes
+  // must land.
+  test('真实并发 establish: 两个进程同时对同一全新库文件执行 establish，两者都不因锁竞争而失败退出', async () => {
+    const candidatePathA = path.join(tmpDir, 'candidate-a.json');
+    const candidatePathB = path.join(tmpDir, 'candidate-b.json');
+    await Bun.write(candidatePathA, VALID_CANDIDATE);
+    await Bun.write(candidatePathB, VALID_CANDIDATE);
+
+    const cliEntry = path.join(import.meta.dir, '../../src/cli/index.ts');
+    const spawnEstablish = (candidatePath: string, evidenceRef: string) =>
+      Bun.spawn({
+        cmd: [
+          process.execPath,
+          'run',
+          cliEntry,
+          'establish',
+          '--trigger-category',
+          'new-scenario',
+          '--evidence',
+          evidenceRef,
+          '--from',
+          candidatePath,
+        ],
+        env: { ...process.env, CONTROL_PLANE_DB_PATH: dbPath, CONFIGS_LANG: 'en' },
+        stdout: 'pipe',
+        stderr: 'pipe',
+      });
+
+    // Launched together (not awaited one at a time) so both processes open
+    // the same brand-new `dbPath` at roughly the same time -- neither has
+    // any migration done yet when the race starts.
+    const procA = spawnEstablish(candidatePathA, 'concurrent-proc-a');
+    const procB = spawnEstablish(candidatePathB, 'concurrent-proc-b');
+    const [exitCodeA, exitCodeB] = await Promise.all([procA.exited, procB.exited]);
+
+    if (exitCodeA !== 0 || exitCodeB !== 0) {
+      const [stderrA, stderrB] = await Promise.all([new Response(procA.stderr).text(), new Response(procB.stderr).text()]);
+      throw new Error(`process A exit=${exitCodeA} stderr=${stderrA}\nprocess B exit=${exitCodeB} stderr=${stderrB}`);
+    }
+    expect(exitCodeA).toBe(0);
+    expect(exitCodeB).toBe(0);
+
+    const all = await listAllRevisions();
+    expect(all).toHaveLength(2);
+    expect(new Set(all.map((r) => r.revisionId)).size).toBe(2);
+    expect(new Set(all.map((r) => r.evidenceRef))).toEqual(new Set(['concurrent-proc-a', 'concurrent-proc-b']));
+  }, 20000);
 });
