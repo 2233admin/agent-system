@@ -21,13 +21,22 @@ interface MinimalExtensionUi {
   notify(message: string, type?: string): void;
   setStatus(key: string, text?: string): void;
 }
-
 interface MinimalExtensionContext {
   readonly ui: MinimalExtensionUi;
 }
 
+interface MinimalSessionStartEvent {
+  readonly type: 'session_start';
+}
+
 interface MinimalExtensionAPI {
-  on(event: 'session_start', handler: (ctx: MinimalExtensionContext) => void | Promise<void>): void;
+  on(
+    event: 'session_start',
+    handler: (
+      event: MinimalSessionStartEvent,
+      ctx: MinimalExtensionContext,
+    ) => void | Promise<void>,
+  ): void;
   registerCommand(
     name: string,
     opts: {
@@ -90,7 +99,7 @@ function formatDetail(context: LaunchContextFile | null): string {
 }
 
 export default function registerAgentStatusExtension(pi: MinimalExtensionAPI): void {
-  pi.on('session_start', async (ctx) => {
+  pi.on('session_start', async (_event, ctx) => {
     const context = await readLaunchContext();
     ctx.ui.setStatus('agent-system-config', formatStatusLine(context));
   });
