@@ -28,6 +28,7 @@ import {
   ConfigUnsupportedError,
   compareConfigRevisions,
   getConfigRevisionDetail,
+  getSupersedesChain,
   listConfigRevisions,
   type ConfigQueryError,
 } from '../application/queries';
@@ -75,6 +76,7 @@ import {
   renderList,
   renderQueryFailure,
   renderReviseSuccess,
+  renderSupersedesChainSection,
   renderSwitchAccepted,
   renderUnsupportedClient,
 } from './render';
@@ -841,7 +843,12 @@ export async function main(argv: readonly string[], overrides: CliOverrides = {}
       case 'show': {
         try {
           const revision = await getConfigRevisionDetail(deps.configRepository, parsed.id);
-          console.log(renderDetail(revision));
+          // `[Story 3.3]` Appended after `renderDetail`'s existing detail
+          // block, via the independent `renderSupersedesChainSection` --
+          // never merged into `renderDetail` itself (Boundaries &
+          // Constraints).
+          const chain = await getSupersedesChain(deps.configRepository, parsed.id);
+          console.log([renderDetail(revision), renderSupersedesChainSection(chain)].join('\n\n'));
           return 0;
         } catch (error) {
           if (isConfigQueryError(error)) {

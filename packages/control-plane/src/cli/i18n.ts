@@ -42,6 +42,8 @@ const zh: Dict = {
   'marker.default': '默认',
   'marker.generic': '通用',
   'capabilityRef.source': '来源',
+  'capabilityRef.sourceRef': '来源引用',
+  'capabilityRef.contentFingerprint': '内容指纹',
 
   'list.revisionLabel': '修订版本',
   'list.statusLabel': '状态',
@@ -51,6 +53,12 @@ const zh: Dict = {
   'detail.revision': '修订版本：',
   'detail.status': '状态：',
   'detail.boundary': '边界：',
+  'detail.triggerCategory': '触发类别：',
+  'detail.evidenceRef': '证据引用：',
+  'detail.supersededFrom': '替代自：',
+  'detail.supersededBy': '后继：',
+  'detail.chainNone': '（无）',
+  'detail.chainUnresolvable': '无法解析（{revisionId}）',
 
   'queryFailure.notFound': '未找到。恢复：运行 `configs list` 查看可用的修订版本 id。',
   'queryFailure.unsupported': '不受支持（{reason}）。恢复：重新导入该修订版本，或检查其存储数据；其他配置不受影响。',
@@ -150,6 +158,8 @@ const en: Dict = {
   'marker.default': 'default',
   'marker.generic': 'generic',
   'capabilityRef.source': 'source',
+  'capabilityRef.sourceRef': 'source ref',
+  'capabilityRef.contentFingerprint': 'content fingerprint',
 
   'list.revisionLabel': 'revision',
   'list.statusLabel': 'status',
@@ -159,6 +169,12 @@ const en: Dict = {
   'detail.revision': 'Revision:',
   'detail.status': 'Status:',
   'detail.boundary': 'Boundary:',
+  'detail.triggerCategory': 'Trigger category:',
+  'detail.evidenceRef': 'Evidence ref:',
+  'detail.supersededFrom': 'Superseded from:',
+  'detail.supersededBy': 'Superseded by:',
+  'detail.chainNone': '(none)',
+  'detail.chainUnresolvable': 'unresolvable ({revisionId})',
 
   'queryFailure.notFound': 'not found. Recovery: run `configs list` to see available revision ids.',
   'queryFailure.unsupported': 'unsupported ({reason}). Recovery: re-seed this revision or inspect its stored data; other configurations are unaffected.',

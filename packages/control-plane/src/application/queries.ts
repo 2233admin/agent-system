@@ -1,5 +1,5 @@
-import { compareRevisions } from '../domain/config';
-import type { ComparisonResult, StableConfigRevision } from '../domain/config';
+import { buildSupersedesChain, compareRevisions } from '../domain/config';
+import type { ComparisonResult, StableConfigRevision, SupersedesChain } from '../domain/config';
 import type { ConfigRevisionRepository } from './ports';
 
 /** The requested configuration revision id does not exist in storage. */
@@ -52,6 +52,25 @@ export async function getConfigRevisionDetail(
     throw new ConfigNotFoundError(revisionId);
   }
   return revision;
+}
+
+/**
+ * `[Story 3.3]` MVP-FR2 extension ("查看装配来源与替代链"): the bidirectional
+ * supersede chain for one revision. Throws the same typed
+ * `ConfigNotFoundError` as `getConfigRevisionDetail` when `revisionId`
+ * itself does not exist -- `show`'s existing `isConfigQueryError`/
+ * `renderQueryFailure` failure path handles it without change. The chain
+ * traversal itself (`buildSupersedesChain`) never throws; a dangling
+ * pointer within the chain is represented in the result, not as a thrown
+ * error.
+ */
+export async function getSupersedesChain(repository: ConfigRevisionRepository, revisionId: string): Promise<SupersedesChain> {
+  const revision = await repository.findById(revisionId);
+  if (revision === null) {
+    throw new ConfigNotFoundError(revisionId);
+  }
+  const allRevisions = await repository.listAll();
+  return buildSupersedesChain(allRevisions, revisionId);
 }
 
 export interface CompareFailure {
