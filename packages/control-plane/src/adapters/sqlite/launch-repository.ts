@@ -1,7 +1,10 @@
 import { Database } from 'bun:sqlite';
-import { mkdirSync, readFileSync } from 'node:fs';
+import { mkdirSync } from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+// Embedded as text at bundle/compile time -- see the identical comment in
+// repository.ts. A runtime `import.meta.url`-relative path breaks once this
+// module is compiled into a standalone `bun build --compile` executable.
+import LAUNCH_SQL from '../../../migrations/0002_launch.sql' with { type: 'text' };
 
 import { type Fact, isKnown, known, unknown } from '../../domain/facts';
 import type { ClientId } from '../../domain/client';
@@ -29,11 +32,6 @@ export interface LaunchPlanRow {
   observed_outcome_value: string | null;
   observed_outcome_reason: string | null;
   observed_outcome_observed_at: string | null;
-}
-
-function migrationSqlPath(): string {
-  const here = path.dirname(fileURLToPath(import.meta.url));
-  return path.join(here, '..', '..', '..', 'migrations', '0002_launch.sql');
 }
 
 function factColumns(fact: Fact<unknown>): {
@@ -138,9 +136,8 @@ export class SqliteLaunchPlanRepository implements LaunchPlanRepository {
   }
 
   private runMigration(): void {
-    const sql = readFileSync(migrationSqlPath(), 'utf8');
     this.db.transaction(() => {
-      this.db.exec(sql);
+      this.db.exec(LAUNCH_SQL);
     })();
   }
 
