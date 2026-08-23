@@ -439,7 +439,7 @@ async function runLaunchFlow(
   });
 
   if (finalPlan.phase === 'succeeded' || finalPlan.phase === 'degraded') {
-    const status = await getLaunchStatus(deps, finalPlan.planId);
+    const status = await getLaunchStatus(deps, finalPlan.planId, clientVersion);
     console.log(renderLaunchStatus(status));
     return 0;
   }

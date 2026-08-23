@@ -103,11 +103,13 @@ class FakeLaunchPlanRepository implements LaunchPlanRepository {
 
 class FakeOmpProcessPort implements OmpProcessPort {
   version: Fact<string> = known('17.4.1');
+  detectVersionCalls = 0;
   spawnResult: OmpSpawnResult = { exitCode: 0, signal: null };
   spawnError: Error | null = null;
   lastSpawnParams: OmpSpawnParams | null = null;
 
   async detectVersion() {
+    this.detectVersionCalls += 1;
     return this.version;
   }
 
@@ -340,6 +342,17 @@ describe('getLaunchStatus', () => {
     expect(status.client).toBe('omp');
     expect(status.phase).toBe('awaiting-confirmation');
     expect(isKnown(status.clientVersion)).toBe(true);
+  });
+
+  test('调用方已提供版本事实时: status reuses it without probing OMP again', async () => {
+    const { deps, configRepository, ompPort } = buildDeps();
+    configRepository.add(revision({ configName: 'general', revisionId: 'rev-1' }));
+    const plan = await prepareLaunchPlan(deps, { revisionId: 'rev-1', client: 'omp' });
+
+    const status = await getLaunchStatus(deps, plan.planId, known('17.4.1'));
+
+    expect(status.clientVersion).toEqual(known('17.4.1'));
+    expect(ompPort.detectVersionCalls).toBe(0);
   });
 
   test('falls back to findActiveForClient("omp") when no planId is given', async () => {

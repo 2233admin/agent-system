@@ -8,6 +8,7 @@ import type { LaunchPhase, LaunchPlan, LaunchStatus, ObservedOutcome } from '../
 import { resolveClientSupport } from '../domain/client';
 import type { ClientId } from '../domain/client';
 import type { StableConfigRevision } from '../domain/config';
+import type { Fact } from '../domain/facts';
 import { ConfigNotFoundError, ConfigUnsupportedError, getConfigRevisionDetail } from './queries';
 import type {
   ConfigRevisionRepository,
@@ -362,7 +363,7 @@ export async function launchOmp(
  * persisting a copy, so `status` always reflects the same derivation
  * `launchOmp` used.
  */
-export async function getLaunchStatus(deps: LaunchStatusDeps, planId: string | null): Promise<LaunchStatus> {
+export async function getLaunchStatus(deps: LaunchStatusDeps, planId: string | null, clientVersion?: Fact<string>): Promise<LaunchStatus> {
   const plan =
     planId !== null
       ? await deps.launchPlanRepository.findById(planId)
@@ -388,8 +389,8 @@ export async function getLaunchStatus(deps: LaunchStatusDeps, planId: string | n
     }
   }
 
-  const clientVersion = await deps.ompPort.detectVersion();
-  return deriveLaunchStatus(plan, clientVersion, knownDifferences);
+  const resolvedClientVersion = clientVersion ?? (await deps.ompPort.detectVersion());
+  return deriveLaunchStatus(plan, resolvedClientVersion, knownDifferences);
 }
 
 export interface ConfigSwitchResult {

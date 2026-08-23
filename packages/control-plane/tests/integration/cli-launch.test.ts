@@ -51,10 +51,12 @@ function sampleRevision(overrides: Partial<StableConfigRevision> & { configName:
 
 class FakeOmpProcessPort implements OmpProcessPort {
   version: Fact<string> = known('17.4.1');
+  detectVersionCalls = 0;
   spawnResult: OmpSpawnResult = { exitCode: 0, signal: null };
   lastSpawnParams: OmpSpawnParams | null = null;
 
   async detectVersion() {
+    this.detectVersionCalls += 1;
     return this.version;
   }
 
@@ -148,6 +150,8 @@ describe('configs use', () => {
     expect(output.match(/one-time confirmation/g)?.length).toBe(1);
     expect(output).toContain('Phase: succeeded');
     expect(output).toContain('Apply result: applied');
+    expect(ompPort.detectVersionCalls).toBe(1);
+    expect(output.match(/17\.4\.1/g)?.length).toBe(2);
     expect(ompPort.lastSpawnParams).not.toBeNull();
 
     // The handoff line (DESIGN.md `{components.handoff-line}`) is printed
@@ -312,6 +316,7 @@ describe('configs switch', () => {
     expect(output).toContain('requires a restart');
     expect(output).toContain('Revision: rev-2');
     expect(output).toContain('Phase: succeeded');
+    expect(ompPort.detectVersionCalls).toBe(2);
   });
 });
 
