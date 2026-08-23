@@ -611,7 +611,7 @@ describe('runTuiWithDeps orchestration (mocked deps + injected alt-screen/decisi
       expect(stdin.resumeCallCount).toBe(1);
       expect(stdin.listenerCount('data')).toBe(1);
 
-      stdin.pushInput(new Uint8Array([0x03]));
+      stdin.pushInput(Buffer.from([0x03]));
       expect(stdin.listenerCount('readable')).toBe(0);
       expect(stdin.listenerCount('data')).toBe(0);
       expect(stdin.pauseCallCount).toBe(1);
