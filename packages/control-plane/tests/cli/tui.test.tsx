@@ -256,12 +256,12 @@ class FakeTuiStdin extends EventEmitter {
     return this.chunks.shift() ?? null;
   }
 
-  pushInput(input: string): void {
+  pushInput(input: string | Uint8Array): void {
     if (this.resumed) {
       this.emit('data', input);
       return;
     }
-    this.chunks.push(input);
+    this.chunks.push(typeof input === 'string' ? input : new TextDecoder().decode(input));
   }
 }
 
@@ -611,7 +611,7 @@ describe('runTuiWithDeps orchestration (mocked deps + injected alt-screen/decisi
       expect(stdin.resumeCallCount).toBe(1);
       expect(stdin.listenerCount('data')).toBe(1);
 
-      stdin.pushInput('\x03');
+      stdin.pushInput(new Uint8Array([0x03]));
       expect(stdin.listenerCount('readable')).toBe(0);
       expect(stdin.listenerCount('data')).toBe(0);
       expect(stdin.pauseCallCount).toBe(1);
