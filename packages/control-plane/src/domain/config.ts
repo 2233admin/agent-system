@@ -151,6 +151,125 @@ export interface ComparisonResult {
   readonly capabilities: readonly CapabilityGroupComparison[];
 }
 
+/**
+ * `[Story 3.3]` One step in a supersede chain -- deliberately a struct
+ * (not a bare `string`) so a future caller can attach more per-step data
+ * (e.g. `configName`) without changing `SupersedesChain`'s shape, matching
+ * this file's existing convention of wrapping a `revisionId` in a typed
+ * entry (`ScalarFieldEntry`, `CapabilitySourceEntry`) rather than passing
+ * ids around unadorned.
+ */
+export interface SupersedesLink {
+  readonly revisionId: string;
+}
+
+/**
+ * `[Story 3.3]` The bidirectional supersede chain for one revision, built
+ * from an already-loaded revision set (see `buildSupersedesChain`).
+ * `predecessors` is ordered oldest -> newest (the revision this one most
+ * directly supersedes comes last); `successors` is ordered nearest ->
+ * farthest (the revision that most directly supersedes this one comes
+ * first). Neither array includes the queried revision itself.
+ *
+ * `danglingPredecessorId`/`danglingSuccessorId` hold the id traversal
+ * could not resolve within `revisions` (AD-8: never thrown as an error --
+ * that direction's traversal simply stops there); `null` means that
+ * direction's traversal completed cleanly (reached a revision whose
+ * `supersedesRevisionId` is `null`, found no successor, or the chain is
+ * empty).
+ */
+export interface SupersedesChain {
+  readonly revisionId: string;
+  readonly predecessors: readonly SupersedesLink[];
+  readonly successors: readonly SupersedesLink[];
+  readonly danglingPredecessorId: string | null;
+  readonly danglingSuccessorId: string | null;
+}
+
+/**
+ * `[Story 3.3]` Pure, zero-IO bidirectional traversal of `supersedesRevisionId`
+ * pointers over an already-loaded revision set -- mirrors this file's
+ * `compareRevisions` convention (pure function; `application/queries.ts`'s
+ * `getSupersedesChain` is the IO-fetching wrapper around it).
+ *
+ * Predecessor traversal walks `current.supersedesRevisionId` backwards.
+ * Successor traversal walks a reverse index (`supersedesRevisionId ->
+ * revisionId`) forward -- the unique index on `supersedes_revision_id`
+ * (Story 3.1 migration) means this direction has at most one edge per
+ * revision in healthy data, so no fan-out/branching handling is needed
+ * (see Design Notes).
+ *
+ * Both directions carry a `visited` set: if a pointer would revisit an id
+ * already walked in that direction, traversal stops immediately instead of
+ * looping forever on cyclic data. A pointer to an id absent from
+ * `revisions` stops that direction's traversal and records the missing id
+ * in `danglingPredecessorId`/`danglingSuccessorId` -- it never throws, and
+ * never affects the other direction or any other revision's traversal.
+ */
+export function buildSupersedesChain(revisions: readonly StableConfigRevision[], revisionId: string): SupersedesChain {
+  const byId = new Map(revisions.map((revision) => [revision.revisionId, revision]));
+
+  // Reverse index: `supersedesRevisionId -> revisionId` of the revision
+  // that supersedes it. Built from the loaded set itself, so a value found
+  // here always corresponds to a revision actually present in `revisions`.
+  const successorOf = new Map<string, string>();
+  for (const revision of revisions) {
+    if (revision.supersedesRevisionId !== null) {
+      successorOf.set(revision.supersedesRevisionId, revision.revisionId);
+    }
+  }
+
+  const predecessors: SupersedesLink[] = [];
+  let danglingPredecessorId: string | null = null;
+  {
+    const visited = new Set<string>([revisionId]);
+    let current = byId.get(revisionId) ?? null;
+    while (current !== null && current.supersedesRevisionId !== null) {
+      const nextId = current.supersedesRevisionId;
+      if (visited.has(nextId)) {
+        break; // cycle -- stop rather than loop forever
+      }
+      const next = byId.get(nextId);
+      if (next === undefined) {
+        danglingPredecessorId = nextId;
+        break;
+      }
+      // Walking backwards but presenting oldest -> newest: prepend.
+      predecessors.unshift({ revisionId: nextId });
+      visited.add(nextId);
+      current = next;
+    }
+  }
+
+  const successors: SupersedesLink[] = [];
+  let danglingSuccessorId: string | null = null;
+  {
+    const visited = new Set<string>([revisionId]);
+    let currentId = revisionId;
+    for (;;) {
+      const nextId = successorOf.get(currentId);
+      if (nextId === undefined) {
+        break; // no revision supersedes `currentId`
+      }
+      if (visited.has(nextId)) {
+        break; // cycle -- stop rather than loop forever
+      }
+      const next = byId.get(nextId);
+      if (next === undefined) {
+        // Defensive only -- `successorOf`'s values come from `revisions`
+        // itself, so this should be unreachable in practice.
+        danglingSuccessorId = nextId;
+        break;
+      }
+      successors.push({ revisionId: nextId });
+      visited.add(nextId);
+      currentId = nextId;
+    }
+  }
+
+  return { revisionId, predecessors, successors, danglingPredecessorId, danglingSuccessorId };
+}
+
 const CAPABILITY_KINDS: readonly CapabilityKind[] = ['instruction', 'skill', 'mcp', 'hook', 'plugin'];
 
 function scalarStatus(entries: readonly ScalarFieldEntry[]): ComparisonStatus {
