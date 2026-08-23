@@ -35,6 +35,12 @@ ACTION_STATUSES = ("open", "in-progress", "done")
 # orchestrators branch on the echo, so a free-spelled value ("accepted with open
 # items") would silently fall through every branch they write.
 VERDICTS = ("accepted", "accepted-with-open-items", "rejected")
+# The epic-status vocabulary, mirrored from sprint-status.yaml's own STATUS
+# DEFINITIONS header. Epic-level status is otherwise only ever moved by hand or
+# by build's automatic backlog->in-progress transition; --set-epic-status is the
+# one write path that can also move it to done, so it is held to the same fixed
+# vocabulary as everything else the script writes.
+EPIC_STATUSES = ("backlog", "in-progress", "done")
 
 
 def _load_yaml(path):
@@ -360,6 +366,14 @@ def cmd_update(args):
             untouched,
         )
 
+    if args.set_epic_status is not None and args.set_epic_status not in EPIC_STATUSES:
+        _emit_error(
+            f"invalid --set-epic-status {args.set_epic_status!r} "
+            f"(allowed: {', '.join(EPIC_STATUSES)})",
+            1,
+            untouched,
+        )
+
     actions = []
     if args.add_action:
         try:
@@ -474,6 +488,36 @@ def cmd_update(args):
             dev[retro_key] = "done"
             retro_status_after = "done"
 
+    # 2b. Optionally set epic-<N>'s own status. Unlike --set-retro-done, a
+    # missing key is a hard error, not a tolerated no-op: epic-<N> keys are not
+    # optional the way a retrospective key can be, so an unknown one is far more
+    # likely a typo'd --epic than a legitimately absent field. This is also the
+    # only write path in the script that can move an epic to "done" at all --
+    # the WORKFLOW NOTES document only the automatic backlog->in-progress
+    # transition build's sprint sync performs.
+    epic_key = f"epic-{epic}"
+    epic_key_found = None
+    epic_status_before = None
+    epic_status_after = None
+    if args.set_epic_status is not None:
+        epic_key_found = epic_key in dev
+        if not epic_key_found:
+            _emit_error(
+                f"unknown epic key {epic_key!r}: not present in development_status",
+                1,
+                untouched,
+            )
+        current_value = dev.get(epic_key)
+        if current_value is not None and not isinstance(current_value, str):
+            _emit_error(
+                f"{epic_key} status must be a string or null",
+                1,
+                untouched,
+            )
+        epic_status_before = current_value
+        dev[epic_key] = args.set_epic_status
+        epic_status_after = args.set_epic_status
+
     # 3. Take the action_items sequence as loaded and shape-check it once; both
     #    of the steps below operate on this same list.
     existing_actions = data.get("action_items")
@@ -587,6 +631,13 @@ def cmd_update(args):
         if not isinstance(rdev, Mapping) or rdev.get(retro_key) != "done":
             _fail(f"validation: {retro_key} not set to done after write")
 
+    if args.set_epic_status is not None:
+        if not isinstance(rdev, Mapping) or rdev.get(epic_key) != args.set_epic_status:
+            _fail(
+                f"validation: {epic_key} not set to {args.set_epic_status!r} "
+                "after write"
+            )
+
     new_action_len = 0
     if reloaded.get("action_items") is not None:
         new_action_len = len(reloaded.get("action_items"))
@@ -634,6 +685,9 @@ def cmd_update(args):
             "retro_key_found": retro_key_found,
             "retro_status_before": retro_status_before,
             "retro_status_after": retro_status_after,
+            "epic_key_found": epic_key_found,
+            "epic_status_before": epic_status_before,
+            "epic_status_after": epic_status_after,
             "action_items_added": items_added,
             "action_items_updated": len(status_targets),
             "last_updated": last_updated,
@@ -714,6 +768,17 @@ def build_parser():
             '{"epic":int,"action":str,"status":...}. An entry carrying both uses the '
             "id. Every selector must match exactly one item; any failure aborts the "
             "whole invocation and leaves the file untouched."
+        ),
+    )
+    p_update.add_argument(
+        "--set-epic-status",
+        help=(
+            "Set epic-<N> (N from --epic) to this status. One of: "
+            f"{', '.join(EPIC_STATUSES)}. Fails before any write if epic-<N> is not "
+            "already a key in development_status, or if the value is outside the "
+            "vocabulary. This is the only write path that can move an epic to "
+            "'done' -- the automatic transition build's sprint sync performs only "
+            "ever moves an epic to 'in-progress'."
         ),
     )
     p_update.add_argument(

@@ -29,7 +29,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 # - Retrospective appends its action items to action_items; the status view surfaces open ones
 generated: 08-22-2026 00:00
-last_updated: 08-23-2026 00:00
+last_updated: 08-23-2026 16:47
 project: agent-system
 project_key: NOKEY
 tracking_system: file-system
@@ -115,7 +115,7 @@ action_items:
       pattern as the rest of the script), or explicitly document that epic-level status
       is intentionally a manual, human-confirmed field rather than a gap."
     owner: "repo owner / next tooling iteration"
-    status: open
+    status: done
     ref: "_bmad-output/implementation-artifacts/epic-1-retro-2026-08-22.md"
   - id: "epic-1-retro-item-6-unverified-process-input-no-git-pr-sessi"
     epic: 1
