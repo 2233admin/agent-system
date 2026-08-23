@@ -29,7 +29,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 # - Retrospective appends its action items to action_items; the status view surfaces open ones
 generated: 08-22-2026 00:00
-last_updated: 08-23-2026 00:00
+last_updated: 08-23-2026 16:53
 project: agent-system
 project_key: NOKEY
 tracking_system: file-system
@@ -43,7 +43,7 @@ development_status:
   epic-2: in-progress
   2-1-打包与发布流水线: done
   2-2-自更新客户端: done
-  epic-2-retrospective: optional
+  epic-2-retrospective: done
 
   epic-3: in-progress
   3-1-建立新配置修订-configs-establish: done
@@ -146,3 +146,22 @@ action_items:
     status: done
     ref: "_bmad-output/implementation-artifacts/epic-1-retro-2026-08-22.md"
     resolved_ref: "_bmad-output/planning-artifacts/sprint-change-proposal-2026-08-23-cap-claude-codex-adapter.md"
+  - id: "epic-2-retro-item-1-epic-2-context-md-success-print-stale"
+    epic: 2
+    action: "epic-2-context.md 第 12/34 行仍称 \"成功路径打印一行提示\" 这条修正 \"正在进行\"/\"当前唯一待落地\"\
+      ，但 fd6f7fab（PR #145）+ a8560f1（PR #148）已完整落地并合并到 46049d3。刷新 epic-2-context.md
+      对应措辞为已完成状态（可重跑 compile-epic-context 或手动编辑）。"
+    owner: "repo owner / 下一次 compile-epic-context 运行"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-2-retro-2026-08-23.md"
+  - id: "epic-2-retro-item-2-release-workflow-defect-class-no-guard"
+    epic: 2
+    action: "Story 2.1 的两个真实缺陷（gh release create 误用不存在的 --clobber 参数，commit ccae699；编译产物下
+      import.meta.url+readFileSync 迁移路径在 bun --compile 虚拟文件系统下失效，commit 327844c/PR
+      #144）都只能靠真实发布尝试暴露，Story 声明的验收标准（本地源码运行 + 显式子命令回归 + workflow 语法人工核对）未覆盖这两类 CI
+      环境/编译产物特有缺陷。327844c 已为 SQLite 场景加了编译产物冒烟测试，但没有等价的 gh CLI 参数正确性防呆。建议评估是否需要为发布类
+      workflow 变更增加更强的验证要求（如本地跑一次 gh release create --help 核对参数存在性，或要求至少一次真实/测试 tag
+      推送后才可标记 done）。"
+    owner: "repo owner / 下一次 CI 工具迭代"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-2-retro-2026-08-23.md"
