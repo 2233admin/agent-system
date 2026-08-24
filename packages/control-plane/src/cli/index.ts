@@ -934,6 +934,15 @@ export function reportSelfUpdateResult(updatedVersion: string | null, argv: read
   }
 }
 
+/**
+ * Re-launch the replaced executable with only the user's arguments.
+ * Compiled Bun processes expose an embedded entrypoint in `process.argv[1]`;
+ * `argv` is already `process.argv.slice(2)`.
+ */
+export function buildSelfUpdateRestartArgv(argv: readonly string[]): string[] {
+  return [process.execPath, ...argv];
+}
+
 if (import.meta.main) {
   try {
     const argv = process.argv.slice(2);
@@ -950,6 +959,18 @@ if (import.meta.main) {
     if (CONFIGS_VERSION !== 'dev') {
       const updatedVersion = await new GithubReleaseUpdater().checkAndApply(CONFIGS_VERSION);
       reportSelfUpdateResult(updatedVersion, argv);
+      if (updatedVersion !== null && argv[0] !== '--version') {
+        // The running process still has the pre-update code loaded. Start the
+        // replaced binary before entering TUI/subcommand code; otherwise the
+        // first invocation after an update can reproduce the old bug once.
+        const replacement = Bun.spawn(buildSelfUpdateRestartArgv(argv), {
+          cwd: process.cwd(),
+          env: process.env,
+          stdio: ['inherit', 'inherit', 'inherit'],
+        });
+        const exitCode = await replacement.exited;
+        process.exit(exitCode);
+      }
     }
 
     // `[DELTA]` IA first layer: zero-arg + interactive TTY (both stdin and

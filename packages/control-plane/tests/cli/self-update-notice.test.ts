@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 
-import { reportSelfUpdateResult } from '../../src/cli/index';
+import { buildSelfUpdateRestartArgv, reportSelfUpdateResult } from '../../src/cli/index';
 
 /**
  * `reportSelfUpdateResult` is the print-decision pulled out of the
@@ -59,5 +59,11 @@ describe('reportSelfUpdateResult', () => {
     };
 
     expect(() => reportSelfUpdateResult('1.1.0', ['list'])).not.toThrow();
+  });
+});
+
+describe('buildSelfUpdateRestartArgv', () => {
+  test('restarts the executable with user arguments, not Bun’s embedded entrypoint', () => {
+    expect(buildSelfUpdateRestartArgv(['list', '--json'])).toEqual([process.execPath, 'list', '--json']);
   });
 });
