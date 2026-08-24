@@ -29,7 +29,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 # - Retrospective appends its action items to action_items; the status view surfaces open ones
 generated: 08-22-2026 00:00
-last_updated: 08-24-2026 18:00
+last_updated: 08-24-2026 19:00
 project: agent-system
 project_key: NOKEY
 tracking_system: file-system
@@ -214,7 +214,7 @@ action_items:
       read by the retrospective coordinator, not just the review fork that first found
       it."
     owner: "control-plane maintainer"
-    status: open
+    status: done
     ref: "_bmad-output/implementation-artifacts/epic-4-retro-2026-08-24.md"
   - id: "epic-4-retro-item-12-bare-configs-status-no-planid-hardcodes"
     epic: 4
@@ -225,7 +225,7 @@ action_items:
       even with a genuinely active Claude launch plan; only configs status <planId>
       works for them. Confirmed via direct code read."
     owner: "control-plane maintainer"
-    status: open
+    status: done
     ref: "_bmad-output/implementation-artifacts/epic-4-retro-2026-08-24.md"
   - id: "epic-4-retro-item-13-materialized-invocation-directories-ad-2"
     epic: 4
@@ -253,7 +253,7 @@ action_items:
       tests must use a real mkdtemp temp dir instead of a fake, because no interface
       exists to fake against. Recommend introducing a ClaudeContentMaterializerPort."
     owner: "control-plane maintainer"
-    status: open
+    status: done
     ref: "_bmad-output/implementation-artifacts/epic-4-retro-2026-08-24.md"
   - id: "epic-4-retro-item-15-two-stale-code-comments-left-by-later-st"
     epic: 4
@@ -266,7 +266,7 @@ action_items:
       directories' as existing evidence -- Story 4.7 deleted .cap/ entirely, so the
       cited directories no longer exist. Both are pure documentation fixes, low effort."
     owner: "control-plane maintainer"
-    status: open
+    status: done
     ref: "_bmad-output/implementation-artifacts/epic-4-retro-2026-08-24.md"
   - id: "epic-4-retro-item-16-recurrence-of-epic-1-retro-item-6-sub-ag"
     epic: 4
