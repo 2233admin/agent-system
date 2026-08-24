@@ -2,14 +2,45 @@ import type { ClaudeAssemblyManifest, ClaudeAssemblyManifestCapabilityNote } fro
 
 /**
  * `[Story 4.3]` The launch target this `ClaudeAdapterPlan` was compiled for
- * (AD-20). Only `'fresh'` exists today -- Story 4.3's entire scope. The
- * union is deliberately kept open-ended (not a bare string literal type) so
- * Story 4.4 has an obvious, compiler-enforced extension point: adding
- * `'already-running'` here forces every `switch`/exhaustiveness check over
- * `ClaudeLaunchTarget` in this file to be revisited rather than silently
- * defaulting to the fresh behavior.
+ * (AD-20). `[Story 4.4]` Now has its second member, `'already-running'`,
+ * exactly as Story 4.3 predicted: adding it here forces every `switch`/
+ * exhaustiveness check over `ClaudeLaunchTarget` to be revisited (see
+ * `application/claude-launch.ts`'s `prepareClaudeAlreadyRunningLaunchPlan`,
+ * which does so via an exhaustive `switch` on `determineClaudeLaunchTarget`'s
+ * return value) rather than silently defaulting to the fresh behavior. The
+ * union remains open-ended (not a bare two-member string literal type) as
+ * the same kind of extension point for any future launch target.
  */
-export type ClaudeLaunchTarget = 'fresh';
+export type ClaudeLaunchTarget = 'fresh' | 'already-running';
+
+/**
+ * `[Story 4.4]` The only evidence `determineClaudeLaunchTarget` accepts as
+ * proof that a launch target is the `'fresh'` spawn it is about to perform
+ * itself. Deliberately a single, narrow boolean rather than a richer
+ * "session info" shape -- this Story does not implement any actual
+ * self-introspection/environment probing (that is Story 4.5's scope,
+ * `application/claude-launch.ts`'s Never boundary); this type only exists so
+ * the fail-closed judgment itself is a real, testable function instead of an
+ * inline assumption baked into each call site.
+ */
+export interface ClaudeLaunchTargetEvidence {
+  readonly ownsFreshSpawn: boolean;
+}
+
+/**
+ * `[Story 4.4]` Pure, fail-closed `ClaudeLaunchTarget` determination
+ * (AD-10/AD-20): only evidence that this *is* the fresh spawn itself
+ * (`ownsFreshSpawn === true`) yields `'fresh'`; every other input --
+ * including `false` and any future evidence shape this interface might grow
+ * -- yields `'already-running'`. This asymmetry is intentional: the cost of
+ * wrongly treating an already-running session as a fresh spawn (silently
+ * attempting a hot-update this product cannot verify) is far higher than the
+ * cost of wrongly treating a genuine fresh spawn as already-running (falling
+ * back to the honest `requires-restart` path).
+ */
+export function determineClaudeLaunchTarget(evidence: ClaudeLaunchTargetEvidence): ClaudeLaunchTarget {
+  return evidence.ownsFreshSpawn === true ? 'fresh' : 'already-running';
+}
 
 /** `[Story 4.3]` Which flag(s) a relevant, non-blocking capability contributes to the fresh-launch argv -- see Design Notes. */
 const CAPABILITY_ARGV_MAP: Readonly<Record<string, readonly string[]>> = {

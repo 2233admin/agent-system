@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 
-import { argvContributingCapabilityIds, buildClaudeAdapterPlanArgv, compileClaudeAdapterPlan } from '../../src/adapters/clients/claude/adapter-plan';
+import { argvContributingCapabilityIds, buildClaudeAdapterPlanArgv, compileClaudeAdapterPlan, determineClaudeLaunchTarget } from '../../src/adapters/clients/claude/adapter-plan';
 import { compileClaudeAssemblyManifest } from '../../src/adapters/clients/claude/assembly-manifest';
 import type { ClaudeAssemblyManifest, ClaudeAssemblyManifestCapabilityNote } from '../../src/adapters/clients/claude/assembly-manifest';
 import type { ClaudeCapabilityProbeResult } from '../../src/application/ports';
@@ -69,6 +69,16 @@ function compiledManifest(revisionOverrides: Partial<StableConfigRevision> & { c
 function note(capabilityId: string, status: ClaudeAssemblyManifestCapabilityNote['status'], required = true): ClaudeAssemblyManifestCapabilityNote {
   return probeResult({ capabilityId, status, required });
 }
+
+describe('determineClaudeLaunchTarget', () => {
+  test('returns "fresh" only when evidence proves this is the fresh spawn itself', () => {
+    expect(determineClaudeLaunchTarget({ ownsFreshSpawn: true })).toBe('fresh');
+  });
+
+  test('fail closed to "already-running" when fresh-spawn evidence is absent', () => {
+    expect(determineClaudeLaunchTarget({ ownsFreshSpawn: false })).toBe('already-running');
+  });
+});
 
 describe('buildClaudeAdapterPlanArgv', () => {
   test('permission-mode baseline always contributes its flag when supported', () => {

@@ -3,10 +3,12 @@ import { describe, expect, test } from 'bun:test';
 import {
   computeClaudeKnownDifferences,
   launchClaudeFresh,
+  prepareClaudeAlreadyRunningLaunchPlan,
   prepareClaudeFreshLaunchPlan,
   type LaunchClaudeFreshDeps,
 } from '../../src/application/claude-launch';
 import { InvalidTransitionError, LaunchPlanNotFoundError, confirmLaunchPlan, rejectLaunchPlan } from '../../src/application/launch';
+import { transitionLaunchPlan } from '../../src/domain/activation';
 import type { ClientId } from '../../src/domain/client';
 import type { LaunchPlan } from '../../src/domain/activation';
 import { isKnown, known, unknown } from '../../src/domain/facts';
@@ -419,6 +421,67 @@ describe('launchClaudeFresh', () => {
 
     const rejected = await rejectLaunchPlan(deps, plan.planId);
     expect(rejected.phase).toBe('cancelled');
+    expect(claudeProcessPort.lastSpawnParams).toBeNull();
+  });
+});
+
+describe('prepareClaudeAlreadyRunningLaunchPlan', () => {
+  test('目标判定为 already-running，配置存在: plan lands directly on requires-restart in one save, no probe/spawn', async () => {
+    const { deps, configRepository, launchPlanRepository, claudeCapabilityProbe, claudeProcessPort } = buildDeps();
+    configRepository.add(revision({ configName: 'general', revisionId: 'rev-1' }));
+    const probeSpy = { called: false };
+    claudeCapabilityProbe.probeHardControlCapabilities = async () => {
+      probeSpy.called = true;
+      return [];
+    };
+
+    const outcome = await prepareClaudeAlreadyRunningLaunchPlan(deps, { revisionId: 'rev-1' });
+
+    expect(outcome.plan.phase).toBe('requires-restart');
+    expect(outcome.plan.client).toBe('claude-code');
+    expect(outcome.plan.configName).toBe('general');
+    expect(isKnown(outcome.plan.failureReason) && outcome.plan.failureReason.value).toBe('already-running-session-target');
+    expect(outcome.observationStage).toBe('planned');
+    expect(outcome.manifest).toBeNull();
+    expect(outcome.adapterPlan).toBeNull();
+    expect(outcome.affectedCapabilities).toEqual([]);
+    expect(outcome.recoveryAction).not.toBeNull();
+    expect(probeSpy.called).toBe(false);
+    expect(claudeProcessPort.lastSpawnParams).toBeNull();
+    const savesForPlan = launchPlanRepository.saveLog.filter((p) => p.planId === outcome.plan.planId);
+    expect(savesForPlan).toHaveLength(1);
+  });
+
+  test('配置不存在: still resolves to requires-restart, configName falls back to revisionId, not blocked or thrown', async () => {
+    const { deps, launchPlanRepository } = buildDeps();
+
+    const outcome = await prepareClaudeAlreadyRunningLaunchPlan(deps, { revisionId: 'does-not-exist' });
+
+    expect(outcome.plan.phase).toBe('requires-restart');
+    expect(outcome.plan.configName).toBe('does-not-exist');
+    expect(outcome.observationStage).toBe('planned');
+    const savesForPlan = launchPlanRepository.saveLog.filter((p) => p.planId === outcome.plan.planId);
+    expect(savesForPlan).toHaveLength(1);
+  });
+
+  test('requires-restart 后再次尝试任何事件: transitionLaunchPlan rejects all further events, including target-requires-restart itself', async () => {
+    const { deps, configRepository } = buildDeps();
+    configRepository.add(revision({ configName: 'general', revisionId: 'rev-1' }));
+
+    const outcome = await prepareClaudeAlreadyRunningLaunchPlan(deps, { revisionId: 'rev-1' });
+
+    const again = transitionLaunchPlan(outcome.plan, { type: 'target-requires-restart' });
+    expect(again.ok).toBe(false);
+    const processStarted = transitionLaunchPlan(outcome.plan, { type: 'process-started' });
+    expect(processStarted.ok).toBe(false);
+  });
+
+  test('误把 already-running 的 plan 传给 launchClaudeFresh: rejected as an invalid transition, never spawns', async () => {
+    const { deps, configRepository, claudeProcessPort } = buildDeps();
+    configRepository.add(revision({ configName: 'general', revisionId: 'rev-1' }));
+    const outcome = await prepareClaudeAlreadyRunningLaunchPlan(deps, { revisionId: 'rev-1' });
+
+    await expect(launchClaudeFresh(deps, { planId: outcome.plan.planId })).rejects.toBeInstanceOf(InvalidTransitionError);
     expect(claudeProcessPort.lastSpawnParams).toBeNull();
   });
 });

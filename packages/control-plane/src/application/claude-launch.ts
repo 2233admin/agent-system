@@ -29,6 +29,16 @@
  * `LaunchDeps` (`configRepository`/`launchPlanRepository`) and never touch
  * `resolveClientSupport` or any OMP-specific port, so they are already
  * client-agnostic.
+ *
+ * `[Story 4.4]` This file also carries AD-20's other launch target,
+ * `prepareClaudeAlreadyRunningLaunchPlan` (the `already-running` branch):
+ * unlike `launchClaudeFresh`, it never reaches `awaiting-confirmation`/
+ * `applying`/`observing` at all -- it resolves a plan straight from
+ * `prepared` to the existing `requires-restart` terminal phase via
+ * `domain/activation.ts`'s `target-requires-restart` event, needs none of
+ * `LaunchClaudeFreshDeps`' probe/spawn/context/invocation-dir ports, and
+ * takes only the plain `LaunchDeps` this file already imports for
+ * `prepareClaudeFreshLaunchPlan`.
  */
 import {
   type LaunchPhase,
@@ -39,7 +49,7 @@ import {
   transitionLaunchPlan,
 } from '../domain/activation';
 import type { StableConfigRevision } from '../domain/config';
-import { argvContributingCapabilityIds, compileClaudeAdapterPlan } from '../adapters/clients/claude/adapter-plan';
+import { argvContributingCapabilityIds, compileClaudeAdapterPlan, determineClaudeLaunchTarget } from '../adapters/clients/claude/adapter-plan';
 import type { ClaudeAdapterPlan } from '../adapters/clients/claude/adapter-plan';
 import { compileClaudeAssemblyManifest } from '../adapters/clients/claude/assembly-manifest';
 import type { ClaudeAssemblyManifest } from '../adapters/clients/claude/assembly-manifest';
@@ -195,6 +205,96 @@ function outcomeFor(
   recoveryAction: string | null,
 ): ClaudeLaunchOutcome {
   return { plan, observationStage, manifest, adapterPlan, affectedCapabilities, recoveryAction };
+}
+
+/**
+ * `[Story 4.4]` AD-20's already-running-session launch target: this product
+ * does not own that process, so `apply` can only ever resolve to the
+ * existing `requires-restart` terminal phase (AD-18) -- never `awaiting-
+ * confirmation`/`applying`/`observing`. Deliberately calls
+ * `deps.launchPlanRepository.save` exactly once (after the plan already
+ * landed on its terminal phase) and never calls `claudeCapabilityProbe`,
+ * `compileClaudeAssemblyManifest`/`compileClaudeAdapterPlan`, or
+ * `claudeProcessPort.spawn` -- any of those would compute something that
+ * looks like progress toward "applying" a plan this function can never
+ * really apply, which is exactly the kind of half-true intermediate result
+ * AD-10 forbids. `configName` resolution mirrors
+ * `prepareClaudeFreshLaunchPlan`'s best-effort revision lookup, but --
+ * unlike that function -- a lookup failure never blocks the terminal
+ * outcome: whether or not the revision exists, the only possible terminal
+ * phase for an already-running target is `requires-restart` (there is
+ * nothing to have "not found" against, since nothing was ever going to be
+ * applied).
+ */
+export async function prepareClaudeAlreadyRunningLaunchPlan(
+  deps: LaunchDeps,
+  params: { readonly revisionId: string },
+): Promise<ClaudeLaunchOutcome> {
+  const createdAt = new Date().toISOString();
+  const planHash = computePlanHash(params.revisionId, 'claude-code', createdAt);
+
+  let configName = params.revisionId;
+  try {
+    const revision = await getConfigRevisionDetail(deps.configRepository, params.revisionId);
+    configName = revision.configName;
+  } catch (error) {
+    if (!(error instanceof ConfigNotFoundError || error instanceof ConfigUnsupportedError)) {
+      throw error;
+    }
+    // Best-effort only (mirrors `prepareClaudeFreshLaunchPlan`): whether the
+    // revision resolves or not, the already-running target's only possible
+    // terminal phase is `requires-restart` -- a lookup failure here never
+    // blocks or changes that outcome.
+  }
+
+  let plan = createLaunchPlan({
+    planId: generateId('plan'),
+    operationId: generateId('op'),
+    revisionId: params.revisionId,
+    configName,
+    client: 'claude-code',
+    planHash,
+    createdAt,
+  });
+
+  // AD-10/AD-20 fail-closed target determination: this Story never has real
+  // "this is the fresh spawn itself" evidence to offer (that is Story 4.5's
+  // self-introspection scope), so it always passes `ownsFreshSpawn: false`.
+  // The exhaustive `switch` below is the "forces every call site to revisit
+  // its judgment" enforcement Story 4.3's `ClaudeLaunchTarget` doc comment
+  // predicted -- it is not dead code: it fails loudly (rather than silently
+  // mis-handling a `'fresh'` target as already-running) if this determinism
+  // is ever violated.
+  const target = determineClaudeLaunchTarget({ ownsFreshSpawn: false });
+  switch (target) {
+    case 'already-running':
+      break;
+    case 'fresh':
+      throw new Error(
+        `prepareClaudeAlreadyRunningLaunchPlan requires determineClaudeLaunchTarget to resolve to "already-running", got "${target}"`,
+      );
+    default: {
+      const exhaustive: never = target;
+      throw new Error(`prepareClaudeAlreadyRunningLaunchPlan encountered an unrecognized ClaudeLaunchTarget: "${exhaustive}"`);
+    }
+  }
+
+  const transitioned = transitionLaunchPlan(plan, { type: 'target-requires-restart' });
+  if (!transitioned.ok) {
+    throw new InvalidTransitionError(plan.planId, plan.phase, 'target-requires-restart', transitioned.reason);
+  }
+  plan = transitioned.plan;
+
+  await deps.launchPlanRepository.save(plan);
+
+  return outcomeFor(
+    plan,
+    'planned',
+    null,
+    null,
+    [],
+    '需要重启当前 Claude Code 会话后重新应用：本产品无法对一个已经在运行的、非本产品拥有的会话热更新装配边界。',
+  );
 }
 
 /** Mirrors `application/launch.ts`'s private `deriveOutcome` (same logic, over the Claude-specific `ClaudeSpawnResult` shape). */
