@@ -247,6 +247,41 @@ describe('transitionLaunchPlan: switch-requested', () => {
   });
 });
 
+describe('transitionLaunchPlan: prepared -> requires-restart via target-requires-restart', () => {
+  test('prepared -> requires-restart, failureReason recorded as already-running-session-target', () => {
+    const plan = samplePlan();
+    const result = transitionLaunchPlan(plan, { type: 'target-requires-restart' });
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error('unreachable');
+    expect(result.plan.phase).toBe('requires-restart');
+    expect(isKnown(result.plan.failureReason) && result.plan.failureReason.value).toBe('already-running-session-target');
+  });
+
+  test('requires-restart reached via target-requires-restart never transitions again', () => {
+    const plan = samplePlan();
+    const result = transitionLaunchPlan(plan, { type: 'target-requires-restart' });
+    if (!result.ok) throw new Error('unreachable');
+    const again = transitionLaunchPlan(result.plan, { type: 'target-requires-restart' });
+    expect(again.ok).toBe(false);
+    if (!again.ok) {
+      expect(again.reason).toBe('invalid-transition');
+    }
+    const otherEvent = transitionLaunchPlan(result.plan, { type: 'process-started' });
+    expect(otherEvent.ok).toBe(false);
+  });
+
+  for (const phase of ['awaiting-confirmation', 'applying', 'observing'] as const) {
+    test(`phase "${phase}" rejects target-requires-restart (only "prepared" accepts it)`, () => {
+      const plan = samplePlan({ phase });
+      const result = transitionLaunchPlan(plan, { type: 'target-requires-restart' });
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.reason).toBe('invalid-transition');
+      }
+    });
+  }
+});
+
 describe('transitionLaunchPlan: terminal phases reject every other event', () => {
   const allEvents: LaunchPlanEvent[] = [
     { type: 'prepared-ok' },
@@ -257,6 +292,7 @@ describe('transitionLaunchPlan: terminal phases reject every other event', () =>
     { type: 'apply-failed', reason: 'x' },
     { type: 'observed', outcome: 'succeeded' },
     { type: 'switch-requested' },
+    { type: 'target-requires-restart' },
   ];
 
   for (const phase of ['cancelled', 'failed', 'incomplete', 'requires-restart'] as const) {
