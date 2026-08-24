@@ -225,7 +225,7 @@ class TuiStdinBridge extends EventEmitter {
   }
 }
 
-function prepareTuiStdin(): { readonly input: NodeJS.ReadStream; readonly cleanup: () => void } {
+function prepareTuiStdin(): { readonly input: NodeJS.ReadStream; readonly cleanup: (forChildHandoff?: boolean) => void } {
   const source = process.stdin;
   const wasPaused = source.isPaused();
   debugTui('stdin:prepare:start', { wasPaused, stdinListeners: stdinListenerCounts(source) });
@@ -235,18 +235,25 @@ function prepareTuiStdin(): { readonly input: NodeJS.ReadStream; readonly cleanu
   let cleanedUp = false;
   return {
     input: bridge as unknown as NodeJS.ReadStream,
-    cleanup: () => {
+    cleanup: (forChildHandoff = false) => {
       if (cleanedUp) {
         debugTui('stdin:cleanup:duplicate');
         return;
       }
       cleanedUp = true;
-      debugTui('stdin:cleanup:start', { wasPaused, stdinListeners: stdinListenerCounts(source) });
-      bridge.dispose();
-      if (wasPaused) {
+      debugTui('stdin:cleanup:start', { wasPaused, forChildHandoff, stdinListeners: stdinListenerCounts(source) });
+      // The parent waits for a handed-off child. Keep its stream paused so
+      // it cannot consume console bytes intended for the child process.
+      if (forChildHandoff) {
         source.pause();
-      } else {
-        source.resume();
+      }
+      bridge.dispose();
+      if (!forChildHandoff) {
+        if (wasPaused) {
+          source.pause();
+        } else {
+          source.resume();
+        }
       }
       debugTui('stdin:cleanup:done', { restoredPaused: source.isPaused(), stdinListeners: stdinListenerCounts(source) });
     },
@@ -407,7 +414,7 @@ function runTuiScreen(revisions: readonly StableConfigRevision[], knownDifferenc
               try {
                 instance.unmount();
               } finally {
-                tuiStdin.cleanup();
+                tuiStdin.cleanup(true);
               }
               resolve({ kind: 'launch', revision });
             });
