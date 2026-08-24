@@ -29,7 +29,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 # - Retrospective appends its action items to action_items; the status view surfaces open ones
 generated: 08-22-2026 00:00
-last_updated: 08-24-2026 19:00
+last_updated: 08-24-2026 18:00
 project: agent-system
 project_key: NOKEY
 tracking_system: file-system
@@ -60,7 +60,7 @@ development_status:
   4-5b-claude-adapter-内容物化能力: done
   4-6-configs-cli-的-claude-入口: done
   4-7-退役-cap-本体: done
-  epic-4-retrospective: optional
+  epic-4-retrospective: done
 action_items:
   - id: "epic-1-retro-item-1-launchomp-packages-control-plane-src-app"
     epic: 1
@@ -175,13 +175,11 @@ action_items:
     ref: "_bmad-output/implementation-artifacts/epic-2-retro-2026-08-23.md"
   - id: "epic-4-story-4-5-ac2-blocked-story-4-6-not-executable"
     epic: 4
-    action: "Story 4.5 用真实调用 prepareClaudeAlreadyRunningLaunchPlan（从真实 .cap/ 派生的
-      general revisionId）证实：本仓自身这个正在维护的、非本产品拥有的 Claude Code session，在当前
-      adapter（Story 4.1～4.4）能力下只能解析为既有终态 requires-restart（observationStage 恒为
-      planned，manifest/adapterPlan 恒为 null）——不存在可以不重启就重配置本仓真实、已在运行 session
-      装配来源的代码路径。据此 AC2（本仓自身切换）正式记录为阻塞项，不强行执行，.cap/ 保持完全不变。
-      Story 4.6（退役 .cap/ 本体）继续被本条阻塞，不得在 AC2 解除前执行；只有当新 adapter 获得对
-      already-running、非本产品拥有的会话做安全热更新的真实、已核实机制后，才能重新评估解除。"
+    action: "Story 4.5 用真实调用 prepareClaudeAlreadyRunningLaunchPlan（从真实 .cap/ 派生的 general
+      revisionId）证实：本仓自身这个正在维护的、非本产品拥有的 Claude Code session，在当前 adapter（Story 4.1～4.4）能力下只能解析为既有终态
+      requires-restart（observationStage 恒为 planned，manifest/adapterPlan 恒为 null）——不存在可以不重启就重配置本仓真实、已在运行
+      session 装配来源的代码路径。据此 AC2（本仓自身切换）正式记录为阻塞项，不强行执行，.cap/ 保持完全不变。 Story 4.6（退役 .cap/
+      本体）继续被本条阻塞，不得在 AC2 解除前执行；只有当新 adapter 获得对 already-running、非本产品拥有的会话做安全热更新的真实、已核实机制后，才能重新评估解除。"
     owner: "repo owner / 下一次 Epic 4 迭代"
     status: done
     ref: "_bmad-output/implementation-artifacts/spec-4-5-cap-parity-验证与本仓自身切换.md"
@@ -191,10 +189,112 @@ action_items:
       不再需要实现。id 中的 "story-4-6" 是 2026-08-24 架构重新编号退役顺序（收窄为三步、终点顺延为 Story 4.7）之前
       遗留的历史命名，按既定约定 id 保持稳定不改名；它不是对当前 Story 编号的主张，读到 "story-4-6" 时应理解为
       "本条最初记录时、`.cap/` 退役本体那一步 Story 还叫 4.6"。本条的前提已被 2026-08-24 架构澄清取代：
-      `sprint-change-proposal-2026-08-24-cap-retirement-redesign.md` 与 ARCHITECTURE-SPINE.md AD-20 的 2026-08-24
+      `sprint-change-proposal-2026-08-24-cap-retirement-redesign.md` 与 ARCHITECTURE-SPINE.md
+      AD-20 的 2026-08-24
       澄清查明，"本仓自身切换"（AC2）指向的对象本就不存在——本仓自身这个交互式 Claude Code session 的 skills/CLAUDE.md
       由 Claude Code 原生项目目录发现机制读取 git 跟踪文件，与 `.cap` 或本产品任何渲染/装配管线无关。`.cap/` 退役顺序
       因此从四步收窄为三步，"本仓自身切换"整体从退役前置条件中移除，不再是 Story 4.7（原编号 Story 4.6，见
-      epic-4-context.md 的 2026-08-24 范围补全）的阻塞项。Story 4.7 已按新的三步顺序（落地新 adapter → 两 profile
+      epic-4-context.md 的 2026-08-24 范围补全）的阻塞项。Story 4.7 已按新的三步顺序（落地新 adapter → 两
+      profile
       真实烟雾 parity 验证 → 退役 `.cap/`）完成退役，未依赖、也未解除本条描述的 AC2 状态本身。
     resolved_ref: "_bmad-output/implementation-artifacts/spec-4-7-退役-cap-本体.md"
+  - id: "epic-4-retro-item-11-getlaunchstatus-application-launch-ts-36"
+    epic: 4
+    action: "getLaunchStatus (application/launch.ts:366-394) unconditionally calls
+      the OMP-only computeKnownDifferences (same file, line 104) even for Claude Code
+      plans -- runClaudeLaunchFlow (cli/index.ts) reuses getLaunchStatus assuming
+      it is client-neutral by type signature, but its body is not. A genuinely successful
+      Claude fresh launch (Story 4.5b real content materialization delivered) prints
+      a self-contradictory final status: Apply result: applied alongside Known differences:
+      - instructions-content-not-materialized-in-mvp. computeClaudeKnownDifferences
+      (application/claude-launch.ts:103-128) already computes the correct client-aware
+      differences internally but is never exposed via ClaudeLaunchOutcome for the
+      status view to use. Untested: tests/integration/cli-claude-launch.test.ts success-path
+      test never asserts on the Known differences section. Confirmed via direct code
+      read by the retrospective coordinator, not just the review fork that first found
+      it."
+    owner: "control-plane maintainer"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-4-retro-2026-08-24.md"
+  - id: "epic-4-retro-item-12-bare-configs-status-no-planid-hardcodes"
+    epic: 4
+    action: "Bare configs status (no planId) hardcodes launchPlanRepository.findActiveForClient('omp')
+      at application/launch.ts:370 -- an Epic 1-era single-client assumption never
+      updated when Story 4.6 introduced a real second client. A user who only ever
+      ran configs use --client claude-code gets not found from bare configs status
+      even with a genuinely active Claude launch plan; only configs status <planId>
+      works for them. Confirmed via direct code read."
+    owner: "control-plane maintainer"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-4-retro-2026-08-24.md"
+  - id: "epic-4-retro-item-13-materialized-invocation-directories-ad-2"
+    epic: 4
+    action: "materialized/ invocation directories (AD-21 content materialization,
+      Story 4.5b) are never cleaned up -- src/adapters/system/claude-invocation-dir.ts
+      has zero cleanup/remove logic despite ARCHITECTURE-SPINE.md AD-21 Rule literally
+      promising cleanup at any terminal state. Every real fresh Claude launch leaves
+      an orphaned materialized/ directory on disk indefinitely. Already disclosed
+      as a known, pre-existing gap in three separate stories' (4.5b, 4.7) residual-risk
+      sections but never actually scheduled as a fix in any Story's Tasks. Recommend
+      this epic's follow-up formally schedules it rather than re-disclosing it a fourth
+      time."
+    owner: "control-plane maintainer"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-4-retro-2026-08-24.md"
+  - id: "epic-4-retro-item-14-application-claude-launch-ts-calls-conte"
+    epic: 4
+    action: "application/claude-launch.ts calls content-materializer.ts (adapters/clients/claude/content-materializer.ts,
+      real fs IO via readFile/writeFile/cp/mkdir/rename) directly rather than through
+      an injected port, unlike every other side-effecting collaborator in the same
+      file (ClaudeProcessPort, ClaudeCapabilityProbePort, ClaudeLaunchContextWriter,
+      ClaudeInvocationDirPort, all in LaunchClaudeFreshDeps). This is the one real-IO
+      dependency in that file with no port abstraction and no comment explaining the
+      omission -- visible consequence: tests/application/claude-launch.test.ts's real-materialization
+      tests must use a real mkdtemp temp dir instead of a fake, because no interface
+      exists to fake against. Recommend introducing a ClaudeContentMaterializerPort."
+    owner: "control-plane maintainer"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-4-retro-2026-08-24.md"
+  - id: "epic-4-retro-item-15-two-stale-code-comments-left-by-later-st"
+    epic: 4
+    action: "Two stale code comments left by later stories changing facts earlier
+      stories' comments relied on: (1) application/claude-launch.ts's top-of-file
+      Design Note still says resolveClientSupport('claude-code') is pinned to always
+      return supported:false by an OMP test -- Story 4.6 flipped it to true, making
+      this rationale misleading to future readers judging blast radius. (2) adapters/sources/cap-fs.ts's
+      resolveSkillSourceRef Design Notes cite 'this repo's own .cap/capabilities/skills/*
+      directories' as existing evidence -- Story 4.7 deleted .cap/ entirely, so the
+      cited directories no longer exist. Both are pure documentation fixes, low effort."
+    owner: "control-plane maintainer"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-4-retro-2026-08-24.md"
+  - id: "epic-4-retro-item-16-recurrence-of-epic-1-retro-item-6-sub-ag"
+    epic: 4
+    action: "Recurrence of epic-1-retro-item-6 (sub-agent stall / unreachable cross-agent
+      addressing): across Epic 4, implementation sub-agents for Story 3.3, 4.2, and
+      4.4 each ended a turn with variants of I will wait for the notification instead
+      of verifying state themselves, requiring the coordinator to manually resume
+      them via SendMessage; sub-sub-agents spawned by the Story 3.2, 4.5b, 4.6, and
+      4.7 implementation agents each independently tried to address their parent using
+      the literal agent TYPE name general-purpose (not an addressable session name/id),
+      failing delivery and requiring the coordinator to manually relay the result.
+      At least 7 recurrences across 5 distinct stories in a single epic. item-6's
+      two suggested improvements: (a) leave a traceable record at cross-session decision
+      points -- the coordinator did this manually every time (explanatory commit messages);
+      (b) clearer timeout/retry signaling for sub-agent reporting -- still completely
+      untooled, relies entirely on the coordinator's manual judgment call about which
+      message is the last one expected. Recommend the repo owner decide whether this
+      now has enough concrete recurrence evidence to justify a real tooling investment."
+    owner: "repo owner"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-4-retro-2026-08-24.md"
+  - id: "epic-4-retro-item-17-content-materializer-ts-s-writefileatomi"
+    epic: 4
+    action: "content-materializer.ts's writeFileAtomic and adapters/self-update/github-release-updater.ts's
+      replaceBinary independently reimplement the same same-directory temp-file-then-rename
+      discipline (~6 lines each); the former's comment cites the latter by name as
+      design precedent but the code itself is not shared. Low-value, small candidate
+      for a shared helper."
+    owner: "control-plane maintainer"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-4-retro-2026-08-24.md"
