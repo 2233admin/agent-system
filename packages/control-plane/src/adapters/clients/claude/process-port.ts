@@ -1,5 +1,5 @@
 import { type Fact, known, unknown } from '../../../domain/facts';
-import type { ClaudeProcessPort } from '../../../application/ports';
+import type { ClaudeProcessPort, ClaudeSpawnParams, ClaudeSpawnResult } from '../../../application/ports';
 
 /**
  * `claude --version` prints e.g. `2.1.241 (Claude Code)` -- captured and
@@ -42,6 +42,42 @@ function defaultSpawn(argv: readonly string[]): ClaudeSpawnedProcess {
   return proc as unknown as ClaudeSpawnedProcess;
 }
 
+/**
+ * `[Story 4.3]` The narrow slice of `Bun.Subprocess` `spawn()` actually
+ * uses -- deliberately a *different*, narrower shape than
+ * `ClaudeSpawnedProcess` (no `stdout`/`stderr`/`kill()`): a fresh-target
+ * launch hands full interactive stdio control to the child (`stdio:
+ * ['inherit','inherit','inherit']`), so there is no pipe to read here, and
+ * it is never killed early by a timeout (Design Notes on `ClaudeProcessPort`
+ * in `application/ports.ts`). `signalCode` mirrors Bun's own live property:
+ * safe to read any time, meaningful once `exited` has resolved.
+ */
+export interface ClaudeInteractiveProcess {
+  readonly exited: Promise<number>;
+  readonly signalCode: string | null;
+}
+
+/** Injectable in place of the real interactive `Bun.spawn` call, for deterministic tests. */
+export type ClaudeInteractiveSpawnFn = (
+  argv: readonly string[],
+  options: { readonly cwd: string; readonly env: Readonly<Record<string, string>> },
+) => ClaudeInteractiveProcess;
+
+function defaultInteractiveSpawn(
+  argv: readonly string[],
+  options: { readonly cwd: string; readonly env: Readonly<Record<string, string>> },
+): ClaudeInteractiveProcess {
+  const proc = Bun.spawn([...argv], {
+    cwd: options.cwd,
+    // Only ever *adds* the caller's requested keys on top of the current
+    // process's own environment -- never strips or rewrites anything else
+    // (same non-destructive convention as `BunOmpProcessPort.spawn`).
+    env: { ...process.env, ...options.env },
+    stdio: ['inherit', 'inherit', 'inherit'],
+  });
+  return proc as unknown as ClaudeInteractiveProcess;
+}
+
 type RunResult = { readonly ok: true; readonly stdout: string } | { readonly ok: false; readonly reason: string };
 
 /**
@@ -62,6 +98,7 @@ export class BunClaudeProcessPort implements ClaudeProcessPort {
     private readonly spawnFn: ClaudeSpawnFn = defaultSpawn,
     private readonly whichFn: ClaudeWhichFn = (binary) => Bun.which(binary),
     private readonly timeoutMs: number = DEFAULT_TIMEOUT_MS,
+    private readonly interactiveSpawnFn: ClaudeInteractiveSpawnFn = defaultInteractiveSpawn,
   ) {}
 
   /**
@@ -137,5 +174,24 @@ export class BunClaudeProcessPort implements ClaudeProcessPort {
       return unknown(result.reason, new Date().toISOString());
     }
     return known(result.stdout);
+  }
+
+  /**
+   * `[Story 4.3]` Spawns the real `claude` binary directly via an argv
+   * array (never a shell), hands it full interactive stdio control, and
+   * resolves once it exits -- mirrors `BunOmpProcessPort.spawn`. Unlike
+   * `runClaudeCommand`, this is never subject to `timeoutMs`: a real
+   * interactive Claude Code session is expected to keep running until the
+   * user ends it.
+   */
+  async spawn(params: ClaudeSpawnParams): Promise<ClaudeSpawnResult> {
+    const binaryPath = this.whichFn('claude');
+    if (binaryPath === null) {
+      throw new Error('claude-binary-not-found');
+    }
+
+    const proc = this.interactiveSpawnFn([binaryPath, ...params.argv], { cwd: params.cwd, env: params.env });
+    const exitCode = await proc.exited;
+    return { exitCode, signal: proc.signalCode ?? null };
   }
 }

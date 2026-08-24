@@ -229,16 +229,47 @@ export interface OmpCapabilityProbePort {
 }
 
 /**
+ * `[Story 4.3]` A fresh-target `claude` invocation: fully-built argv (no
+ * binary path -- the port resolves and prepends that itself, same as
+ * `detectVersion`/`captureHelpText`), the env keys this launch needs set
+ * (merged on top of the caller's own `process.env`, never replacing it --
+ * same non-destructive convention as `OmpProcessPort.spawn`) and the
+ * isolated `cwd` the process should run in. Never includes the launch's
+ * *values* beyond what is safe to hand to a child process directly -- see
+ * `adapter-plan.ts`'s Design Notes on why `ClaudeAdapterPlan` itself only
+ * persists env *keys*, not this params shape.
+ */
+export interface ClaudeSpawnParams {
+  readonly argv: readonly string[];
+  readonly env: Readonly<Record<string, string>>;
+  readonly cwd: string;
+}
+
+export interface ClaudeSpawnResult {
+  readonly exitCode: number | null;
+  readonly signal: string | null;
+}
+
+/**
  * `[Story 4.1]` The only way this package ever starts or inspects the
  * `claude` (Claude Code) binary. Like `OmpProcessPort`, adapters must spawn
  * it directly via an argv array (never a shell). `captureHelpText` is the
  * probe's only source of native-surface evidence -- it returns the raw
  * `--help` output for `claude` (or a subcommand, via `args`) so capability
  * interpretation stays in the probe while process invocation stays here.
+ *
+ * `[Story 4.3]` `spawn` is the fresh-target launch/observe primitive
+ * (AD-20's `fresh` branch): it hands full interactive stdio control to the
+ * spawned `claude` process (mirrors `OmpProcessPort.spawn`) and resolves
+ * only once that process has exited, with its exit code/signal -- unlike
+ * `detectVersion`/`captureHelpText`, it is never subject to the probe's
+ * short `timeoutMs` bound (a real interactive session is expected to run
+ * for as long as the user keeps it open).
  */
 export interface ClaudeProcessPort {
   detectVersion(): Promise<Fact<string>>;
   captureHelpText(args: readonly string[]): Promise<Fact<string>>;
+  spawn(params: ClaudeSpawnParams): Promise<ClaudeSpawnResult>;
 }
 
 /**
@@ -307,6 +338,50 @@ export interface LaunchContext {
 export interface LaunchContextWriter {
   /** Writes the context and returns the path it was written to. */
   write(context: LaunchContext): Promise<string>;
+}
+
+/**
+ * `[Story 4.3]` The Claude-adapter analogue of `LaunchContext` -- a
+ * diagnostic, invocation-scoped artifact written before `claude` is
+ * actually spawned (AD-9: manifest/plan/launch context are atomic,
+ * immutable, per-invocation files). Unlike OMP's `LaunchContext`, no
+ * running Claude Code extension reads this file today (Claude Code has no
+ * equivalent extension mechanism) -- it exists purely for post-hoc human/
+ * reconciliation review, named separately from `LaunchContext` so a future
+ * consumer never has to guess which client a given context file shape
+ * belongs to.
+ */
+export interface ClaudeLaunchContext {
+  readonly version: 1;
+  readonly planId: string;
+  readonly operationId: string;
+  readonly revisionId: string;
+  readonly configName: string;
+  readonly client: 'claude-code';
+  readonly launchTarget: 'fresh';
+  readonly launchedAt: string;
+  readonly applyResult: 'applied' | 'degraded';
+  readonly knownDifferences: readonly string[];
+  readonly adapterPlanHash: string;
+}
+
+export interface ClaudeLaunchContextWriter {
+  /** Writes the context and returns the path it was written to. */
+  write(context: ClaudeLaunchContext): Promise<string>;
+}
+
+/**
+ * `[Story 4.3]` Prepares the isolated, access-restricted per-invocation
+ * directory a fresh Claude Code spawn runs in and stores its config under
+ * (AD-9) -- never this repo's own root, never the user's real project or
+ * global Claude Code config directory, and never `.cap/`. Returns the
+ * directory's absolute path; the caller uses it as both the spawned
+ * process's `cwd` and its `CLAUDE_CONFIG_DIR`, so a fresh demonstration
+ * session can never read or write this repo's (or the user's) real,
+ * currently-running Claude Code configuration.
+ */
+export interface ClaudeInvocationDirPort {
+  prepare(operationId: string): Promise<string>;
 }
 
 /**

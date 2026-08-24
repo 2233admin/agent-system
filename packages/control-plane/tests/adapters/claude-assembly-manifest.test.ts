@@ -1,8 +1,8 @@
 import { describe, expect, test } from 'bun:test';
 import path from 'node:path';
 
-import { compileClaudeAdapterPlan } from '../../src/adapters/clients/claude/plan';
-import type { ClaudeAdapterPlan } from '../../src/adapters/clients/claude/plan';
+import { compileClaudeAssemblyManifest } from '../../src/adapters/clients/claude/assembly-manifest';
+import type { ClaudeAssemblyManifest } from '../../src/adapters/clients/claude/assembly-manifest';
 import { loadCapConfigRevisions } from '../../src/adapters/sources/cap-fs';
 import type { ClaudeCapabilityProbeResult } from '../../src/application/ports';
 import type { CapabilityReference, StableConfigRevision } from '../../src/domain/config';
@@ -66,70 +66,70 @@ function allSupportedProbeResults(overrides: Partial<Record<string, Partial<Clau
   return base.map((result) => ({ ...result, ...(overrides[result.capabilityId] ?? {}) }));
 }
 
-function expectCompiled(result: ReturnType<typeof compileClaudeAdapterPlan>): ClaudeAdapterPlan {
+function expectCompiled(result: ReturnType<typeof compileClaudeAssemblyManifest>): ClaudeAssemblyManifest {
   if (result.kind !== 'compiled') {
-    throw new Error(`expected a compiled plan, got blocked: ${JSON.stringify(result)}`);
+    throw new Error(`expected a compiled manifest, got blocked: ${JSON.stringify(result)}`);
   }
-  return result.plan;
+  return result.manifest;
 }
 
-describe('compileClaudeAdapterPlan', () => {
-  test('零引用（无 skills/mcp/hooks）: only permission-mode is relevant; supported -> planStatus ready', () => {
+describe('compileClaudeAssemblyManifest', () => {
+  test('零引用（无 skills/mcp/hooks）: only permission-mode is relevant; supported -> manifestStatus ready', () => {
     const rev = revision({ configName: 'general', revisionId: 'rev-empty' });
-    const result = compileClaudeAdapterPlan(rev, allSupportedProbeResults());
-    const plan = expectCompiled(result);
+    const result = compileClaudeAssemblyManifest(rev, allSupportedProbeResults());
+    const manifest = expectCompiled(result);
 
-    expect(plan.capabilityPolicy.map((n) => n.capabilityId)).toEqual(['claude.permission-mode-control']);
-    expect(plan.planStatus).toBe('ready');
-    expect(plan.degradedCapabilities).toEqual([]);
-    expect(plan.client).toBe('claude-code');
-    expect(plan.revisionId).toBe('rev-empty');
-    expect(plan.configName).toBe('general');
+    expect(manifest.capabilityPolicy.map((n) => n.capabilityId)).toEqual(['claude.permission-mode-control']);
+    expect(manifest.manifestStatus).toBe('ready');
+    expect(manifest.degradedCapabilities).toEqual([]);
+    expect(manifest.client).toBe('claude-code');
+    expect(manifest.revisionId).toBe('rev-empty');
+    expect(manifest.configName).toBe('general');
   });
 
-  test('引用 MCP 且 mcp-project-scope-control unsupported/unknown（required: true）-> 整体 blocked，missingRequiredCapabilities 含该项，不产出 planHash', () => {
+  test('引用 MCP 且 mcp-project-scope-control unsupported/unknown（required: true）-> 整体 blocked，missingRequiredCapabilities 含该项，不产出 manifestHash', () => {
     const rev = revision({ configName: 'general', revisionId: 'rev-mcp', mcp: [ref('mcp', 'some-mcp')] });
     const results = allSupportedProbeResults({
       'claude.mcp-project-scope-control': { status: 'unsupported', required: true },
     });
-    const result = compileClaudeAdapterPlan(rev, results);
+    const result = compileClaudeAssemblyManifest(rev, results);
 
     expect(result.kind).toBe('blocked');
     if (result.kind === 'blocked') {
       expect(result.missingRequiredCapabilities).toEqual(['claude.mcp-project-scope-control']);
       expect(result.revisionId).toBe('rev-mcp');
       expect(result.configName).toBe('general');
-      expect('planHash' in result).toBe(false);
+      expect('manifestHash' in result).toBe(false);
     }
   });
 
-  test('引用 skills 且 setting-sources-control degraded -> planStatus degraded，degradedCapabilities 含该项，仍产出 plan', () => {
+  test('引用 skills 且 setting-sources-control degraded -> manifestStatus degraded，degradedCapabilities 含该项，仍产出 manifest', () => {
     const rev = revision({ configName: 'general', revisionId: 'rev-skills', skills: [ref('skill', 'some-skill')] });
     const results = allSupportedProbeResults({
       'claude.setting-sources-control': { status: 'degraded', required: true },
     });
-    const result = compileClaudeAdapterPlan(rev, results);
-    const plan = expectCompiled(result);
+    const result = compileClaudeAssemblyManifest(rev, results);
+    const manifest = expectCompiled(result);
 
-    expect(plan.planStatus).toBe('degraded');
-    expect(plan.degradedCapabilities).toEqual(['claude.setting-sources-control']);
-    expect(plan.planHash.length).toBeGreaterThan(0);
+    expect(manifest.manifestStatus).toBe('degraded');
+    expect(manifest.degradedCapabilities).toEqual(['claude.setting-sources-control']);
+    expect(manifest.manifestHash.length).toBeGreaterThan(0);
   });
 
-  test('引用 hooks（hook-deny-return-value 恒为 unknown, required: false）-> planStatus degraded（可选项缺失，不 blocked）', () => {
+  test('引用 hooks（hook-deny-return-value 恒为 unknown, required: false）-> manifestStatus degraded（可选项缺失，不 blocked）', () => {
     const rev = revision({ configName: 'general', revisionId: 'rev-hooks', hooks: [ref('hook', 'some-hook')] });
-    const result = compileClaudeAdapterPlan(rev, allSupportedProbeResults());
-    const plan = expectCompiled(result);
+    const result = compileClaudeAssemblyManifest(rev, allSupportedProbeResults());
+    const manifest = expectCompiled(result);
 
-    expect(plan.capabilityPolicy.map((n) => n.capabilityId).sort()).toEqual([
+    expect(manifest.capabilityPolicy.map((n) => n.capabilityId).sort()).toEqual([
       'claude.hook-deny-return-value',
       'claude.permission-mode-control',
     ]);
-    expect(plan.planStatus).toBe('degraded');
-    expect(plan.degradedCapabilities).toEqual(['claude.hook-deny-return-value']);
+    expect(manifest.manifestStatus).toBe('degraded');
+    expect(manifest.degradedCapabilities).toEqual(['claude.hook-deny-return-value']);
   });
 
-  test('相同 revision + 两次探测结果（capabilityId/required/status 相同，evidenceRef/observedAt 不同）-> 两次 planHash 完全相同', () => {
+  test('相同 revision + 两次探测结果（capabilityId/required/status 相同，evidenceRef/observedAt 不同）-> 两次 manifestHash 完全相同', () => {
     const rev = revision({
       configName: 'general',
       revisionId: 'rev-stable',
@@ -143,14 +143,14 @@ describe('compileClaudeAdapterPlan', () => {
       observedAt: '2026-02-02T00:00:00Z',
     }));
 
-    const firstPlan = expectCompiled(compileClaudeAdapterPlan(rev, firstProbe));
-    const secondPlan = expectCompiled(compileClaudeAdapterPlan(rev, secondProbe));
+    const firstManifest = expectCompiled(compileClaudeAssemblyManifest(rev, firstProbe));
+    const secondManifest = expectCompiled(compileClaudeAssemblyManifest(rev, secondProbe));
 
-    expect(secondPlan.planHash).toBe(firstPlan.planHash);
+    expect(secondManifest.manifestHash).toBe(firstManifest.manifestHash);
     // Sanity: this isn't trivially true because the inputs were identical --
     // evidenceRef genuinely differs between the two probe runs.
-    expect(firstPlan.capabilityPolicy.find((n) => n.capabilityId === 'claude.setting-sources-control')?.evidenceRef).not.toBe(
-      secondPlan.capabilityPolicy.find((n) => n.capabilityId === 'claude.setting-sources-control')?.evidenceRef,
+    expect(firstManifest.capabilityPolicy.find((n) => n.capabilityId === 'claude.setting-sources-control')?.evidenceRef).not.toBe(
+      secondManifest.capabilityPolicy.find((n) => n.capabilityId === 'claude.setting-sources-control')?.evidenceRef,
     );
   });
 
@@ -160,7 +160,7 @@ describe('compileClaudeAdapterPlan', () => {
       (result) => result.capabilityId !== 'claude.setting-sources-control',
     );
 
-    const result = compileClaudeAdapterPlan(rev, resultsMissingSettingSources);
+    const result = compileClaudeAssemblyManifest(rev, resultsMissingSettingSources);
 
     expect(result.kind).toBe('blocked');
     if (result.kind === 'blocked') {
@@ -168,19 +168,19 @@ describe('compileClaudeAdapterPlan', () => {
     }
   });
 
-  test('planHash 变化时 planStatus 不同步影响：一个 blocked 结果永不携带 planHash/capabilityPolicy/degradedCapabilities 字段', () => {
+  test('manifestHash 变化时 manifestStatus 不同步影响：一个 blocked 结果永不携带 manifestHash/capabilityPolicy/degradedCapabilities 字段', () => {
     const rev = revision({ configName: 'general', revisionId: 'rev-blocked-shape', mcp: [ref('mcp', 'm')] });
     const results = allSupportedProbeResults({ 'claude.mcp-project-scope-control': { status: 'unknown', required: true } });
-    const result = compileClaudeAdapterPlan(rev, results);
+    const result = compileClaudeAssemblyManifest(rev, results);
 
     expect(result.kind).toBe('blocked');
     const serialized = Object.keys(result);
-    expect(serialized).not.toContain('planHash');
+    expect(serialized).not.toContain('manifestHash');
     expect(serialized).not.toContain('capabilityPolicy');
     expect(serialized).not.toContain('degradedCapabilities');
   });
 
-  test('plan 不复制引用内容原文：instructions/skills/mcp 与 revision 上的对象引用值相等（同一份数组/对象），不新增内容字段', () => {
+  test('manifest 不复制引用内容原文：instructions/skills/mcp 与 revision 上的对象引用值相等（同一份数组/对象），不新增内容字段', () => {
     const skillRefs = [ref('skill', 'skill-a')];
     const mcpRefs = [ref('mcp', 'mcp-a')];
     const instructionRefs = [ref('instruction', 'prompt-a')];
@@ -191,55 +191,55 @@ describe('compileClaudeAdapterPlan', () => {
       skills: skillRefs,
       mcp: mcpRefs,
     });
-    const plan = expectCompiled(compileClaudeAdapterPlan(rev, allSupportedProbeResults()));
+    const manifest = expectCompiled(compileClaudeAssemblyManifest(rev, allSupportedProbeResults()));
 
-    expect(plan.instructions).toBe(instructionRefs);
-    expect(plan.skills).toBe(skillRefs);
-    expect(plan.mcp).toBe(mcpRefs);
+    expect(manifest.instructions).toBe(instructionRefs);
+    expect(manifest.skills).toBe(skillRefs);
+    expect(manifest.mcp).toBe(mcpRefs);
     // No content field beyond what CapabilityReference already declares.
-    for (const group of [plan.instructions, plan.skills, plan.mcp]) {
+    for (const group of [manifest.instructions, manifest.skills, manifest.mcp]) {
       for (const capability of group) {
         expect(Object.keys(capability).sort()).toEqual(
           ['contentFingerprint', 'kind', 'name', 'sourceCategory', 'sourceRef', 'summary'].sort(),
         );
       }
     }
-    // Never any hooks/plugins typed-reference field on the plan itself.
-    expect('hooks' in plan).toBe(false);
-    expect('plugins' in plan).toBe(false);
+    // Never any hooks/plugins typed-reference field on the manifest itself.
+    expect('hooks' in manifest).toBe(false);
+    expect('plugins' in manifest).toBe(false);
   });
 
   test('never produces a candidate/score/recommendation field (SPEC.md CAP-1)', () => {
     const rev = revision({ configName: 'general', revisionId: 'rev-cap1', skills: [ref('skill', 's')] });
-    const result = compileClaudeAdapterPlan(rev, allSupportedProbeResults());
+    const result = compileClaudeAssemblyManifest(rev, allSupportedProbeResults());
     const serialized = JSON.stringify(result);
     expect(serialized).not.toMatch(/candidate|score|recommend/i);
   });
 
-  test('planHash is content-sensitive: changing a relevant capability\'s status (same revisionId) changes the hash', () => {
+  test('manifestHash is content-sensitive: changing a relevant capability\'s status (same revisionId) changes the hash', () => {
     const rev = revision({ configName: 'general', revisionId: 'rev-hash-content', skills: [ref('skill', 'some-skill')] });
-    const supportedPlan = expectCompiled(compileClaudeAdapterPlan(rev, allSupportedProbeResults()));
-    const degradedPlan = expectCompiled(
-      compileClaudeAdapterPlan(
+    const supportedManifest = expectCompiled(compileClaudeAssemblyManifest(rev, allSupportedProbeResults()));
+    const degradedManifest = expectCompiled(
+      compileClaudeAssemblyManifest(
         rev,
         allSupportedProbeResults({ 'claude.setting-sources-control': { status: 'degraded', required: true } }),
       ),
     );
 
-    expect(degradedPlan.planHash).not.toBe(supportedPlan.planHash);
+    expect(degradedManifest.manifestHash).not.toBe(supportedManifest.manifestHash);
   });
 
-  test('planHash is content-sensitive: changing the referenced skill/mcp set (same revisionId) changes the hash', () => {
+  test('manifestHash is content-sensitive: changing the referenced skill/mcp set (same revisionId) changes the hash', () => {
     const revA = revision({ configName: 'general', revisionId: 'rev-hash-refs', skills: [ref('skill', 'skill-a')] });
     const revB = revision({ configName: 'general', revisionId: 'rev-hash-refs', skills: [ref('skill', 'skill-b')] });
 
-    const planA = expectCompiled(compileClaudeAdapterPlan(revA, allSupportedProbeResults()));
-    const planB = expectCompiled(compileClaudeAdapterPlan(revB, allSupportedProbeResults()));
+    const manifestA = expectCompiled(compileClaudeAssemblyManifest(revA, allSupportedProbeResults()));
+    const manifestB = expectCompiled(compileClaudeAssemblyManifest(revB, allSupportedProbeResults()));
 
-    expect(planB.planHash).not.toBe(planA.planHash);
+    expect(manifestB.manifestHash).not.toBe(manifestA.manifestHash);
   });
 
-  test('planHash is order-independent over the reference arrays: the same skill set in a different array order hashes the same', () => {
+  test('manifestHash is order-independent over the reference arrays: the same skill set in a different array order hashes the same', () => {
     const forward = revision({
       configName: 'general',
       revisionId: 'rev-hash-order',
@@ -251,10 +251,10 @@ describe('compileClaudeAdapterPlan', () => {
       skills: [ref('skill', 'skill-b'), ref('skill', 'skill-a')],
     });
 
-    const forwardPlan = expectCompiled(compileClaudeAdapterPlan(forward, allSupportedProbeResults()));
-    const reversedPlan = expectCompiled(compileClaudeAdapterPlan(reversed, allSupportedProbeResults()));
+    const forwardManifest = expectCompiled(compileClaudeAssemblyManifest(forward, allSupportedProbeResults()));
+    const reversedManifest = expectCompiled(compileClaudeAssemblyManifest(reversed, allSupportedProbeResults()));
 
-    expect(reversedPlan.planHash).toBe(forwardPlan.planHash);
+    expect(reversedManifest.manifestHash).toBe(forwardManifest.manifestHash);
   });
 
   test('multiple simultaneously-blocked required capabilities are all listed in missingRequiredCapabilities', () => {
@@ -269,7 +269,7 @@ describe('compileClaudeAdapterPlan', () => {
       'claude.setting-sources-control': { status: 'unknown', required: true },
     });
 
-    const result = compileClaudeAdapterPlan(rev, results);
+    const result = compileClaudeAssemblyManifest(rev, results);
 
     expect(result.kind).toBe('blocked');
     if (result.kind === 'blocked') {
@@ -280,10 +280,10 @@ describe('compileClaudeAdapterPlan', () => {
   });
 });
 
-describe('compileClaudeAdapterPlan against the real .cap/ (general, agent-assembler)', () => {
+describe('compileClaudeAssemblyManifest against the real .cap/ (general, agent-assembler)', () => {
   const CAP_ROOT = path.join(import.meta.dir, '..', '..', '..', '..', '.cap');
 
-  test('both real profiles compile to a ready plan and produce a stable hash across two probe runs', async () => {
+  test('both real profiles compile to a ready manifest and produce a stable hash across two probe runs', async () => {
     const revisions = await loadCapConfigRevisions(CAP_ROOT);
     expect(revisions.map((r) => r.configName).sort()).toEqual(['agent-assembler', 'general']);
 
@@ -291,7 +291,7 @@ describe('compileClaudeAdapterPlan against the real .cap/ (general, agent-assemb
       // Per Design Notes: both real profiles have empty mcp/hooks and
       // non-empty skills, so only permission-mode-control and
       // setting-sources-control are relevant, and both are supported in a
-      // healthy real environment -- planStatus is expected to be 'ready'.
+      // healthy real environment -- manifestStatus is expected to be 'ready'.
       expect(rev.mcp).toEqual([]);
       expect(rev.hooks).toEqual([]);
       expect(rev.skills.length).toBeGreaterThan(0);
@@ -303,15 +303,15 @@ describe('compileClaudeAdapterPlan against the real .cap/ (general, agent-assemb
         observedAt: '2099-01-01T00:00:00Z',
       }));
 
-      const firstPlan = expectCompiled(compileClaudeAdapterPlan(rev, firstProbe));
-      const secondPlan = expectCompiled(compileClaudeAdapterPlan(rev, secondProbe));
+      const firstManifest = expectCompiled(compileClaudeAssemblyManifest(rev, firstProbe));
+      const secondManifest = expectCompiled(compileClaudeAssemblyManifest(rev, secondProbe));
 
-      expect(firstPlan.planStatus).toBe('ready');
-      expect(firstPlan.capabilityPolicy.map((n) => n.capabilityId).sort()).toEqual([
+      expect(firstManifest.manifestStatus).toBe('ready');
+      expect(firstManifest.capabilityPolicy.map((n) => n.capabilityId).sort()).toEqual([
         'claude.permission-mode-control',
         'claude.setting-sources-control',
       ]);
-      expect(secondPlan.planHash).toBe(firstPlan.planHash);
+      expect(secondManifest.manifestHash).toBe(firstManifest.manifestHash);
     }
   });
 });

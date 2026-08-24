@@ -4,13 +4,14 @@ import type { ClaudeCapabilityProbeResult } from '../../../application/ports';
 
 /**
  * `[Story 4.2]` A relevant hard-control capability's judgment as it appears
- * on a compiled plan -- carried through unclipped from Story 4.1's
+ * on a compiled manifest -- carried through unclipped from Story 4.1's
  * `ClaudeCapabilityProbeResult` (same shape, same fields, including
  * `evidenceRef`/`observedAt`). Aliased under its own name here rather than
- * reused bare so a reader of `ClaudeAdapterPlan` sees this is a plan-facing
- * concept, without implying a second, independently-evolving type.
+ * reused bare so a reader of `ClaudeAssemblyManifest` sees this is a
+ * manifest-facing concept, without implying a second, independently-evolving
+ * type.
  */
-export type ClaudeAdapterPlanCapabilityNote = ClaudeCapabilityProbeResult;
+export type ClaudeAssemblyManifestCapabilityNote = ClaudeCapabilityProbeResult;
 
 /**
  * `[Story 4.2]` A confirmed AC1/AC2 outcome: this assembly intent could be
@@ -18,33 +19,53 @@ export type ClaudeAdapterPlanCapabilityNote = ClaudeCapabilityProbeResult;
  * Boundaries & Constraints allow: `client`/`revisionId`/`configName`, the
  * *relevant* capabilities' policy notes, the three typed reference groups
  * (`instructions`/`skills`/`mcp` -- direct, uncopied references from the
- * source `StableConfigRevision`), the overall `planStatus`, which
- * capabilities caused that degradation, and a deterministic `planHash`.
+ * source `StableConfigRevision`), the overall `manifestStatus`, which
+ * capabilities caused that degradation, and a deterministic `manifestHash`.
  * Deliberately no `hooks`/`plugins` reference fields, no argv/env/secret
- * fields (that is Story 4.3/4.4's `launch` territory) and no
- * candidate/score/recommendation field (SPEC.md CAP-1).
+ * fields and no candidate/score/recommendation field (SPEC.md CAP-1).
+ *
+ * `[Story 4.3]` Renamed from `ClaudeAdapterPlan`/`compileClaudeAdapterPlan`
+ * (this file used to be `plan.ts`). Story 4.2's own frontmatter `deferred`
+ * entry flagged that this type's field set -- client, project root
+ * (`revisionId`/`configName`), typed Instructions/Skills/MCP references and
+ * capability policy, with no argv/env/secret shape at all -- is a verbatim
+ * match for Architecture Spine AD-19's `AssemblyManifest` concept, not
+ * AD-19's separately-defined, narrower, *persisted* `AdapterPlan` concept
+ * (which AD-19 restricts to "argv 结构、环境键、secret/content 引用、不可逆
+ * hash、generated-file metadata 和预期观察"). `epics.md`'s Story 4.2 prose
+ * called this type "AdapterPlan" purely as an English gloss; the shape it
+ * actually specified was always the manifest. This Story renames the type
+ * (and its compiler function, and this file/its test file) to
+ * `ClaudeAssemblyManifest`/`compileClaudeAssemblyManifest` so the name
+ * matches the shape, and introduces the real, launch-facing `AdapterPlan`
+ * shape separately in `adapter-plan.ts` -- see that file's Design Notes for
+ * why the two are genuinely different concepts, not just a naming
+ * preference. Fields are otherwise byte-for-byte unchanged from Story 4.2
+ * except `planStatus` -> `manifestStatus` and `planHash` -> `manifestHash`
+ * (renamed for the same clarity reason, now that a *second*, differently-
+ * shaped `planHash` exists on the real `ClaudeAdapterPlan`).
  */
-export interface ClaudeAdapterPlan {
+export interface ClaudeAssemblyManifest {
   readonly client: 'claude-code';
   readonly revisionId: string;
   readonly configName: string;
-  readonly capabilityPolicy: readonly ClaudeAdapterPlanCapabilityNote[];
+  readonly capabilityPolicy: readonly ClaudeAssemblyManifestCapabilityNote[];
   readonly instructions: readonly CapabilityReference[];
   readonly skills: readonly CapabilityReference[];
   readonly mcp: readonly CapabilityReference[];
-  readonly planStatus: 'ready' | 'degraded';
-  /** `capabilityId`s of every relevant capability that pushed `planStatus` to `'degraded'`. */
+  readonly manifestStatus: 'ready' | 'degraded';
+  /** `capabilityId`s of every relevant capability that pushed `manifestStatus` to `'degraded'`. */
   readonly degradedCapabilities: readonly string[];
-  readonly planHash: string;
+  readonly manifestHash: string;
 }
 
 /**
  * `[Story 4.2]` AD-10 fail-closed outcome: a relevant, `required` capability
- * was not `supported`/`degraded` -- no plan, no hash, nothing usable is
+ * was not `supported`/`degraded` -- no manifest, no hash, nothing usable is
  * produced. `missingRequiredCapabilities` names every relevant capability
  * that caused the block (there can be more than one).
  */
-export interface ClaudeAdapterPlanBlocked {
+export interface ClaudeAssemblyManifestBlocked {
   readonly kind: 'blocked';
   readonly client: 'claude-code';
   readonly revisionId: string;
@@ -52,9 +73,9 @@ export interface ClaudeAdapterPlanBlocked {
   readonly missingRequiredCapabilities: readonly string[];
 }
 
-export type ClaudeAdapterPlanResult =
-  | { readonly kind: 'compiled'; readonly plan: ClaudeAdapterPlan }
-  | ClaudeAdapterPlanBlocked;
+export type ClaudeAssemblyManifestResult =
+  | { readonly kind: 'compiled'; readonly manifest: ClaudeAssemblyManifest }
+  | ClaudeAssemblyManifestBlocked;
 
 interface CapabilityRelevanceRule {
   readonly capabilityId: string;
@@ -89,7 +110,7 @@ const CAPABILITY_RELEVANCE_RULES: readonly CapabilityRelevanceRule[] = [
 function resolveCapabilityNote(
   probeResults: readonly ClaudeCapabilityProbeResult[],
   capabilityId: string,
-): ClaudeAdapterPlanCapabilityNote {
+): ClaudeAssemblyManifestCapabilityNote {
   const found = probeResults.find((result) => result.capabilityId === capabilityId);
   if (found !== undefined) {
     return found;
@@ -124,9 +145,9 @@ function referenceSignature(reference: CapabilityReference): string {
  * different real probe runs -- same capability states, different evidence
  * text -- produce the same hash.
  */
-function computeClaudeAdapterPlanHash(
+function computeClaudeAssemblyManifestHash(
   revision: StableConfigRevision,
-  capabilityPolicy: readonly ClaudeAdapterPlanCapabilityNote[],
+  capabilityPolicy: readonly ClaudeAssemblyManifestCapabilityNote[],
 ): string {
   const capabilitySignature = capabilityPolicy
     .map((note) => `${note.capabilityId}=${note.required}=${note.status}`)
@@ -162,23 +183,26 @@ function computeClaudeAdapterPlanHash(
 /**
  * `[Story 4.2]` Pure compilation of an already-loaded assembly intent
  * (`revision`, e.g. from `loadCapConfigRevisions`) plus Story 4.1's probe
- * evidence (`probeResults`) into a `ClaudeAdapterPlan`. Zero IO: does not
- * itself probe, read `.cap/`, or touch Bun/the filesystem/the process
+ * evidence (`probeResults`) into a `ClaudeAssemblyManifest`. Zero IO: does
+ * not itself probe, read `.cap/`, or touch Bun/the filesystem/the process
  * environment -- both inputs must already be loaded by the caller.
  *
  * Relevance is decided first (does this assembly intent actually reference
  * the asset kind this capability governs), then fail-closed classification
  * runs only over the relevant subset (AD-10): `supported` has no effect;
  * `degraded` always lands in `degradedCapabilities`; `unsupported`/`unknown`
- * blocks the whole plan when `required`, otherwise also lands in
+ * blocks the whole manifest when `required`, otherwise also lands in
  * `degradedCapabilities`. Any relevant required capability blocking is
- * sufficient to block the entire plan -- no hash or plan is produced in
- * that case.
+ * sufficient to block the entire manifest -- no hash or manifest is produced
+ * in that case.
+ *
+ * `[Story 4.3]` Renamed from `compileClaudeAdapterPlan` -- see this file's
+ * top-of-file Design Note on `ClaudeAssemblyManifest` for why.
  */
-export function compileClaudeAdapterPlan(
+export function compileClaudeAssemblyManifest(
   revision: StableConfigRevision,
   probeResults: readonly ClaudeCapabilityProbeResult[],
-): ClaudeAdapterPlanResult {
+): ClaudeAssemblyManifestResult {
   const relevantRules = CAPABILITY_RELEVANCE_RULES.filter((rule) => rule.isRelevant(revision));
   const capabilityPolicy = relevantRules.map((rule) => resolveCapabilityNote(probeResults, rule.capabilityId));
 
@@ -211,7 +235,7 @@ export function compileClaudeAdapterPlan(
     };
   }
 
-  const plan: ClaudeAdapterPlan = {
+  const manifest: ClaudeAssemblyManifest = {
     client: 'claude-code',
     revisionId: revision.revisionId,
     configName: revision.configName,
@@ -219,10 +243,10 @@ export function compileClaudeAdapterPlan(
     instructions: revision.instructions,
     skills: revision.skills,
     mcp: revision.mcp,
-    planStatus: degradedCapabilities.length > 0 ? 'degraded' : 'ready',
+    manifestStatus: degradedCapabilities.length > 0 ? 'degraded' : 'ready',
     degradedCapabilities,
-    planHash: computeClaudeAdapterPlanHash(revision, capabilityPolicy),
+    manifestHash: computeClaudeAssemblyManifestHash(revision, capabilityPolicy),
   };
 
-  return { kind: 'compiled', plan };
+  return { kind: 'compiled', manifest };
 }

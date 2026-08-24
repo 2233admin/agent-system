@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 
 import { known, unknown, type Fact } from '../../src/domain/facts';
-import type { ClaudeCapabilityProbeResult, ClaudeProcessPort } from '../../src/application/ports';
+import type { ClaudeCapabilityProbeResult, ClaudeProcessPort, ClaudeSpawnParams, ClaudeSpawnResult } from '../../src/application/ports';
 import { BunClaudeCapabilityProbe } from '../../src/adapters/clients/claude/capability-probe';
 import { BunClaudeProcessPort } from '../../src/adapters/clients/claude/process-port';
 
@@ -37,6 +37,11 @@ class FakeClaudeProcessPort implements ClaudeProcessPort {
   async captureHelpText(args: readonly string[]): Promise<Fact<string>> {
     const key = args.join(' ');
     return this.helpTexts.get(key) ?? unknown(`no-fixture-for-args:${key}`, new Date().toISOString());
+  }
+
+  /** Never exercised by capability-probe tests -- Story 4.3's `claude-process-port.test.ts` covers `spawn` directly. */
+  async spawn(_params: ClaudeSpawnParams): Promise<ClaudeSpawnResult> {
+    throw new Error('FakeClaudeProcessPort.spawn is not exercised by capability-probe tests');
   }
 }
 

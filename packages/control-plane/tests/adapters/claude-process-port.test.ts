@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 
-import { BunClaudeProcessPort, type ClaudeSpawnedProcess } from '../../src/adapters/clients/claude/process-port';
+import { BunClaudeProcessPort, type ClaudeInteractiveProcess, type ClaudeSpawnedProcess } from '../../src/adapters/clients/claude/process-port';
 
 /**
  * A fake `ClaudeSpawnedProcess` for deterministic tests of
@@ -182,5 +182,74 @@ describe('BunClaudeProcessPort (fake-spawn-driven error branches)', () => {
     );
     const result = await port.captureHelpText([]);
     expect(result.kind).toBe('known');
+  });
+});
+
+/**
+ * `[Story 4.3]` A fake `ClaudeInteractiveProcess` for deterministic tests of
+ * `BunClaudeProcessPort.spawn` -- never depends on a real interactive
+ * `claude` session (which would hang waiting for a terminal).
+ */
+function fakeInteractiveProcess(opts: { exitCode?: number; signalCode?: string | null }): ClaudeInteractiveProcess {
+  return {
+    exited: Promise.resolve(opts.exitCode ?? 0),
+    signalCode: opts.signalCode ?? null,
+  };
+}
+
+describe('BunClaudeProcessPort.spawn (fake-spawn-driven)', () => {
+  test('resolves the exit code once the interactive process exits', async () => {
+    const captured: { argv: readonly string[]; options: { readonly cwd: string; readonly env: Readonly<Record<string, string>> } } = {
+      argv: [],
+      options: { cwd: '', env: {} },
+    };
+    const port = new BunClaudeProcessPort(
+      () => fakeProcess({}),
+      () => '/fake/claude',
+      10_000,
+      (argv, options) => {
+        captured.argv = argv;
+        captured.options = options;
+        return fakeInteractiveProcess({ exitCode: 0 });
+      },
+    );
+
+    const result = await port.spawn({ argv: ['--permission-mode', 'manual'], env: { CLAUDE_CONFIG_DIR: '/fake/dir' }, cwd: '/fake/dir' });
+
+    expect(result).toEqual({ exitCode: 0, signal: null });
+    expect(captured.argv).toEqual(['/fake/claude', '--permission-mode', 'manual']);
+    expect(captured.options).toEqual({ cwd: '/fake/dir', env: { CLAUDE_CONFIG_DIR: '/fake/dir' } });
+  });
+
+  test('surfaces a non-zero exit code, never faking success', async () => {
+    const port = new BunClaudeProcessPort(
+      () => fakeProcess({}),
+      () => '/fake/claude',
+      10_000,
+      () => fakeInteractiveProcess({ exitCode: 7 }),
+    );
+    const result = await port.spawn({ argv: [], env: {}, cwd: '/fake/dir' });
+    expect(result).toEqual({ exitCode: 7, signal: null });
+  });
+
+  test('surfaces a signal-terminated exit (no determinable exit code)', async () => {
+    const port = new BunClaudeProcessPort(
+      () => fakeProcess({}),
+      () => '/fake/claude',
+      10_000,
+      () => fakeInteractiveProcess({ exitCode: 0, signalCode: 'SIGTERM' }),
+    );
+    const result = await port.spawn({ argv: [], env: {}, cwd: '/fake/dir' });
+    expect(result.signal).toBe('SIGTERM');
+  });
+
+  test('throws when the claude binary cannot be found -- never silently spawns nothing', async () => {
+    const port = new BunClaudeProcessPort(
+      () => fakeProcess({}),
+      () => null,
+      10_000,
+      () => fakeInteractiveProcess({ exitCode: 0 }),
+    );
+    await expect(port.spawn({ argv: [], env: {}, cwd: '/fake/dir' })).rejects.toThrow('claude-binary-not-found');
   });
 });
