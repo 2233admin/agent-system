@@ -398,23 +398,30 @@ function runTuiScreen(revisions: readonly StableConfigRevision[], knownDifferenc
         <TuiApp
           revisions={revisions}
           knownDifferencesByRevision={knownDifferencesByRevision}
+          // Ink invokes these handlers from the stdin data callback. Let that
+          // callback return before raw-mode cleanup; otherwise Windows keeps
+          // the console input handle busy when the next process starts.
           onLaunch={(revision) => {
             debugTui('screen:decision', { kind: 'launch', revisionId: revision.revisionId });
-            try {
-              instance.unmount();
-            } finally {
-              tuiStdin.cleanup();
-            }
-            resolve({ kind: 'launch', revision });
+            setImmediate(() => {
+              try {
+                instance.unmount();
+              } finally {
+                tuiStdin.cleanup();
+              }
+              resolve({ kind: 'launch', revision });
+            });
           }}
           onQuit={() => {
             debugTui('screen:decision', { kind: 'quit' });
-            try {
-              instance.unmount();
-            } finally {
-              tuiStdin.cleanup();
-            }
-            resolve({ kind: 'quit' });
+            setImmediate(() => {
+              try {
+                instance.unmount();
+              } finally {
+                tuiStdin.cleanup();
+              }
+              resolve({ kind: 'quit' });
+            });
           }}
         />,
         // Ink's default `exitOnCtrlC` unmounts and calls `process.exit()`
