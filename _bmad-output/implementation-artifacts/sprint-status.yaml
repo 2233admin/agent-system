@@ -58,7 +58,7 @@ development_status:
   4-4-already-running-session-target-的-requires-restart-路径: done
   4-5-cap-parity-验证与本仓自身切换: done
   4-5b-claude-adapter-内容物化能力: done
-  4-6-configs-cli-的-claude-入口: backlog
+  4-6-configs-cli-的-claude-入口: done
   4-7-退役-cap-本体: backlog
   epic-4-retrospective: optional
 action_items:

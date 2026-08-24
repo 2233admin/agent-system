@@ -169,8 +169,14 @@ describe('configs use', () => {
     expect(handoffIndex).toBeLessThan(finalStatusIndex);
   });
 
-  test('不支持的客户端: claude-code returns immediately, no confirmation, no db file ever created', async () => {
-    const code = await main(['use', 'rev-1', '--client', 'claude-code'], overrides());
+  // `[Story 4.6]` `claude-code` is no longer an unsupported client at this
+  // gate (`resolveClientSupport('claude-code')` now returns `supported:
+  // true` -- Story 4.1~4.5b delivered a real adapter). `codex-cli` remains
+  // the one client this CLI-level "unsupported" path still exercises; see
+  // `tests/integration/cli-claude-launch.test.ts` for `claude-code`'s own
+  // (now-supported) coverage.
+  test('不支持的客户端: codex-cli returns immediately, no confirmation, no db file ever created', async () => {
+    const code = await main(['use', 'rev-1', '--client', 'codex-cli'], overrides());
     expect(code).toBe(1);
     const output = logs.join('\n');
     expect(output).toContain('not supported yet');
