@@ -123,6 +123,8 @@ export class BunClaudeCapabilityProbe implements ClaudeCapabilityProbePort {
       this.probeMcpProjectScope(mainHelp, mcpAddHelp),
       this.probeSettingSources(mainHelp),
       this.probeHookDenyEffect(mainHelp),
+      this.probePluginDirDelivery(mainHelp),
+      this.probeAppendSystemPromptDelivery(mainHelp),
     ];
   }
 
@@ -312,6 +314,68 @@ export class BunClaudeCapabilityProbe implements ClaudeCapabilityProbePort {
       evidenceRef: hasHookLifecycleEvidence
         ? 'claude --help 仅证实 hook 生命周期事件存在（--include-hook-events），未对拒绝返回值的强制阻断效果做真实调用验证，不接受文档声称作为 supported 证据'
         : '未在 claude --help 中找到 hook 生命周期证据，且未对拒绝返回值的强制阻断效果做真实调用验证',
+      observedAt,
+    };
+  }
+
+  /**
+   * `[Story 4.5b]` AD-21's content-materialization delivery gate for Skills:
+   * a simple, `hasFlag`-style presence check (never `unknown` as a default
+   * when the binary is reachable -- only `supported`/`unsupported`, exactly
+   * like `probeMcpProjectScope`'s `--strict-mcp-config` half-check), because
+   * this is a binary "does this argv option exist at all" fact, not a
+   * multi-valued enum to compare. Required: if this machine's `claude`
+   * cannot accept `--plugin-dir` at all, Skills content genuinely cannot be
+   * delivered, and AD-21 says that must fail closed rather than pretend
+   * otherwise.
+   */
+  private probePluginDirDelivery(mainHelp: Fact<string>): ClaudeCapabilityProbeResult {
+    const capabilityId = 'claude.plugin-dir-delivery';
+    const subject = '通过 --plugin-dir 向新 spawn 的 Claude Code 进程交付本地 plugin 包（AD-21 Skills 内容物化的唯一交付通道）';
+    const required = true;
+    const observedAt = factObservedAt(mainHelp);
+
+    if (!isKnown(mainHelp)) {
+      return unknownResult(capabilityId, subject, required, mainHelp.reason, observedAt);
+    }
+    const supported = hasFlag(mainHelp.value, '--plugin-dir');
+    return {
+      capabilityId,
+      subject,
+      required,
+      status: supported ? 'supported' : 'unsupported',
+      validationMethod: 'mechanical',
+      evidenceRef: supported
+        ? 'claude --help 输出含 --plugin-dir 选项'
+        : 'claude --help 输出未出现 --plugin-dir 选项，Skills 内容物化无可用交付通道',
+      observedAt,
+    };
+  }
+
+  /**
+   * `[Story 4.5b]` AD-21's content-materialization delivery gate for
+   * Instructions -- same `hasFlag`-style presence check and same reasoning
+   * as `probePluginDirDelivery`, over `--append-system-prompt` instead.
+   */
+  private probeAppendSystemPromptDelivery(mainHelp: Fact<string>): ClaudeCapabilityProbeResult {
+    const capabilityId = 'claude.append-system-prompt-delivery';
+    const subject = '通过 --append-system-prompt 向新 spawn 的 Claude Code 进程交付真实 Instructions 文本（AD-21 Instructions 内容物化的唯一交付通道）';
+    const required = true;
+    const observedAt = factObservedAt(mainHelp);
+
+    if (!isKnown(mainHelp)) {
+      return unknownResult(capabilityId, subject, required, mainHelp.reason, observedAt);
+    }
+    const supported = hasFlag(mainHelp.value, '--append-system-prompt');
+    return {
+      capabilityId,
+      subject,
+      required,
+      status: supported ? 'supported' : 'unsupported',
+      validationMethod: 'mechanical',
+      evidenceRef: supported
+        ? 'claude --help 输出含 --append-system-prompt 选项'
+        : 'claude --help 输出未出现 --append-system-prompt 选项，Instructions 内容物化无可用交付通道',
       observedAt,
     };
   }

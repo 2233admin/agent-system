@@ -309,10 +309,12 @@ export interface ClaudeCapabilityProbeResult {
 /**
  * `[Story 4.1]` Probes every candidate hard-control capability the Claude
  * Code adapter cares about (permission mode, MCP scoping, setting-source
- * scoping, hook deny effect -- see Design Notes). Must never accept prompt
- * text, documentation claims or unverified assumptions as `supported`
- * evidence; a capability that cannot be mechanically verified resolves to
- * `unknown`, never a default `supported`.
+ * scoping, hook deny effect -- see Design Notes). `[Story 4.5b]` Also
+ * probes AD-21's two content-materialization delivery gates (`--plugin-dir`,
+ * `--append-system-prompt`). Must never accept prompt text, documentation
+ * claims or unverified assumptions as `supported` evidence; a capability
+ * that cannot be mechanically verified resolves to `unknown`, never a
+ * default `supported`.
  */
 export interface ClaudeCapabilityProbePort {
   probeHardControlCapabilities(): Promise<readonly ClaudeCapabilityProbeResult[]>;

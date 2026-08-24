@@ -62,6 +62,9 @@ function allSupportedProbeResults(overrides: Partial<Record<string, Partial<Clau
     probeResult({ capabilityId: 'claude.mcp-project-scope-control', required: true, status: 'supported' }),
     probeResult({ capabilityId: 'claude.setting-sources-control', required: true, status: 'supported' }),
     probeResult({ capabilityId: 'claude.hook-deny-return-value', required: false, status: 'unknown' }),
+    // `[Story 4.5b]` AD-21's content-materialization delivery gates.
+    probeResult({ capabilityId: 'claude.plugin-dir-delivery', required: true, status: 'supported' }),
+    probeResult({ capabilityId: 'claude.append-system-prompt-delivery', required: true, status: 'supported' }),
   ];
   return base.map((result) => ({ ...result, ...(overrides[result.capabilityId] ?? {}) }));
 }
@@ -257,6 +260,41 @@ describe('compileClaudeAssemblyManifest', () => {
     expect(reversedManifest.manifestHash).toBe(forwardManifest.manifestHash);
   });
 
+  test('[Story 4.5b] claude.plugin-dir-delivery is relevant exactly when skills are referenced', () => {
+    const withSkills = revision({ configName: 'general', revisionId: 'rev-plugin-dir', skills: [ref('skill', 's')] });
+    const manifest = expectCompiled(compileClaudeAssemblyManifest(withSkills, allSupportedProbeResults()));
+    expect(manifest.capabilityPolicy.map((n) => n.capabilityId)).toContain('claude.plugin-dir-delivery');
+
+    const withoutSkills = revision({ configName: 'general', revisionId: 'rev-no-plugin-dir' });
+    const manifestNoSkills = expectCompiled(compileClaudeAssemblyManifest(withoutSkills, allSupportedProbeResults()));
+    expect(manifestNoSkills.capabilityPolicy.map((n) => n.capabilityId)).not.toContain('claude.plugin-dir-delivery');
+  });
+
+  test('[Story 4.5b] claude.append-system-prompt-delivery is relevant exactly when instructions are referenced', () => {
+    const withInstructions = revision({
+      configName: 'general',
+      revisionId: 'rev-append-prompt',
+      instructions: [ref('instruction', 'prompt.md')],
+    });
+    const manifest = expectCompiled(compileClaudeAssemblyManifest(withInstructions, allSupportedProbeResults()));
+    expect(manifest.capabilityPolicy.map((n) => n.capabilityId)).toContain('claude.append-system-prompt-delivery');
+
+    const withoutInstructions = revision({ configName: 'general', revisionId: 'rev-no-append-prompt' });
+    const manifestNoInstructions = expectCompiled(compileClaudeAssemblyManifest(withoutInstructions, allSupportedProbeResults()));
+    expect(manifestNoInstructions.capabilityPolicy.map((n) => n.capabilityId)).not.toContain('claude.append-system-prompt-delivery');
+  });
+
+  test('[Story 4.5b] claude.plugin-dir-delivery unsupported (required) blocks the manifest when skills are referenced', () => {
+    const rev = revision({ configName: 'general', revisionId: 'rev-plugin-dir-blocked', skills: [ref('skill', 's')] });
+    const results = allSupportedProbeResults({ 'claude.plugin-dir-delivery': { status: 'unsupported', required: true } });
+    const result = compileClaudeAssemblyManifest(rev, results);
+
+    expect(result.kind).toBe('blocked');
+    if (result.kind === 'blocked') {
+      expect(result.missingRequiredCapabilities).toEqual(['claude.plugin-dir-delivery']);
+    }
+  });
+
   test('multiple simultaneously-blocked required capabilities are all listed in missingRequiredCapabilities', () => {
     const rev = revision({
       configName: 'general',
@@ -289,12 +327,15 @@ describe('compileClaudeAssemblyManifest against the real .cap/ (general, agent-a
 
     for (const rev of revisions) {
       // Per Design Notes: both real profiles have empty mcp/hooks and
-      // non-empty skills, so only permission-mode-control and
-      // setting-sources-control are relevant, and both are supported in a
-      // healthy real environment -- manifestStatus is expected to be 'ready'.
+      // non-empty skills/instructions, so permission-mode-control,
+      // setting-sources-control and (`[Story 4.5b]`) the two AD-21
+      // content-materialization delivery gates are relevant, and all are
+      // supported in a healthy real environment -- manifestStatus is
+      // expected to be 'ready'.
       expect(rev.mcp).toEqual([]);
       expect(rev.hooks).toEqual([]);
       expect(rev.skills.length).toBeGreaterThan(0);
+      expect(rev.instructions.length).toBeGreaterThan(0);
 
       const firstProbe = allSupportedProbeResults();
       const secondProbe = firstProbe.map((result) => ({
@@ -308,7 +349,9 @@ describe('compileClaudeAssemblyManifest against the real .cap/ (general, agent-a
 
       expect(firstManifest.manifestStatus).toBe('ready');
       expect(firstManifest.capabilityPolicy.map((n) => n.capabilityId).sort()).toEqual([
+        'claude.append-system-prompt-delivery',
         'claude.permission-mode-control',
+        'claude.plugin-dir-delivery',
         'claude.setting-sources-control',
       ]);
       expect(secondManifest.manifestHash).toBe(firstManifest.manifestHash);

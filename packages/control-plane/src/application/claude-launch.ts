@@ -53,6 +53,8 @@ import { argvContributingCapabilityIds, compileClaudeAdapterPlan, determineClaud
 import type { ClaudeAdapterPlan } from '../adapters/clients/claude/adapter-plan';
 import { compileClaudeAssemblyManifest } from '../adapters/clients/claude/assembly-manifest';
 import type { ClaudeAssemblyManifest } from '../adapters/clients/claude/assembly-manifest';
+import { materializeClaudeContent } from '../adapters/clients/claude/content-materializer';
+import type { ClaudeContentMaterializationResult, ClaudeMaterializationFailure } from '../adapters/clients/claude/content-materializer';
 import { InvalidTransitionError, LaunchPlanNotFoundError, type LaunchDeps } from './launch';
 import { ConfigNotFoundError, ConfigUnsupportedError, getConfigRevisionDetail } from './queries';
 import type {
@@ -81,28 +83,36 @@ function generateId(prefix: string): string {
 /**
  * `[Story 4.3]` Honest content-materialization gaps for a fresh Claude Code
  * launch, mirroring `application/launch.ts`'s `computeKnownDifferences` for
- * OMP -- but broader: unlike OMP (which really does assemble Skills, by
- * name, via its own native discovery flag), this Story's fresh launch never
- * materializes *any* of Instructions/Skills/MCP content -- only the hard-
- * control capability flags themselves (`adapter-plan.ts`'s
- * `buildClaudeAdapterPlanArgv`) are actually applied. No verified Claude
- * Code flag exists (Story 4.1's probe) to select skills/instructions/MCP by
- * name the way OMP's `--skills <names>` does, so claiming any of these
- * groups as "assembled" here would misrepresent what actually happened.
- * `hooks`/`plugins` are read from `revision` directly (never from
- * `ClaudeAssemblyManifest`, which deliberately excludes them as typed
- * reference fields -- Story 4.2's `Never` boundary) purely for this
- * honesty check, exactly as OMP's own version does.
+ * OMP.
+ *
+ * `[Story 4.5b]` AD-21 changes what "not materialized" means: this Story's
+ * fresh launch now genuinely reads `sourceRef`-resolved Instructions/Skills/
+ * MCP content and delivers it (`--append-system-prompt`/`--plugin-dir`/
+ * `--mcp-config`) whenever `materializeClaudeContent` fully succeeds for
+ * that group -- so a fully-materialized, non-empty group no longer counts as
+ * a difference at all. A group only still counts as a difference when
+ * `materialization` reports failures for it (only reachable when that
+ * group's governing capability is *not* `required` -- see
+ * `resolveContentGroupDelivery`'s Design Notes; every real, relevant
+ * capability today is `required: true`, so this remains structurally
+ * possible but not exercised by real `.cap/` data). `hooks`/`plugins` are
+ * still entirely out of AD-21's scope (Story 4.2's `Never` boundary) and
+ * always count as a difference when referenced, exactly as before -- read
+ * from `revision` directly, never from `ClaudeAssemblyManifest`.
  */
-export function computeClaudeKnownDifferences(revision: StableConfigRevision, manifest: ClaudeAssemblyManifest): string[] {
+export function computeClaudeKnownDifferences(
+  revision: StableConfigRevision,
+  manifest: ClaudeAssemblyManifest,
+  materialization: ClaudeContentMaterializationResult,
+): string[] {
   const differences: string[] = [];
-  if (revision.instructions.length > 0) {
+  if (revision.instructions.length > 0 && materialization.instructions.failures.length > 0) {
     differences.push('instructions-content-not-materialized-in-fresh-launch');
   }
-  if (revision.skills.length > 0) {
+  if (revision.skills.length > 0 && materialization.skills.failures.length > 0) {
     differences.push('skills-content-not-materialized-in-fresh-launch');
   }
-  if (revision.mcp.length > 0) {
+  if (revision.mcp.length > 0 && materialization.mcp.failures.length > 0) {
     differences.push('mcp-content-not-materialized-in-fresh-launch');
   }
   if (revision.hooks.length > 0) {
@@ -115,6 +125,52 @@ export function computeClaudeKnownDifferences(revision: StableConfigRevision, ma
     differences.push(`degraded-capabilities: ${[...manifest.degradedCapabilities].sort().join(', ')}`);
   }
   return differences;
+}
+
+/** The `capabilityPolicy` note's own `required` flag governing one AD-21 content group; conservatively `true` when no such note exists at all (defensive-only -- every group this Story materializes has a governing capability). */
+function requiredForContentGroup(manifest: ClaudeAssemblyManifest, capabilityId: string): boolean {
+  return manifest.capabilityPolicy.find((note) => note.capabilityId === capabilityId)?.required ?? true;
+}
+
+function describeMaterializationFailures(failures: readonly ClaudeMaterializationFailure[]): string {
+  return failures.length > 0 ? failures.map((failure) => `${failure.name}(${failure.reason})`).join('; ') : '未知原因';
+}
+
+/**
+ * `[Story 4.5b]` AD-21's per-group launch decision, over one content group's
+ * already-computed materialization outcome: an empty group never blocks and
+ * never delivers anything; a fully-materialized non-empty group delivers its
+ * real argv contribution; a partially/fully failed group blocks the whole
+ * launch when its governing capability is `required` (today, always -- see
+ * `requiredForContentGroup`), or is silently excluded from delivery
+ * (degraded, not fabricated) when not. This is the one place AD-21's "不得
+ * 部分物化后仍然 spawn" boundary is actually enforced.
+ */
+interface ContentGroupDeliveryPlan {
+  readonly argv: readonly string[];
+  readonly blocked: { readonly capabilityId: string; readonly reason: string } | null;
+}
+
+function resolveContentGroupDelivery(
+  groupNonEmpty: boolean,
+  failures: readonly ClaudeMaterializationFailure[],
+  buildArgv: () => readonly string[],
+  required: boolean,
+  capabilityId: string,
+): ContentGroupDeliveryPlan {
+  if (!groupNonEmpty) {
+    return { argv: [], blocked: null };
+  }
+  if (failures.length === 0) {
+    return { argv: buildArgv(), blocked: null };
+  }
+  if (required) {
+    return {
+      argv: [],
+      blocked: { capabilityId, reason: `${capabilityId} 内容物化失败：${describeMaterializationFailures(failures)}` },
+    };
+  }
+  return { argv: [], blocked: null };
 }
 
 /**
@@ -390,8 +446,6 @@ export async function launchClaudeFresh(
   }
 
   const manifest = manifestResult.manifest;
-  const knownDifferences = computeClaudeKnownDifferences(revision, manifest);
-  const applyResult: 'applied' | 'degraded' = knownDifferences.length === 0 && manifest.manifestStatus === 'ready' ? 'applied' : 'degraded';
   const adapterPlan = compileClaudeAdapterPlan(manifest);
 
   let invocationDir: string;
@@ -402,6 +456,104 @@ export async function launchClaudeFresh(
     await deps.launchPlanRepository.save(plan);
     return outcomeFor(plan, 'planned', manifest, adapterPlan, [], '确认本机磁盘可写且 Agent System 状态目录权限正常后重试');
   }
+
+  // `[Story 4.5b]` AD-21: read `sourceRef`-resolved real content and write it
+  // under `invocationDir/materialized/` -- must happen after the invocation
+  // directory exists, before the launch context is written or `claude` is
+  // spawned. Any `required` group's failure fails this launch closed here,
+  // before any content is ever handed to a spawned process (never a partial
+  // materialization followed by a spawn -- see `resolveContentGroupDelivery`).
+  // `materializeClaudeContent` itself is designed to never throw (every real
+  // IO call it makes is individually caught and turned into a reported
+  // `ClaudeMaterializationFailure`), but this call site is still guarded the
+  // same way the `invocationDir` prepare step immediately above it is --
+  // defense in depth against any future/unforeseen throw, never a silent
+  // fallback to an unhandled rejection.
+  let materialization: ClaudeContentMaterializationResult;
+  try {
+    materialization = await materializeClaudeContent(revision, invocationDir);
+  } catch (error) {
+    plan = applyFailure(plan, `content-materialization: ${(error as Error).message}`);
+    await deps.launchPlanRepository.save(plan);
+    return outcomeFor(plan, 'planned', manifest, adapterPlan, [], '确认内容来源路径可读、本机磁盘可写后重试');
+  }
+
+  const instructionsDelivery = resolveContentGroupDelivery(
+    revision.instructions.length > 0,
+    materialization.instructions.failures,
+    () =>
+      materialization.instructions.appendSystemPromptText !== null
+        ? ['--append-system-prompt', materialization.instructions.appendSystemPromptText]
+        : [],
+    requiredForContentGroup(manifest, 'claude.append-system-prompt-delivery'),
+    'claude.append-system-prompt-delivery',
+  );
+  const skillsDelivery = resolveContentGroupDelivery(
+    revision.skills.length > 0,
+    materialization.skills.failures,
+    () => (materialization.skills.pluginDirPath !== null ? ['--plugin-dir', materialization.skills.pluginDirPath] : []),
+    requiredForContentGroup(manifest, 'claude.plugin-dir-delivery'),
+    'claude.plugin-dir-delivery',
+  );
+  // `[Story 4.5b]` `--strict-mcp-config` here duplicates the static flag
+  // `adapter-plan.ts`'s `CAPABILITY_ARGV_MAP` already contributes for
+  // `claude.mcp-project-scope-control` whenever that capability is relevant
+  // (mcp non-empty) and supported/degraded -- which is guaranteed true by
+  // the time this branch can even be reached (a `required`, relevant
+  // capability that were `unsupported`/`unknown` would already have blocked
+  // manifest compilation). Passing a boolean flag twice is harmless (last
+  // value wins / idempotent), and AD-21's own Rule literally describes
+  // `--mcp-config <path> --strict-mcp-config` as one atomic delivery pair,
+  // so this is kept self-contained rather than relying on the static argv's
+  // separately-computed contribution. Currently unreachable with real
+  // `.cap/` data (both real profiles have empty `mcp`) -- same "path not yet
+  // reachable, still correctly implemented" status the spec calls out.
+  const mcpDelivery = resolveContentGroupDelivery(
+    revision.mcp.length > 0,
+    materialization.mcp.failures,
+    () =>
+      materialization.mcp.mcpConfigPath !== null
+        ? ['--mcp-config', materialization.mcp.mcpConfigPath, '--strict-mcp-config']
+        : [],
+    requiredForContentGroup(manifest, 'claude.mcp-project-scope-control'),
+    'claude.mcp-project-scope-control',
+  );
+
+  // `[Story 4.5b]` Collect *every* blocked content group, not just the first
+  // -- mirrors the `manifestResult.kind === 'blocked'` branch above, which
+  // lists all of `missingRequiredCapabilities` rather than a single one.
+  // Multiple groups can legitimately fail to materialize simultaneously
+  // (e.g. both Instructions and Skills reference unreadable `sourceRef`s),
+  // and every one of them belongs in the failure reason / `affectedCapabilities`.
+  const blockedDeliveries = [instructionsDelivery.blocked, skillsDelivery.blocked, mcpDelivery.blocked].filter(
+    (blocked): blocked is { readonly capabilityId: string; readonly reason: string } => blocked !== null,
+  );
+  if (blockedDeliveries.length > 0) {
+    plan = applyFailure(
+      plan,
+      `content-materialization-blocked: ${blockedDeliveries.map((blocked) => blocked.reason).join('; ')}`,
+    );
+    await deps.launchPlanRepository.save(plan);
+    return outcomeFor(
+      plan,
+      'planned',
+      manifest,
+      adapterPlan,
+      blockedDeliveries.map((blocked) => blocked.capabilityId),
+      '确认对应内容（Instructions/Skills/MCP）的来源路径存在且可读后重试，或改用不引用该内容的配置修订',
+    );
+  }
+
+  const dynamicContentArgv = [...instructionsDelivery.argv, ...skillsDelivery.argv, ...mcpDelivery.argv];
+  const dynamicContentCapabilityIds = [
+    ...(instructionsDelivery.argv.length > 0 ? ['claude.append-system-prompt-delivery'] : []),
+    ...(skillsDelivery.argv.length > 0 ? ['claude.plugin-dir-delivery'] : []),
+    ...(mcpDelivery.argv.length > 0 ? ['claude.mcp-project-scope-control'] : []),
+  ];
+  const finalArgv = [...adapterPlan.argv, ...dynamicContentArgv];
+
+  const knownDifferences = computeClaudeKnownDifferences(revision, manifest, materialization);
+  const applyResult: 'applied' | 'degraded' = knownDifferences.length === 0 && manifest.manifestStatus === 'ready' ? 'applied' : 'degraded';
 
   await deps.claudeLaunchContextWriter.write({
     version: 1,
@@ -421,7 +573,7 @@ export async function launchClaudeFresh(
   try {
     params.onSpawning?.();
     spawnResult = await deps.claudeProcessPort.spawn({
-      argv: adapterPlan.argv,
+      argv: finalArgv,
       env: { CLAUDE_CONFIG_DIR: invocationDir },
       cwd: invocationDir,
     });
@@ -433,7 +585,7 @@ export async function launchClaudeFresh(
       'planned',
       manifest,
       adapterPlan,
-      argvContributingCapabilityIds(manifest.capabilityPolicy),
+      [...argvContributingCapabilityIds(manifest.capabilityPolicy), ...dynamicContentCapabilityIds],
       '确认 claude 二进制已安装并可从 PATH 直接执行后重试',
     );
   }
@@ -455,7 +607,7 @@ export async function launchClaudeFresh(
 
   const isFailureOutcome = outcome.outcome === 'failed' || outcome.outcome === 'incomplete';
   const affectedCapabilities = isFailureOutcome
-    ? argvContributingCapabilityIds(manifest.capabilityPolicy)
+    ? [...argvContributingCapabilityIds(manifest.capabilityPolicy), ...dynamicContentCapabilityIds]
     : manifest.degradedCapabilities;
   const recoveryAction =
     outcome.outcome === 'failed'

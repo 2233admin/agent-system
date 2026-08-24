@@ -85,18 +85,30 @@ interface CapabilityRelevanceRule {
 
 /**
  * `claude.permission-mode-control` is always relevant (baseline -- every
- * assembly is bound by a permission mode); the other three are only
- * relevant when the assembly intent actually references the corresponding
- * asset kind. `claude.hook-deny-return-value` is `required: false` on every
- * probe result (Story 4.1) but is still only *evaluated* when hooks are
- * referenced at all -- an assembly with no hooks must never be penalized
- * for an unrelated capability's status.
+ * assembly is bound by a permission mode); the rest are only relevant when
+ * the assembly intent actually references the corresponding asset kind.
+ * `claude.hook-deny-return-value` is `required: false` on every probe result
+ * (Story 4.1) but is still only *evaluated* when hooks are referenced at
+ * all -- an assembly with no hooks must never be penalized for an unrelated
+ * capability's status.
+ *
+ * `[Story 4.5b]` `claude.plugin-dir-delivery`/`claude.append-system-prompt-
+ * delivery` are AD-21's content-materialization delivery gates: relevant
+ * exactly when the assembly intent references skills/instructions (the
+ * groups those two flags respectively deliver), `required: true` on every
+ * probe result (Story 4.5b), so an environment that genuinely cannot accept
+ * `--plugin-dir`/`--append-system-prompt` blocks manifest compilation here
+ * -- before `application/claude-launch.ts` ever attempts real content
+ * materialization -- exactly like every other required capability already
+ * does.
  */
 const CAPABILITY_RELEVANCE_RULES: readonly CapabilityRelevanceRule[] = [
   { capabilityId: 'claude.permission-mode-control', isRelevant: () => true },
   { capabilityId: 'claude.mcp-project-scope-control', isRelevant: (revision) => revision.mcp.length > 0 },
   { capabilityId: 'claude.setting-sources-control', isRelevant: (revision) => revision.skills.length > 0 },
   { capabilityId: 'claude.hook-deny-return-value', isRelevant: (revision) => revision.hooks.length > 0 },
+  { capabilityId: 'claude.plugin-dir-delivery', isRelevant: (revision) => revision.skills.length > 0 },
+  { capabilityId: 'claude.append-system-prompt-delivery', isRelevant: (revision) => revision.instructions.length > 0 },
 ];
 
 /**

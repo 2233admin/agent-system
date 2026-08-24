@@ -1,4 +1,7 @@
-import { describe, expect, test } from 'bun:test';
+import { afterEach, describe, expect, test } from 'bun:test';
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 
 import {
   computeClaudeKnownDifferences,
@@ -26,15 +29,30 @@ import type {
   LaunchPlanRepository,
 } from '../../src/application/ports';
 
-function ref(kind: CapabilityReference['kind'], name: string): CapabilityReference {
+function ref(kind: CapabilityReference['kind'], name: string, sourceRef: CapabilityReference['sourceRef'] = known(`ref/${name}`)): CapabilityReference {
   return {
     kind,
     name,
     sourceCategory: known('project-capability'),
     summary: known(`${kind}: ${name}`),
-    sourceRef: known(`ref/${name}`),
+    sourceRef,
     contentFingerprint: known(`fingerprint/${name}`),
   };
+}
+
+/** Tracks tmp dirs created by individual tests below so they always get cleaned up, even on failure. */
+const tmpDirsToClean: string[] = [];
+afterEach(() => {
+  while (tmpDirsToClean.length > 0) {
+    const dir = tmpDirsToClean.pop()!;
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+function makeTmpDir(prefix: string): string {
+  const dir = mkdtempSync(path.join(os.tmpdir(), prefix));
+  tmpDirsToClean.push(dir);
+  return dir;
 }
 
 function revision(overrides: Partial<StableConfigRevision> & { configName: string; revisionId: string }): StableConfigRevision {
@@ -73,6 +91,9 @@ function allSupportedProbeResults(overrides: Partial<Record<string, Partial<Clau
     probeResult({ capabilityId: 'claude.mcp-project-scope-control', required: true, status: 'supported' }),
     probeResult({ capabilityId: 'claude.setting-sources-control', required: true, status: 'supported' }),
     probeResult({ capabilityId: 'claude.hook-deny-return-value', required: false, status: 'unknown' }),
+    // `[Story 4.5b]` AD-21's content-materialization delivery gates.
+    probeResult({ capabilityId: 'claude.plugin-dir-delivery', required: true, status: 'supported' }),
+    probeResult({ capabilityId: 'claude.append-system-prompt-delivery', required: true, status: 'supported' }),
   ];
   return base.map((result) => ({ ...result, ...(overrides[result.capabilityId] ?? {}) }));
 }
@@ -160,22 +181,39 @@ class FakeClaudeInvocationDirPort implements ClaudeInvocationDirPort {
   prepareError: Error | null = null;
   readonly requestedOperationIds: string[] = [];
 
+  /**
+   * `[Story 4.5b]` When `realBaseDir` is `null` (the default, used by every
+   * pre-existing test), `prepare` returns a placeholder path that is never
+   * dereferenced on the real filesystem -- safe as long as the revision
+   * under test has no non-empty instructions/skills/mcp group (AD-21's
+   * `materializeClaudeContent` only ever touches the filesystem for a
+   * non-empty group with at least one resolvable reference). Tests that
+   * exercise real content materialization pass a real, `mkdtemp`-created
+   * `realBaseDir` instead.
+   */
+  constructor(private readonly realBaseDir: string | null = null) {}
+
   async prepare(operationId: string): Promise<string> {
     this.requestedOperationIds.push(operationId);
     if (this.prepareError !== null) {
       throw this.prepareError;
     }
+    if (this.realBaseDir !== null) {
+      const dir = path.join(this.realBaseDir, operationId);
+      mkdirSync(dir, { recursive: true });
+      return dir;
+    }
     return `/fake/claude-invocations/${operationId}`;
   }
 }
 
-function buildDeps() {
+function buildDeps(options: { readonly realInvocationBaseDir?: string } = {}) {
   const configRepository = new FakeConfigRevisionRepository();
   const launchPlanRepository = new FakeLaunchPlanRepository();
   const claudeProcessPort = new FakeClaudeProcessPort();
   const claudeCapabilityProbe = new FakeClaudeCapabilityProbe();
   const claudeLaunchContextWriter = new FakeClaudeLaunchContextWriter();
-  const claudeInvocationDirPort = new FakeClaudeInvocationDirPort();
+  const claudeInvocationDirPort = new FakeClaudeInvocationDirPort(options.realInvocationBaseDir ?? null);
   const deps: LaunchClaudeFreshDeps = {
     configRepository,
     launchPlanRepository,
@@ -248,16 +286,13 @@ describe('launchClaudeFresh', () => {
     expect(phasesSaved.indexOf('observing')).toBeLessThan(phasesSaved.indexOf('succeeded'));
   });
 
-  test('AC1 内容未物化: non-empty instructions/skills/mcp/hooks/plugins -> degraded with typed knownDifferences', async () => {
+  test('[Story 4.5b] AC1 hooks/plugins 仍如实报告未物化差异（AD-21 明确不覆盖，Never 边界）: degraded with typed knownDifferences', async () => {
     const { deps, configRepository, claudeLaunchContextWriter } = buildDeps();
     const rev = revision({
       configName: 'general',
       revisionId: 'rev-1',
-      instructions: [ref('instruction', 'i1')],
-      mcp: [ref('mcp', 'm1')],
       hooks: [ref('hook', 'h1')],
       plugins: [ref('plugin', 'p1')],
-      skills: [ref('skill', 's1')],
     });
     const confirmed = await preparedAndConfirmed(deps, configRepository, rev);
 
@@ -265,11 +300,172 @@ describe('launchClaudeFresh', () => {
 
     expect(outcome.plan.phase).toBe('degraded');
     const differences = claudeLaunchContextWriter.written[0]!.knownDifferences;
-    expect(differences).toContain('instructions-content-not-materialized-in-fresh-launch');
-    expect(differences).toContain('skills-content-not-materialized-in-fresh-launch');
-    expect(differences).toContain('mcp-content-not-materialized-in-fresh-launch');
     expect(differences).toContain('hooks-content-not-materialized-in-fresh-launch');
     expect(differences).toContain('plugins-content-not-materialized-in-fresh-launch');
+    // Neither instructions/skills/mcp is referenced in this scenario, so none of
+    // those three known-difference labels should appear.
+    expect(differences).not.toContain('instructions-content-not-materialized-in-fresh-launch');
+    expect(differences).not.toContain('skills-content-not-materialized-in-fresh-launch');
+    expect(differences).not.toContain('mcp-content-not-materialized-in-fresh-launch');
+  });
+
+  test('[Story 4.5b] AC1 内容真实物化成功: instructions/skills 的真实内容被读出并交付, 不再报告"未物化"差异', async () => {
+    const sourceDir = makeTmpDir('control-plane-claude-launch-materialize-src-');
+    const invocationBaseDir = makeTmpDir('control-plane-claude-launch-materialize-inv-');
+    const promptPath = path.join(sourceDir, 'general.md');
+    writeFileSync(promptPath, 'Be a helpful general-purpose assistant.', 'utf8');
+    const skillDir = path.join(sourceDir, 'skills', 'openspec-explore');
+    mkdirSync(skillDir, { recursive: true });
+    writeFileSync(path.join(skillDir, 'SKILL.md'), '# openspec-explore\n\nExplore the spec.', 'utf8');
+
+    const { deps, configRepository, claudeLaunchContextWriter, claudeProcessPort } = buildDeps({ realInvocationBaseDir: invocationBaseDir });
+    const rev = revision({
+      configName: 'general',
+      revisionId: 'rev-1',
+      instructions: [ref('instruction', 'general.md', known(promptPath))],
+      skills: [ref('skill', 'openspec-explore', known(skillDir))],
+    });
+    const confirmed = await preparedAndConfirmed(deps, configRepository, rev);
+
+    const outcome = await launchClaudeFresh(deps, { planId: confirmed.planId });
+
+    expect(outcome.plan.phase).toBe('succeeded');
+    const differences = claudeLaunchContextWriter.written[0]!.knownDifferences;
+    expect(differences).toEqual([]);
+    expect(claudeLaunchContextWriter.written[0]!.applyResult).toBe('applied');
+
+    const argv = claudeProcessPort.lastSpawnParams!.argv;
+    expect(argv).toContain('--permission-mode');
+    const appendIndex = argv.indexOf('--append-system-prompt');
+    expect(appendIndex).toBeGreaterThanOrEqual(0);
+    expect(argv[appendIndex + 1]).toBe('Be a helpful general-purpose assistant.');
+    const pluginDirIndex = argv.indexOf('--plugin-dir');
+    expect(pluginDirIndex).toBeGreaterThanOrEqual(0);
+    const pluginDirPath = argv[pluginDirIndex + 1]!;
+    expect(pluginDirPath.endsWith(path.join('materialized', 'plugin'))).toBe(true);
+  });
+
+  test('[Story 4.5b] AC1 必需内容物化失败（sourceRef 不可解析）: spawn 前 fail closed，不产生部分物化后仍 spawn 的中间态', async () => {
+    const { deps, configRepository, claudeProcessPort } = buildDeps();
+    const rev = revision({
+      configName: 'general',
+      revisionId: 'rev-1',
+      skills: [ref('skill', 'ghost-skill', unknown('not-captured-by-cap-fs-adapter', '2026-01-01T00:00:00Z'))],
+    });
+    const confirmed = await preparedAndConfirmed(deps, configRepository, rev);
+
+    const outcome = await launchClaudeFresh(deps, { planId: confirmed.planId });
+
+    expect(outcome.plan.phase).toBe('failed');
+    expect(isKnown(outcome.plan.failureReason) && outcome.plan.failureReason.value).toContain('content-materialization-blocked');
+    expect(isKnown(outcome.plan.failureReason) && outcome.plan.failureReason.value).toContain('claude.plugin-dir-delivery');
+    expect(outcome.affectedCapabilities).toEqual(['claude.plugin-dir-delivery']);
+    expect(outcome.recoveryAction).not.toBeNull();
+    // Never spawn once a required content group fails to materialize.
+    expect(claudeProcessPort.lastSpawnParams).toBeNull();
+  });
+
+  test('[Story 4.5b] AC1 必需 MCP 内容物化失败（cap-fs.ts 今天恒定的 Unknown sourceRef）: spawn 前 fail closed', async () => {
+    const { deps, configRepository, claudeProcessPort } = buildDeps();
+    const rev = revision({
+      configName: 'general',
+      revisionId: 'rev-1',
+      mcp: [ref('mcp', 'some-mcp', unknown('not-captured-by-cap-fs-adapter', '2026-01-01T00:00:00Z'))],
+    });
+    const confirmed = await preparedAndConfirmed(deps, configRepository, rev);
+
+    const outcome = await launchClaudeFresh(deps, { planId: confirmed.planId });
+
+    expect(outcome.plan.phase).toBe('failed');
+    expect(isKnown(outcome.plan.failureReason) && outcome.plan.failureReason.value).toContain('content-materialization-blocked');
+    expect(isKnown(outcome.plan.failureReason) && outcome.plan.failureReason.value).toContain('claude.mcp-project-scope-control');
+    expect(outcome.affectedCapabilities).toEqual(['claude.mcp-project-scope-control']);
+    expect(claudeProcessPort.lastSpawnParams).toBeNull();
+  });
+
+  test('[Story 4.5b][patch] AC1 多个必需内容组同时物化失败: 全部被报告，而不仅是第一个', async () => {
+    const { deps, configRepository, claudeProcessPort } = buildDeps();
+    const rev = revision({
+      configName: 'general',
+      revisionId: 'rev-1',
+      skills: [ref('skill', 'ghost-skill', unknown('not-captured-by-cap-fs-adapter', '2026-01-01T00:00:00Z'))],
+      mcp: [ref('mcp', 'ghost-mcp', unknown('not-captured-by-cap-fs-adapter', '2026-01-01T00:00:00Z'))],
+    });
+    const confirmed = await preparedAndConfirmed(deps, configRepository, rev);
+
+    const outcome = await launchClaudeFresh(deps, { planId: confirmed.planId });
+
+    expect(outcome.plan.phase).toBe('failed');
+    const reason = isKnown(outcome.plan.failureReason) ? outcome.plan.failureReason.value : '';
+    expect(reason).toContain('claude.plugin-dir-delivery');
+    expect(reason).toContain('claude.mcp-project-scope-control');
+    expect([...outcome.affectedCapabilities].sort()).toEqual(
+      ['claude.mcp-project-scope-control', 'claude.plugin-dir-delivery'].sort(),
+    );
+    expect(claudeProcessPort.lastSpawnParams).toBeNull();
+  });
+
+  test('[Story 4.5b][patch] 真实物化成功后宿主拒绝启动（非零退出码）: affectedCapabilities 含真正被交付的内容 capabilityId', async () => {
+    const sourceDir = makeTmpDir('control-plane-claude-launch-materialize-fail-src-');
+    const invocationBaseDir = makeTmpDir('control-plane-claude-launch-materialize-fail-inv-');
+    const promptPath = path.join(sourceDir, 'general.md');
+    writeFileSync(promptPath, 'Be a helpful general-purpose assistant.', 'utf8');
+    const skillDir = path.join(sourceDir, 'skills', 'openspec-explore');
+    mkdirSync(skillDir, { recursive: true });
+    writeFileSync(path.join(skillDir, 'SKILL.md'), '# openspec-explore', 'utf8');
+
+    const { deps, configRepository, claudeProcessPort } = buildDeps({ realInvocationBaseDir: invocationBaseDir });
+    claudeProcessPort.spawnResult = { exitCode: 13, signal: null };
+    const rev = revision({
+      configName: 'general',
+      revisionId: 'rev-1',
+      instructions: [ref('instruction', 'general.md', known(promptPath))],
+      skills: [ref('skill', 'openspec-explore', known(skillDir))],
+    });
+    const confirmed = await preparedAndConfirmed(deps, configRepository, rev);
+
+    const outcome = await launchClaudeFresh(deps, { planId: confirmed.planId });
+
+    expect(outcome.plan.phase).toBe('failed');
+    // Content really was materialized and handed to `spawn()` (the argv
+    // genuinely carried it) -- the host then rejected the launch, so the
+    // capabilities that actually contributed real, delivered argv must be
+    // named, not just the static hard-control ones.
+    expect(claudeProcessPort.lastSpawnParams!.argv).toContain('--append-system-prompt');
+    expect(claudeProcessPort.lastSpawnParams!.argv).toContain('--plugin-dir');
+    expect([...outcome.affectedCapabilities].sort()).toEqual(
+      [
+        'claude.append-system-prompt-delivery',
+        'claude.permission-mode-control',
+        'claude.plugin-dir-delivery',
+        'claude.setting-sources-control',
+      ].sort(),
+    );
+  });
+
+  test('[Story 4.5b][patch] 真实物化成功后 spawn 抛出（二进制不可达）: affectedCapabilities 含真正被交付的内容 capabilityId', async () => {
+    const sourceDir = makeTmpDir('control-plane-claude-launch-materialize-throw-src-');
+    const invocationBaseDir = makeTmpDir('control-plane-claude-launch-materialize-throw-inv-');
+    const skillDir = path.join(sourceDir, 'skills', 'openspec-explore');
+    mkdirSync(skillDir, { recursive: true });
+    writeFileSync(path.join(skillDir, 'SKILL.md'), '# openspec-explore', 'utf8');
+
+    const { deps, configRepository, claudeProcessPort } = buildDeps({ realInvocationBaseDir: invocationBaseDir });
+    claudeProcessPort.spawnError = new Error('claude-binary-not-found');
+    const rev = revision({
+      configName: 'general',
+      revisionId: 'rev-1',
+      skills: [ref('skill', 'openspec-explore', known(skillDir))],
+    });
+    const confirmed = await preparedAndConfirmed(deps, configRepository, rev);
+
+    const outcome = await launchClaudeFresh(deps, { planId: confirmed.planId });
+
+    expect(outcome.plan.phase).toBe('failed');
+    expect(isKnown(outcome.plan.failureReason) && outcome.plan.failureReason.value).toContain('spawn-process');
+    expect([...outcome.affectedCapabilities].sort()).toEqual(
+      ['claude.permission-mode-control', 'claude.plugin-dir-delivery', 'claude.setting-sources-control'].sort(),
+    );
   });
 
   test('AC2 必需能力不可达: capability-blocked -> failed before any spawn, missing capabilities + recovery action surfaced, no partial state', async () => {
@@ -487,8 +683,14 @@ describe('prepareClaudeAlreadyRunningLaunchPlan', () => {
 });
 
 describe('computeClaudeKnownDifferences', () => {
+  const emptyMaterialization = {
+    instructions: { appendSystemPromptText: null, failures: [] },
+    skills: { pluginDirPath: null, failures: [] },
+    mcp: { mcpConfigPath: null, failures: [] },
+  };
+
   test('empty revision + ready manifest -> no differences', async () => {
-    const { deps, configRepository, claudeCapabilityProbe } = buildDeps();
+    const { configRepository, claudeCapabilityProbe } = buildDeps();
     const rev = revision({ configName: 'general', revisionId: 'rev-1' });
     configRepository.add(rev);
     const { compileClaudeAssemblyManifest } = await import('../../src/adapters/clients/claude/assembly-manifest');
@@ -496,6 +698,110 @@ describe('computeClaudeKnownDifferences', () => {
     const manifestResult = compileClaudeAssemblyManifest(rev, results);
     if (manifestResult.kind !== 'compiled') throw new Error('expected compiled');
 
-    expect(computeClaudeKnownDifferences(rev, manifestResult.manifest)).toEqual([]);
+    expect(computeClaudeKnownDifferences(rev, manifestResult.manifest, emptyMaterialization)).toEqual([]);
+  });
+
+  test('[Story 4.5b] non-empty instructions/skills/mcp with zero materialization failures -> no differences (fully delivered)', async () => {
+    const { configRepository, claudeCapabilityProbe } = buildDeps();
+    const rev = revision({
+      configName: 'general',
+      revisionId: 'rev-1',
+      instructions: [ref('instruction', 'i1')],
+      skills: [ref('skill', 's1')],
+    });
+    configRepository.add(rev);
+    const { compileClaudeAssemblyManifest } = await import('../../src/adapters/clients/claude/assembly-manifest');
+    const results = await claudeCapabilityProbe.probeHardControlCapabilities();
+    const manifestResult = compileClaudeAssemblyManifest(rev, results);
+    if (manifestResult.kind !== 'compiled') throw new Error('expected compiled');
+
+    const fullyDeliveredMaterialization = {
+      instructions: { appendSystemPromptText: 'text', failures: [] },
+      skills: { pluginDirPath: '/fake/materialized/plugin', failures: [] },
+      mcp: { mcpConfigPath: null, failures: [] },
+    };
+
+    expect(computeClaudeKnownDifferences(rev, manifestResult.manifest, fullyDeliveredMaterialization)).toEqual([]);
+  });
+
+  test('[Story 4.5b] hooks/plugins always count as a difference when referenced, independent of materialization', async () => {
+    const { configRepository, claudeCapabilityProbe } = buildDeps();
+    const rev = revision({
+      configName: 'general',
+      revisionId: 'rev-1',
+      hooks: [ref('hook', 'h1')],
+      plugins: [ref('plugin', 'p1')],
+    });
+    configRepository.add(rev);
+    const { compileClaudeAssemblyManifest } = await import('../../src/adapters/clients/claude/assembly-manifest');
+    const results = await claudeCapabilityProbe.probeHardControlCapabilities();
+    const manifestResult = compileClaudeAssemblyManifest(rev, results);
+    if (manifestResult.kind !== 'compiled') throw new Error('expected compiled');
+
+    const differences = computeClaudeKnownDifferences(rev, manifestResult.manifest, emptyMaterialization);
+    expect(differences).toContain('hooks-content-not-materialized-in-fresh-launch');
+    expect(differences).toContain('plugins-content-not-materialized-in-fresh-launch');
+  });
+});
+
+describe('[Story 4.5b] launchClaudeFresh against the real repo .cap/ (AC1 evidence)', () => {
+  const CAP_ROOT = path.join(import.meta.dir, '..', '..', '..', '..', '.cap');
+
+  test('real "general" profile: final argv carries --plugin-dir (a real materialized plugin package) and --append-system-prompt (real prompt text); computeClaudeKnownDifferences no longer reports either as not-materialized', async () => {
+    if (Bun.which('claude') === null) {
+      console.warn('[Story 4.5b] claude 二进制在本环境不可达，跳过 launchClaudeFresh 对真实 .cap/ 的物化集成验证。');
+      return;
+    }
+
+    const { loadCapConfigRevisions } = await import('../../src/adapters/sources/cap-fs');
+    const { BunClaudeCapabilityProbe } = await import('../../src/adapters/clients/claude/capability-probe');
+    const { BunClaudeProcessPort } = await import('../../src/adapters/clients/claude/process-port');
+
+    const revisions = await loadCapConfigRevisions(CAP_ROOT);
+    const generalRevision = revisions.find((r) => r.configName === 'general')!;
+
+    const invocationBaseDir = makeTmpDir('control-plane-claude-launch-real-cap-inv-');
+    const configRepository = new FakeConfigRevisionRepository();
+    const launchPlanRepository = new FakeLaunchPlanRepository();
+    const claudeProcessPort = new FakeClaudeProcessPort();
+    const claudeLaunchContextWriter = new FakeClaudeLaunchContextWriter();
+    const claudeInvocationDirPort = new FakeClaudeInvocationDirPort(invocationBaseDir);
+    // Real probe evidence (not synthetic) drives `claudeCapabilityProbe`;
+    // `claudeProcessPort` stays a fake so this test never actually spawns a
+    // real interactive `claude` session.
+    const claudeCapabilityProbe = new BunClaudeCapabilityProbe(new BunClaudeProcessPort());
+    const deps: LaunchClaudeFreshDeps = {
+      configRepository,
+      launchPlanRepository,
+      claudeProcessPort,
+      claudeCapabilityProbe,
+      claudeLaunchContextWriter,
+      claudeInvocationDirPort,
+    };
+
+    configRepository.add(generalRevision);
+    const plan = await prepareClaudeFreshLaunchPlan(deps, { revisionId: generalRevision.revisionId });
+    const confirmed = await confirmLaunchPlan(deps, plan.planId);
+
+    const outcome = await launchClaudeFresh(deps, { planId: confirmed.planId });
+
+    // On this Story's own verified real-environment baseline, the real probe
+    // must find every AD-21-relevant capability supported -- a `failed`
+    // outcome here would mean a genuine regression, not an expected branch.
+    expect(['succeeded', 'degraded']).toContain(outcome.plan.phase);
+
+    const argv = claudeProcessPort.lastSpawnParams!.argv;
+    const pluginDirIndex = argv.indexOf('--plugin-dir');
+    expect(pluginDirIndex).toBeGreaterThanOrEqual(0);
+    const pluginDirPath = argv[pluginDirIndex + 1]!;
+    expect(existsSync(path.join(pluginDirPath, '.claude-plugin', 'plugin.json'))).toBe(true);
+
+    const appendIndex = argv.indexOf('--append-system-prompt');
+    expect(appendIndex).toBeGreaterThanOrEqual(0);
+    expect(argv[appendIndex + 1]!.length).toBeGreaterThan(0);
+
+    const differences = claudeLaunchContextWriter.written[0]!.knownDifferences;
+    expect(differences).not.toContain('instructions-content-not-materialized-in-fresh-launch');
+    expect(differences).not.toContain('skills-content-not-materialized-in-fresh-launch');
   });
 });

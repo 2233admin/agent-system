@@ -1,10 +1,12 @@
 import { describe, expect, test } from 'bun:test';
+import { existsSync, statSync } from 'node:fs';
 import path from 'node:path';
 
 import { loadCapConfigRevisions } from '../../src/adapters/sources/cap-fs';
 import { isKnown, isUnknown } from '../../src/domain/facts';
 
 const FIXTURE_ROOT = path.join(import.meta.dir, '..', 'fixtures', 'cap-sample');
+const CAP_ROOT = path.join(import.meta.dir, '..', '..', '..', '..', '.cap');
 
 describe('loadCapConfigRevisions (fixture, not the real repo .cap/)', () => {
   test('maps one StableConfigRevision per declared profile role', async () => {
@@ -90,5 +92,85 @@ describe('loadCapConfigRevisions (fixture, not the real repo .cap/)', () => {
     expect(reviewer.hooks).toEqual([]);
     expect(reviewer.plugins).toEqual([]);
     expect(reviewer.skills.map((s) => s.name)).not.toContain('review-checklist');
+  });
+
+  test('[Story 4.5b] a plain project skill\'s sourceRef resolves to capabilities/skills/<name> under capRoot; an imported skill\'s sourceRef resolves to lock.json\'s own declared source under repoRoot', async () => {
+    const revisions = await loadCapConfigRevisions(FIXTURE_ROOT);
+    const general = revisions.find((r) => r.configName === 'general')!;
+    const grilling = general.skills.find((s) => s.name === 'grilling')!;
+    const openspecExplore = general.skills.find((s) => s.name === 'openspec-explore')!;
+
+    expect(isKnown(openspecExplore.sourceRef) && openspecExplore.sourceRef.value).toBe(
+      path.join(FIXTURE_ROOT, 'capabilities', 'skills', 'openspec-explore'),
+    );
+    // `grilling` is declared in `project_skill_imports` with
+    // `source: "plugins/grilling/skills/grilling"` -- resolved against the
+    // directory `FIXTURE_ROOT` lives in (repoRoot), never against `FIXTURE_ROOT`
+    // itself, since imports live outside `.cap/`-equivalent roots.
+    expect(isKnown(grilling.sourceRef) && grilling.sourceRef.value).toBe(
+      path.join(path.dirname(FIXTURE_ROOT), 'plugins', 'grilling', 'skills', 'grilling'),
+    );
+  });
+
+  test('[Story 4.5b] mcp/hooks/plugins sourceRef stays honestly Unknown -- no real directory convention exists for them', async () => {
+    const revisions = await loadCapConfigRevisions(FIXTURE_ROOT);
+    const general = revisions.find((r) => r.configName === 'general')!;
+    // The fixture's `general` has no mcp/hooks/plugins references, so exercise
+    // the mapping function's honesty via the shared helper indirectly: any
+    // capability of kind other than 'skill'/'instruction' must stay Unknown.
+    for (const capabilityRef of [...general.mcp, ...general.hooks, ...general.plugins]) {
+      expect(isUnknown(capabilityRef.sourceRef)).toBe(true);
+    }
+  });
+});
+
+describe('loadCapConfigRevisions sourceRef against the real repo .cap/ (Story 4.5b AC evidence)', () => {
+  test('every skill reference\'s sourceRef resolves to a real, existing directory on disk', async () => {
+    const revisions = await loadCapConfigRevisions(CAP_ROOT);
+    expect(revisions.length).toBeGreaterThan(0);
+
+    for (const revision of revisions) {
+      for (const skill of revision.skills) {
+        expect(isKnown(skill.sourceRef)).toBe(true);
+        if (!isKnown(skill.sourceRef)) continue;
+        expect(existsSync(skill.sourceRef.value)).toBe(true);
+        expect(statSync(skill.sourceRef.value).isDirectory()).toBe(true);
+      }
+    }
+  });
+
+  test('every instruction reference\'s sourceRef resolves to a real, existing file on disk', async () => {
+    const revisions = await loadCapConfigRevisions(CAP_ROOT);
+    expect(revisions.length).toBeGreaterThan(0);
+
+    for (const revision of revisions) {
+      for (const instruction of revision.instructions) {
+        expect(isKnown(instruction.sourceRef)).toBe(true);
+        if (!isKnown(instruction.sourceRef)) continue;
+        expect(existsSync(instruction.sourceRef.value)).toBe(true);
+        expect(statSync(instruction.sourceRef.value).isFile()).toBe(true);
+      }
+    }
+  });
+
+  test('the real "general" profile\'s plain project skills resolve under .cap/capabilities/skills/<name>', async () => {
+    const revisions = await loadCapConfigRevisions(CAP_ROOT);
+    const general = revisions.find((r) => r.configName === 'general')!;
+    const openspecExplore = general.skills.find((s) => s.name === 'openspec-explore')!;
+
+    expect(isKnown(openspecExplore.sourceRef) && openspecExplore.sourceRef.value).toBe(
+      path.join(CAP_ROOT, 'capabilities', 'skills', 'openspec-explore'),
+    );
+  });
+
+  test('the real "agent-assembler" profile\'s imported "grilling" skill resolves to plugins/grilling/skills/grilling under the repo root', async () => {
+    const revisions = await loadCapConfigRevisions(CAP_ROOT);
+    const agentAssembler = revisions.find((r) => r.configName === 'agent-assembler')!;
+    const grilling = agentAssembler.skills.find((s) => s.name === 'grilling')!;
+
+    expect(isKnown(grilling.sourceCategory) && grilling.sourceCategory.value).toBe('project-skill-import');
+    expect(isKnown(grilling.sourceRef) && grilling.sourceRef.value).toBe(
+      path.join(path.dirname(CAP_ROOT), 'plugins', 'grilling', 'skills', 'grilling'),
+    );
   });
 });

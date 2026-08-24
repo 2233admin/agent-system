@@ -112,9 +112,18 @@ export function argvContributingCapabilityIds(capabilityPolicy: readonly ClaudeA
  * role; never its path (runtime/invocation-scoped, chosen at launch time by
  * `ClaudeInvocationDirPort`, never persisted here) or its content (AD-19:
  * persisted plans never carry real content, only metadata).
+ *
+ * `[Story 4.5b]` `'claude-plugin-dir' | 'append-system-prompt' | 'mcp-
+ * config'` name AD-21's three content-materialization outputs
+ * (`materialized/plugin`, the `--append-system-prompt` text, `materialized/
+ * mcp.json`) purely as declared intent -- whether the assembly references
+ * skills/instructions/mcp at all. Real materialization success/failure is a
+ * launch-time (`launchClaudeFresh`) concern, not a compile-time one: this
+ * type still carries no path or content, same as `'launch-context-
+ * diagnostic'` always has.
  */
 export interface ClaudeAdapterPlanGeneratedFile {
-  readonly purpose: 'launch-context-diagnostic';
+  readonly purpose: 'launch-context-diagnostic' | 'claude-plugin-dir' | 'append-system-prompt' | 'mcp-config';
 }
 
 /**
@@ -186,11 +195,23 @@ function computeClaudeAdapterPlanHash(
  * blocking condition at this stage -- fail-closed capability classification
  * already happened in `compileClaudeAssemblyManifest`); this function only
  * restructures already-resolved facts into the AD-19 launch shape.
+ *
+ * `[Story 4.5b]` `generatedFiles` now also declares AD-21's three content-
+ * materialization outputs whenever the manifest's own reference groups are
+ * non-empty -- declared intent only (no path/content, see
+ * `ClaudeAdapterPlanGeneratedFile`'s Design Notes); this stays zero-IO and
+ * still cannot fail: whether real materialization later succeeds is
+ * `launchClaudeFresh`'s runtime concern, not this compile step's.
  */
 export function compileClaudeAdapterPlan(manifest: ClaudeAssemblyManifest): ClaudeAdapterPlan {
   const argv = buildClaudeAdapterPlanArgv(manifest.capabilityPolicy);
   const envKeys = ['CLAUDE_CONFIG_DIR'];
-  const generatedFiles: readonly ClaudeAdapterPlanGeneratedFile[] = [{ purpose: 'launch-context-diagnostic' }];
+  const generatedFiles: readonly ClaudeAdapterPlanGeneratedFile[] = [
+    { purpose: 'launch-context-diagnostic' },
+    ...(manifest.skills.length > 0 ? [{ purpose: 'claude-plugin-dir' as const }] : []),
+    ...(manifest.instructions.length > 0 ? [{ purpose: 'append-system-prompt' as const }] : []),
+    ...(manifest.mcp.length > 0 ? [{ purpose: 'mcp-config' as const }] : []),
+  ];
   const launchTarget: ClaudeLaunchTarget = 'fresh';
   const planHash = computeClaudeAdapterPlanHash(manifest.manifestHash, launchTarget, argv, envKeys, generatedFiles);
 

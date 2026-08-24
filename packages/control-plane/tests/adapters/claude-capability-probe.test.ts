@@ -16,6 +16,10 @@ Options:
   --strict-mcp-config                   Only use MCP servers from --mcp-config,
                                         ignoring all other MCP configurations
   --include-hook-events                 Include all hook lifecycle events in the
+  --plugin-dir <path>                   Load a plugin from a directory or .zip
+                                        for this session only (repeatable)
+  --append-system-prompt <prompt>       Append a system prompt to the default
+                                        system prompt
 `;
 
 const REAL_MCP_ADD_HELP = `
@@ -64,7 +68,7 @@ describe('BunClaudeCapabilityProbe (fixture-driven interpretation)', () => {
     const probe = new BunClaudeCapabilityProbe(port);
     const results = await probe.probeHardControlCapabilities();
 
-    expect(results).toHaveLength(4);
+    expect(results).toHaveLength(6);
     for (const result of results) {
       expect(result.status).toBe('unknown');
       expect(result.evidenceRef.length).toBeGreaterThan(0);
@@ -85,12 +89,39 @@ describe('BunClaudeCapabilityProbe (fixture-driven interpretation)', () => {
     expect(byId(results, 'claude.mcp-project-scope-control').status).toBe('supported');
     expect(byId(results, 'claude.setting-sources-control').status).toBe('supported');
 
+    // `[Story 4.5b]` AD-21's content-materialization delivery gates: simple
+    // presence checks, supported once the flag genuinely appears in --help.
+    expect(byId(results, 'claude.plugin-dir-delivery').status).toBe('supported');
+    expect(byId(results, 'claude.append-system-prompt-delivery').status).toBe('supported');
+
     // The hook-deny example capability is never resolved above `unknown` by
     // this Story's probe -- a real controlled-integration observation
     // (Story 4.3/4.4) is required before it could ever become `supported`.
     const hookResult = byId(results, 'claude.hook-deny-return-value');
     expect(hookResult.status).toBe('unknown');
     expect(hookResult.required).toBe(false);
+  });
+
+  test('[Story 4.5b] plugin-dir/append-system-prompt flags absent from --help: unsupported, required, never a fabricated supported', async () => {
+    const helpWithoutDeliveryFlags = `
+  --setting-sources <sources>           Comma-separated list of setting sources
+                                        to load (user, project, local).
+`;
+    const port = new FakeClaudeProcessPort(
+      new Map<string, Fact<string>>([
+        ['', known(helpWithoutDeliveryFlags)],
+        ['mcp add', known(REAL_MCP_ADD_HELP)],
+      ]),
+    );
+    const probe = new BunClaudeCapabilityProbe(port);
+    const results = await probe.probeHardControlCapabilities();
+
+    const pluginDir = byId(results, 'claude.plugin-dir-delivery');
+    const appendPrompt = byId(results, 'claude.append-system-prompt-delivery');
+    expect(pluginDir.status).toBe('unsupported');
+    expect(pluginDir.required).toBe(true);
+    expect(appendPrompt.status).toBe('unsupported');
+    expect(appendPrompt.required).toBe(true);
   });
 
   test('permission-mode flag present but enum incomplete: degraded, not silently supported', async () => {
@@ -295,7 +326,7 @@ describe('BunClaudeCapabilityProbe (real environment)', () => {
     const probe = new BunClaudeCapabilityProbe(new BunClaudeProcessPort());
     const results = await probe.probeHardControlCapabilities();
 
-    expect(results).toHaveLength(4);
+    expect(results).toHaveLength(6);
     for (const result of results) {
       expect(['supported', 'degraded', 'unsupported', 'unknown']).toContain(result.status);
       expect(result.evidenceRef.length).toBeGreaterThan(0);
@@ -311,5 +342,18 @@ describe('BunClaudeCapabilityProbe (real environment)', () => {
         expect(result.status).toBe('unknown');
       }
     }
+  });
+
+  test('[Story 4.5b][patch] --plugin-dir/--append-system-prompt genuinely resolve to supported on this machine\'s real claude binary (AD-21\'s "must re-run probe, not reuse an old snapshot" requirement)', async () => {
+    if (Bun.which('claude') === null) {
+      console.warn('[Story 4.5b] claude 二进制在本环境不可达，跳过 claude.plugin-dir-delivery/claude.append-system-prompt-delivery 的真实 supported 断言。');
+      return;
+    }
+
+    const probe = new BunClaudeCapabilityProbe(new BunClaudeProcessPort());
+    const results = await probe.probeHardControlCapabilities();
+
+    expect(byId(results, 'claude.plugin-dir-delivery').status).toBe('supported');
+    expect(byId(results, 'claude.append-system-prompt-delivery').status).toBe('supported');
   });
 });

@@ -54,6 +54,9 @@ function allSupportedProbeResults(overrides: Partial<Record<string, Partial<Clau
     probeResult({ capabilityId: 'claude.mcp-project-scope-control', required: true, status: 'supported' }),
     probeResult({ capabilityId: 'claude.setting-sources-control', required: true, status: 'supported' }),
     probeResult({ capabilityId: 'claude.hook-deny-return-value', required: false, status: 'unknown' }),
+    // `[Story 4.5b]` AD-21's content-materialization delivery gates.
+    probeResult({ capabilityId: 'claude.plugin-dir-delivery', required: true, status: 'supported' }),
+    probeResult({ capabilityId: 'claude.append-system-prompt-delivery', required: true, status: 'supported' }),
   ];
   return base.map((result) => ({ ...result, ...(overrides[result.capabilityId] ?? {}) }));
 }
@@ -155,6 +158,31 @@ describe('compileClaudeAdapterPlan', () => {
     expect(plan.generatedFiles).toEqual([{ purpose: 'launch-context-diagnostic' }]);
     expect(plan.expectedObservation).toEqual({ launchTarget: 'fresh', maxObservationStage: 'observed', successExitCode: 0 });
     expect(plan.planHash.length).toBeGreaterThan(0);
+  });
+
+  test('[Story 4.5b][patch] generatedFiles declares claude-plugin-dir/append-system-prompt/mcp-config exactly when the corresponding manifest reference group is non-empty', () => {
+    const manifest = compiledManifest({
+      configName: 'general',
+      revisionId: 'rev-generated-files-all',
+      instructions: [ref('instruction', 'i')],
+      skills: [ref('skill', 's')],
+      mcp: [ref('mcp', 'm')],
+    });
+    const plan = compileClaudeAdapterPlan(manifest);
+
+    expect(plan.generatedFiles).toEqual([
+      { purpose: 'launch-context-diagnostic' },
+      { purpose: 'claude-plugin-dir' },
+      { purpose: 'append-system-prompt' },
+      { purpose: 'mcp-config' },
+    ]);
+  });
+
+  test('[Story 4.5b][patch] generatedFiles omits claude-plugin-dir/append-system-prompt/mcp-config when their reference group is empty', () => {
+    const manifest = compiledManifest({ configName: 'general', revisionId: 'rev-generated-files-skills-only', skills: [ref('skill', 's')] });
+    const plan = compileClaudeAdapterPlan(manifest);
+
+    expect(plan.generatedFiles).toEqual([{ purpose: 'launch-context-diagnostic' }, { purpose: 'claude-plugin-dir' }]);
   });
 
   test('argv reflects mcp + skills references when both are present and supported', () => {
