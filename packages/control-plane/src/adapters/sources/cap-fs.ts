@@ -1,10 +1,22 @@
 /**
- * Read-only adapter over `.cap/manifest.toml` + `.cap/profiles/*.toml` +
- * `.cap/lock.json`. This is NOT a product CLI capability -- per epics.md
- * AR16, "configuration supply" is out of this Story's scope. It exists
- * only to feed `scripts/seed-from-cap.ts` (developer-run, manual
- * verification) and test fixture generation. `configs list/show/compare`
- * never import from this module.
+ * Read-only adapter over a CAP-shaped directory: `manifest.toml` +
+ * `profiles/*.toml` + `lock.json` (the same shape the real repo `.cap/`
+ * directory used before Story 4.7 retired it). This is NOT a product CLI
+ * capability -- per epics.md AR16, "configuration supply" is out of this
+ * Story's scope. `configs list/show/compare` never import from this
+ * module; `configs establish`/`configs revise` (Story 3.1/3.2) are the
+ * supported non-interactive supply path.
+ *
+ * `[Story 4.7]` The real repo `.cap/` directory this loader originally read
+ * has been retired (see spec-4-7-退役-cap-本体.md) -- it no longer exists on
+ * disk in this repo. This module is kept because it is a generic,
+ * parameterized loader over the CAP-shaped directory layout, not something
+ * hardcoded to the (now-deleted) real `.cap/` path; it continues to be
+ * exercised against `tests/fixtures/cap-sample/`, an equivalently-shaped
+ * fixture directory, by `tests/adapters/cap-fs.test.ts` and other test
+ * files in this package. `scripts/seed-from-cap.ts`, the developer-run
+ * script that fed this loader with the real `.cap/` path, was deleted in
+ * the same Story for the same reason.
  *
  * It never reads prompt file *contents* -- only the path string declared
  * in the profile TOML -- and it never reads credentials.

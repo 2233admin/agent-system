@@ -1,8 +1,0 @@
-version = 3
-defaults = ".cap/project-defaults.toml"
-runtime = { omp = ".cap/runtime/omp.toml", claude = ".cap/runtime/claude.toml" }
-skill_imports = ".cap/skill-imports.toml"
-
-[profiles]
-general = ".cap/profiles/general.toml"
-agent-assembler = ".cap/profiles/agent-assembler.toml"

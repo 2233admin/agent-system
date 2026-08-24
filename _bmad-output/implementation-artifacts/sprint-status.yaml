@@ -29,7 +29,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 # - Retrospective appends its action items to action_items; the status view surfaces open ones
 generated: 08-22-2026 00:00
-last_updated: 08-24-2026 12:00
+last_updated: 08-24-2026 19:00
 project: agent-system
 project_key: NOKEY
 tracking_system: file-system
@@ -59,7 +59,7 @@ development_status:
   4-5-cap-parity-验证与本仓自身切换: done
   4-5b-claude-adapter-内容物化能力: done
   4-6-configs-cli-的-claude-入口: done
-  4-7-退役-cap-本体: backlog
+  4-7-退役-cap-本体: done
   epic-4-retrospective: optional
 action_items:
   - id: "epic-1-retro-item-1-launchomp-packages-control-plane-src-app"
@@ -183,5 +183,18 @@ action_items:
       Story 4.6（退役 .cap/ 本体）继续被本条阻塞，不得在 AC2 解除前执行；只有当新 adapter 获得对
       already-running、非本产品拥有的会话做安全热更新的真实、已核实机制后，才能重新评估解除。"
     owner: "repo owner / 下一次 Epic 4 迭代"
-    status: open
+    status: done
     ref: "_bmad-output/implementation-artifacts/spec-4-5-cap-parity-验证与本仓自身切换.md"
+    note: >-
+      本条标记为 done，指的只是"本条描述的阻塞关系已解除"，不是"AC2（本仓自身切换）本身已经实现"——AC2 所指的能力
+      （把某个装配热更新进一个本产品不拥有的、已在运行的会话）依然没有实现，也不会再实现，因为下面这句解释了为什么它
+      不再需要实现。id 中的 "story-4-6" 是 2026-08-24 架构重新编号退役顺序（收窄为三步、终点顺延为 Story 4.7）之前
+      遗留的历史命名，按既定约定 id 保持稳定不改名；它不是对当前 Story 编号的主张，读到 "story-4-6" 时应理解为
+      "本条最初记录时、`.cap/` 退役本体那一步 Story 还叫 4.6"。本条的前提已被 2026-08-24 架构澄清取代：
+      `sprint-change-proposal-2026-08-24-cap-retirement-redesign.md` 与 ARCHITECTURE-SPINE.md AD-20 的 2026-08-24
+      澄清查明，"本仓自身切换"（AC2）指向的对象本就不存在——本仓自身这个交互式 Claude Code session 的 skills/CLAUDE.md
+      由 Claude Code 原生项目目录发现机制读取 git 跟踪文件，与 `.cap` 或本产品任何渲染/装配管线无关。`.cap/` 退役顺序
+      因此从四步收窄为三步，"本仓自身切换"整体从退役前置条件中移除，不再是 Story 4.7（原编号 Story 4.6，见
+      epic-4-context.md 的 2026-08-24 范围补全）的阻塞项。Story 4.7 已按新的三步顺序（落地新 adapter → 两 profile
+      真实烟雾 parity 验证 → 退役 `.cap/`）完成退役，未依赖、也未解除本条描述的 AC2 状态本身。
+    resolved_ref: "_bmad-output/implementation-artifacts/spec-4-7-退役-cap-本体.md"

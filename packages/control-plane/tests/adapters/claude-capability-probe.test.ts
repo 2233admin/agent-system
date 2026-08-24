@@ -356,4 +356,27 @@ describe('BunClaudeCapabilityProbe (real environment)', () => {
     expect(byId(results, 'claude.plugin-dir-delivery').status).toBe('supported');
     expect(byId(results, 'claude.append-system-prompt-delivery').status).toBe('supported');
   });
+
+  // `[Story 4.7][patch]` Restores the assertion strength `.cap/` retirement's
+  // deleted `claude-capability-probe-cap-parity.test.ts` used to provide for
+  // these three capabilities specifically resolving to `supported`/
+  // `degraded` (not merely one of the four enum values, which the test
+  // above already checks generically and which `unsupported` would also
+  // satisfy). This is a pure probe-parsing regression check against real
+  // `claude --help` output -- it has nothing to do with `.cap/`'s existence
+  // -- and mirrors the pattern immediately above for
+  // `plugin-dir-delivery`/`append-system-prompt-delivery`.
+  test('[Story 4.7][patch] permission-mode/mcp-scope/setting-sources genuinely resolve to supported or degraded (never unsupported/unknown) on this machine\'s real claude binary', async () => {
+    if (Bun.which('claude') === null) {
+      console.warn('[Story 4.7] claude 二进制在本环境不可达，跳过 permission-mode/mcp-scope/setting-sources 的真实 supported/degraded 断言。');
+      return;
+    }
+
+    const probe = new BunClaudeCapabilityProbe(new BunClaudeProcessPort());
+    const results = await probe.probeHardControlCapabilities();
+
+    expect(['supported', 'degraded']).toContain(byId(results, 'claude.permission-mode-control').status);
+    expect(['supported', 'degraded']).toContain(byId(results, 'claude.mcp-project-scope-control').status);
+    expect(['supported', 'degraded']).toContain(byId(results, 'claude.setting-sources-control').status);
+  });
 });

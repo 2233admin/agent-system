@@ -417,7 +417,11 @@ export class SqliteConfigRevisionRepository implements ConfigRevisionRepository 
 
   /**
    * Development-only seed helper (not part of the read-only port). Used by
-   * `scripts/seed-from-cap.ts` and tests to populate SQLite fixtures.
+   * tests to populate SQLite fixtures. `[Story 4.7]` Previously also used by
+   * `scripts/seed-from-cap.ts`, a developer-only script that seeded this
+   * repository from the real repo `.cap/` directory; that script was
+   * deleted when `.cap/` was retired (`configs establish`/`configs revise`,
+   * Story 3.1/3.2, are the supported non-interactive supply path now).
    * Replaces the full contents of both tables inside one transaction.
    */
   seed(revisions: readonly StableConfigRevision[]): void {

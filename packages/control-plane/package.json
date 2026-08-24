@@ -8,8 +8,7 @@
   },
   "scripts": {
     "test": "bun test",
-    "typecheck": "tsc --noEmit",
-    "seed": "bun scripts/seed-from-cap.ts"
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "ink": "^5.0.1",

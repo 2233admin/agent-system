@@ -1,12 +1,10 @@
 import { describe, expect, test } from 'bun:test';
-import { existsSync, statSync } from 'node:fs';
 import path from 'node:path';
 
 import { loadCapConfigRevisions } from '../../src/adapters/sources/cap-fs';
 import { isKnown, isUnknown } from '../../src/domain/facts';
 
 const FIXTURE_ROOT = path.join(import.meta.dir, '..', 'fixtures', 'cap-sample');
-const CAP_ROOT = path.join(import.meta.dir, '..', '..', '..', '..', '.cap');
 
 describe('loadCapConfigRevisions (fixture, not the real repo .cap/)', () => {
   test('maps one StableConfigRevision per declared profile role', async () => {
@@ -124,53 +122,16 @@ describe('loadCapConfigRevisions (fixture, not the real repo .cap/)', () => {
   });
 });
 
-describe('loadCapConfigRevisions sourceRef against the real repo .cap/ (Story 4.5b AC evidence)', () => {
-  test('every skill reference\'s sourceRef resolves to a real, existing directory on disk', async () => {
-    const revisions = await loadCapConfigRevisions(CAP_ROOT);
-    expect(revisions.length).toBeGreaterThan(0);
-
-    for (const revision of revisions) {
-      for (const skill of revision.skills) {
-        expect(isKnown(skill.sourceRef)).toBe(true);
-        if (!isKnown(skill.sourceRef)) continue;
-        expect(existsSync(skill.sourceRef.value)).toBe(true);
-        expect(statSync(skill.sourceRef.value).isDirectory()).toBe(true);
-      }
-    }
-  });
-
-  test('every instruction reference\'s sourceRef resolves to a real, existing file on disk', async () => {
-    const revisions = await loadCapConfigRevisions(CAP_ROOT);
-    expect(revisions.length).toBeGreaterThan(0);
-
-    for (const revision of revisions) {
-      for (const instruction of revision.instructions) {
-        expect(isKnown(instruction.sourceRef)).toBe(true);
-        if (!isKnown(instruction.sourceRef)) continue;
-        expect(existsSync(instruction.sourceRef.value)).toBe(true);
-        expect(statSync(instruction.sourceRef.value).isFile()).toBe(true);
-      }
-    }
-  });
-
-  test('the real "general" profile\'s plain project skills resolve under .cap/capabilities/skills/<name>', async () => {
-    const revisions = await loadCapConfigRevisions(CAP_ROOT);
-    const general = revisions.find((r) => r.configName === 'general')!;
-    const openspecExplore = general.skills.find((s) => s.name === 'openspec-explore')!;
-
-    expect(isKnown(openspecExplore.sourceRef) && openspecExplore.sourceRef.value).toBe(
-      path.join(CAP_ROOT, 'capabilities', 'skills', 'openspec-explore'),
-    );
-  });
-
-  test('the real "agent-assembler" profile\'s imported "grilling" skill resolves to plugins/grilling/skills/grilling under the repo root', async () => {
-    const revisions = await loadCapConfigRevisions(CAP_ROOT);
-    const agentAssembler = revisions.find((r) => r.configName === 'agent-assembler')!;
-    const grilling = agentAssembler.skills.find((s) => s.name === 'grilling')!;
-
-    expect(isKnown(grilling.sourceCategory) && grilling.sourceCategory.value).toBe('project-skill-import');
-    expect(isKnown(grilling.sourceRef) && grilling.sourceRef.value).toBe(
-      path.join(path.dirname(CAP_ROOT), 'plugins', 'grilling', 'skills', 'grilling'),
-    );
-  });
-});
+// `[Story 4.7]` The `describe('loadCapConfigRevisions sourceRef against the
+// real repo .cap/ (Story 4.5b AC evidence)', ...)` block that lived here
+// (Story 4.5b) asserted `sourceRef` resolution against the real repo `.cap/`
+// directory (both a plain project skill under `.cap/capabilities/skills/`
+// and the `agent-assembler` profile's imported "grilling" skill resolved
+// via `lock.json`'s `project_skill_imports`). `.cap/` was retired by
+// Story 4.7 once its real smoke-parity precondition was met (see
+// spec-4-7-退役-cap-本体.md's Auto Run Result for the captured evidence).
+// The same two `sourceRef`-resolution code paths (plain project skill vs.
+// lock.json-declared import) remain covered above against
+// `FIXTURE_ROOT` (`loadCapConfigRevisions (fixture, not the real repo
+// .cap/)`'s `'[Story 4.5b] a plain project skill's sourceRef resolves ...'`
+// test), which does not depend on `.cap/` existing on disk.

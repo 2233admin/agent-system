@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from 'bun:test';
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
@@ -744,64 +744,18 @@ describe('computeClaudeKnownDifferences', () => {
   });
 });
 
-describe('[Story 4.5b] launchClaudeFresh against the real repo .cap/ (AC1 evidence)', () => {
-  const CAP_ROOT = path.join(import.meta.dir, '..', '..', '..', '..', '.cap');
-
-  test('real "general" profile: final argv carries --plugin-dir (a real materialized plugin package) and --append-system-prompt (real prompt text); computeClaudeKnownDifferences no longer reports either as not-materialized', async () => {
-    if (Bun.which('claude') === null) {
-      console.warn('[Story 4.5b] claude 二进制在本环境不可达，跳过 launchClaudeFresh 对真实 .cap/ 的物化集成验证。');
-      return;
-    }
-
-    const { loadCapConfigRevisions } = await import('../../src/adapters/sources/cap-fs');
-    const { BunClaudeCapabilityProbe } = await import('../../src/adapters/clients/claude/capability-probe');
-    const { BunClaudeProcessPort } = await import('../../src/adapters/clients/claude/process-port');
-
-    const revisions = await loadCapConfigRevisions(CAP_ROOT);
-    const generalRevision = revisions.find((r) => r.configName === 'general')!;
-
-    const invocationBaseDir = makeTmpDir('control-plane-claude-launch-real-cap-inv-');
-    const configRepository = new FakeConfigRevisionRepository();
-    const launchPlanRepository = new FakeLaunchPlanRepository();
-    const claudeProcessPort = new FakeClaudeProcessPort();
-    const claudeLaunchContextWriter = new FakeClaudeLaunchContextWriter();
-    const claudeInvocationDirPort = new FakeClaudeInvocationDirPort(invocationBaseDir);
-    // Real probe evidence (not synthetic) drives `claudeCapabilityProbe`;
-    // `claudeProcessPort` stays a fake so this test never actually spawns a
-    // real interactive `claude` session.
-    const claudeCapabilityProbe = new BunClaudeCapabilityProbe(new BunClaudeProcessPort());
-    const deps: LaunchClaudeFreshDeps = {
-      configRepository,
-      launchPlanRepository,
-      claudeProcessPort,
-      claudeCapabilityProbe,
-      claudeLaunchContextWriter,
-      claudeInvocationDirPort,
-    };
-
-    configRepository.add(generalRevision);
-    const plan = await prepareClaudeFreshLaunchPlan(deps, { revisionId: generalRevision.revisionId });
-    const confirmed = await confirmLaunchPlan(deps, plan.planId);
-
-    const outcome = await launchClaudeFresh(deps, { planId: confirmed.planId });
-
-    // On this Story's own verified real-environment baseline, the real probe
-    // must find every AD-21-relevant capability supported -- a `failed`
-    // outcome here would mean a genuine regression, not an expected branch.
-    expect(['succeeded', 'degraded']).toContain(outcome.plan.phase);
-
-    const argv = claudeProcessPort.lastSpawnParams!.argv;
-    const pluginDirIndex = argv.indexOf('--plugin-dir');
-    expect(pluginDirIndex).toBeGreaterThanOrEqual(0);
-    const pluginDirPath = argv[pluginDirIndex + 1]!;
-    expect(existsSync(path.join(pluginDirPath, '.claude-plugin', 'plugin.json'))).toBe(true);
-
-    const appendIndex = argv.indexOf('--append-system-prompt');
-    expect(appendIndex).toBeGreaterThanOrEqual(0);
-    expect(argv[appendIndex + 1]!.length).toBeGreaterThan(0);
-
-    const differences = claudeLaunchContextWriter.written[0]!.knownDifferences;
-    expect(differences).not.toContain('instructions-content-not-materialized-in-fresh-launch');
-    expect(differences).not.toContain('skills-content-not-materialized-in-fresh-launch');
-  });
-});
+// `[Story 4.7]` The `describe('[Story 4.5b/4.7] launchClaudeFresh against
+// the real repo .cap/ (AC1 evidence)', ...)` block that lived here (Story
+// 4.5b, extended by Story 4.7 to cover both real profiles) ran
+// `launchClaudeFresh` against `loadCapConfigRevisions` output read from the
+// real repo `.cap/` directory for both `general` and `agent-assembler`,
+// asserting the final argv carried a real `--plugin-dir` (a real
+// materialized plugin package containing a `skills/<name>/` directory per
+// referenced skill) and a real `--append-system-prompt` text, with
+// `computeClaudeKnownDifferences` reporting neither as not-materialized.
+// `.cap/` was retired by Story 4.7 once this exact evidence was captured
+// for both profiles (see spec-4-7-退役-cap-本体.md's Auto Run Result for the
+// full captured results); the underlying content-materialization behavior
+// this block exercised remains covered above by this file's synthetic-
+// revision tests (e.g. "AC1 内容真实物化成功", "AC1 必需内容物化失败"),
+// which do not depend on `.cap/` existing on disk.

@@ -1,9 +1,7 @@
 import { describe, expect, test } from 'bun:test';
-import path from 'node:path';
 
 import { compileClaudeAssemblyManifest } from '../../src/adapters/clients/claude/assembly-manifest';
 import type { ClaudeAssemblyManifest } from '../../src/adapters/clients/claude/assembly-manifest';
-import { loadCapConfigRevisions } from '../../src/adapters/sources/cap-fs';
 import type { ClaudeCapabilityProbeResult } from '../../src/application/ports';
 import type { CapabilityReference, StableConfigRevision } from '../../src/domain/config';
 import { known } from '../../src/domain/facts';
@@ -318,43 +316,14 @@ describe('compileClaudeAssemblyManifest', () => {
   });
 });
 
-describe('compileClaudeAssemblyManifest against the real .cap/ (general, agent-assembler)', () => {
-  const CAP_ROOT = path.join(import.meta.dir, '..', '..', '..', '..', '.cap');
-
-  test('both real profiles compile to a ready manifest and produce a stable hash across two probe runs', async () => {
-    const revisions = await loadCapConfigRevisions(CAP_ROOT);
-    expect(revisions.map((r) => r.configName).sort()).toEqual(['agent-assembler', 'general']);
-
-    for (const rev of revisions) {
-      // Per Design Notes: both real profiles have empty mcp/hooks and
-      // non-empty skills/instructions, so permission-mode-control,
-      // setting-sources-control and (`[Story 4.5b]`) the two AD-21
-      // content-materialization delivery gates are relevant, and all are
-      // supported in a healthy real environment -- manifestStatus is
-      // expected to be 'ready'.
-      expect(rev.mcp).toEqual([]);
-      expect(rev.hooks).toEqual([]);
-      expect(rev.skills.length).toBeGreaterThan(0);
-      expect(rev.instructions.length).toBeGreaterThan(0);
-
-      const firstProbe = allSupportedProbeResults();
-      const secondProbe = firstProbe.map((result) => ({
-        ...result,
-        evidenceRef: `${result.evidenceRef} / real .cap run 2`,
-        observedAt: '2099-01-01T00:00:00Z',
-      }));
-
-      const firstManifest = expectCompiled(compileClaudeAssemblyManifest(rev, firstProbe));
-      const secondManifest = expectCompiled(compileClaudeAssemblyManifest(rev, secondProbe));
-
-      expect(firstManifest.manifestStatus).toBe('ready');
-      expect(firstManifest.capabilityPolicy.map((n) => n.capabilityId).sort()).toEqual([
-        'claude.append-system-prompt-delivery',
-        'claude.permission-mode-control',
-        'claude.plugin-dir-delivery',
-        'claude.setting-sources-control',
-      ]);
-      expect(secondManifest.manifestHash).toBe(firstManifest.manifestHash);
-    }
-  });
-});
+// `[Story 4.7]` The `describe('compileClaudeAssemblyManifest against the real
+// .cap/ (general, agent-assembler)', ...)` block that lived here (Story 4.5)
+// compiled `compileClaudeAssemblyManifest` against `loadCapConfigRevisions`
+// output read from the real repo `.cap/` directory. `.cap/` was retired by
+// Story 4.7 once its real smoke-parity precondition was met (see
+// spec-4-7-退役-cap-本体.md's Auto Run Result for the captured evidence and
+// the archived version of this block's final passing run); the manifest
+// compilation behavior it exercised (ready status, stable hash across two
+// probe runs, expected capabilityPolicy ids for a skills+instructions-only,
+// mcp/hooks-empty revision) remains covered above by this file's synthetic-
+// revision tests, which do not depend on `.cap/` existing on disk.
