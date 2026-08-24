@@ -205,6 +205,7 @@ function fakeFullDeps(): {
 class FakeTuiStdin extends EventEmitter {
   readonly isTTY = true;
   readonly events: string[] = [];
+  readonly rawModeCalls: boolean[] = [];
   resumeCallCount = 0;
   pauseCallCount = 0;
   private resumed = false;
@@ -240,7 +241,8 @@ class FakeTuiStdin extends EventEmitter {
     return this;
   }
 
-  setRawMode(_enabled: boolean): this {
+  setRawMode(enabled: boolean): this {
+    this.rawModeCalls.push(enabled);
     return this;
   }
 
@@ -612,11 +614,41 @@ describe('runTuiWithDeps orchestration (mocked deps + injected alt-screen/decisi
       expect(stdin.listenerCount('data')).toBe(1);
 
       stdin.pushInput(Buffer.from([0x03]));
+      await tui;
+      expect(stdin.rawModeCalls).toEqual([true, false]);
       expect(stdin.listenerCount('readable')).toBe(0);
       expect(stdin.listenerCount('data')).toBe(0);
       expect(stdin.pauseCallCount).toBe(1);
       expect(stdin.events[stdin.events.length - 1]).toBe('pause');
       expect(stdin.isPaused()).toBe(true);
+    } finally {
+      Object.defineProperty(process, 'stdin', { value: originalStdin, configurable: true });
+    }
+  });
+
+  test('re-arms Windows raw mode once when no input arrives after Ink subscribes', async () => {
+    if (process.platform !== 'win32') {
+      return;
+    }
+    const { deps, configRepository } = fakeFullDeps();
+    const stdin = new FakeTuiStdin();
+    const originalStdin = process.stdin;
+    Object.defineProperty(process, 'stdin', { value: stdin, configurable: true });
+
+    try {
+      const tui = runTuiWithDeps(deps, noAltScreen);
+      await flush();
+      await flush();
+      await new Promise((resolve) => setTimeout(resolve, 300));
+
+      const expectedBeforeQuit = process.platform === 'win32' ? [true, false, true] : [true];
+      const expectedAfterQuit = process.platform === 'win32' ? [true, false, true, false] : [true, false];
+      expect(stdin.rawModeCalls).toEqual(expectedBeforeQuit);
+      stdin.pushInput('q');
+      await tui;
+      expect(stdin.rawModeCalls).toEqual(expectedAfterQuit);
+      expect(stdin.listenerCount('data')).toBe(0);
+      expect(stdin.listenerCount('readable')).toBe(0);
     } finally {
       Object.defineProperty(process, 'stdin', { value: originalStdin, configurable: true });
     }
