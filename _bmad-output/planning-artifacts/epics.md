@@ -254,11 +254,11 @@ MVP-FR10：Epic 1 / Story 1.2 — OMP-only 与未来 adapter 边界。
 
 ## Epic 4：装配并激活 Claude Code 客户端
 
-用户可以让本产品把已存在的装配意图（Instructions/Skills/MCP 引用）交付给 Claude Code，边界是宿主原生可强制执行的权限/工具/MCP 硬控制，不是 prompt 文字软约束；交付方式复用 Architecture Spine AD-19 的窄端口（probe → plan → launch/resume → interpret）与 AD-20 的会话模型（fresh target 复用 OMP 同款单次确认生命周期，already-running session target 诚实返回 `requires-restart`），最终按固定四步顺序取代现有 `.cap/`。Codex CLI 因缺乏真实装配证据（`.cap/runtime/` 无 `codex.toml`）不在本 Epic 范围内，继续按 Architecture Spine AD-1 的 2026-08-23 澄清保持非目标。
+用户可以让本产品把已存在的装配意图（Instructions/Skills/MCP 引用）交付给 Claude Code，边界是宿主原生可强制执行的权限/工具/MCP 硬控制，不是 prompt 文字软约束；交付方式复用 Architecture Spine AD-19 的窄端口（probe → plan → launch/resume → interpret）与 AD-20 的会话模型（fresh target 复用 OMP 同款单次确认生命周期，already-running session target 诚实返回 `requires-restart`），最终按固定三步顺序取代现有 `.cap/`。Codex CLI 因缺乏真实装配证据（`.cap/runtime/` 无 `codex.toml`）不在本 Epic 范围内，继续按 Architecture Spine AD-1 的 2026-08-23 澄清保持非目标。
 
-**覆盖：** Architecture Spine AD-1（2026-08-23 澄清）、AD-19（MVP 边界更新）、AD-20（新增）；SPEC.md CAP-2/CAP-3/CAP-4 的 2026-08-23 MVP 归属更新；不覆盖 CAP-1（候选/推荐）、CAP-2 的建立/修订部分、CAP-4 的 ChangeAssessment、CAP-7（Bad Case 产品化）——这些对 Claude Code 同样不在 MVP，与 OMP 侧收窄口径一致。
+**覆盖：** Architecture Spine AD-1（2026-08-23 澄清）、AD-19（MVP 边界更新）、AD-20（新增，2026-08-24 修订）、AD-21（2026-08-24 新增，内容物化）；SPEC.md CAP-2/CAP-3/CAP-4 的 2026-08-23 MVP 归属更新；不覆盖 CAP-1（候选/推荐）、CAP-2 的建立/修订部分、CAP-4 的 ChangeAssessment、CAP-7（Bad Case 产品化）——这些对 Claude Code 同样不在 MVP，与 OMP 侧收窄口径一致。
 
-**实现与交互约束：** 新 adapter 落在 `packages/control-plane/src/adapters/clients/claude/`，复用既有 domain/application 层，不另起新包；不与 Epic 3（OMP 配置供应与装配）合并，不追求跨客户端配置或 Session 等价；不做候选/推荐、不做建立/修订工作流。`.cap/` 退役必须按 Architecture Spine"`.cap/` 退役顺序"小节的四步严格顺序执行（Story 4.1～4.2 对应"落地新 adapter"，4.3～4.4 对应验证 fresh/already-running 两条 target 路径，4.5 对应"parity 验证 + 本仓自身切换"，4.6 对应"退役 `.cap/` 本体"），不得先退役后设计替代，迁移期间本仓自身运行的 Claude Code session（包括当前维护本仓的这个 session）不得失去 skill/profile 装配能力。
+**实现与交互约束：** 新 adapter 落在 `packages/control-plane/src/adapters/clients/claude/`，复用既有 domain/application 层，不另起新包；不与 Epic 3（OMP 配置供应与装配）合并，不追求跨客户端配置或 Session 等价；不做候选/推荐、不做建立/修订工作流。`.cap/` 退役必须按 Architecture Spine"`.cap/` 退役顺序"小节（2026-08-24 收窄为三步）严格顺序执行（Story 4.1～4.4、4.5b、4.6 均对应"落地新 adapter"——probe/plan/launch/interpret、AD-21 内容物化、CLI 真实入口；Story 4.5 的 AC1 与 Story 4.7 的前置真实烟雾测试共同对应"parity 验证"；Story 4.7 对应"退役 `.cap/` 本体"），不得先退役后设计替代，迁移期间本仓自身运行的 Claude Code session（包括当前维护本仓的这个 session）不得失去 skill/profile 装配能力（2026-08-24 澄清：调查证明本仓自身 session 的装配与 `.cap` 无渲染管线关联，见 AD-20 的 2026-08-24 澄清，这条约束按原文保留但不再指向一个已知存在的切换动作）。
 
 （2026-08-23 Story 拆分，见 `sprint-change-proposal-2026-08-23-cap-claude-codex-adapter.md`）
 
@@ -405,13 +405,13 @@ MVP-FR10：Epic 1 / Story 1.2 — OMP-only 与未来 adapter 边界。
 我希望在确认新 adapter 已功能对等 `.cap` 后才移除 `.cap/`，
 以便 `.cap/` 的历史内容降级为证据参考而不是被仓促删除导致无法回溯。
 
-**实现需求：** Architecture Spine"`.cap/` 退役顺序"小节第 4 步（下一轮 `bmad-architecture` 需重写该小节的第 1～3 步，移除"本仓自身切换"这一步的现有表述）。
+**实现需求：** Architecture Spine"`.cap/` 退役顺序"小节第 3 步（2026-08-24 已收窄为三步，见该小节正文）。
 
 **Acceptance Criteria:**
 
 **Given** Story 4.5b（内容物化）与 Story 4.6（CLI 入口）均已完成，且新 adapter 的 fresh Claude 启动经真实烟雾测试验证——对 `general`、`agent-assembler` 两个 profile 交付的 Skills/Instructions/MCP 内容与 `cap use <role> --cli claude` 功能对等
 **When** 执行 `.cap/` 退役
-**Then** 移除 `.cap/` 目录，并把治理它的 openspec change（`v3-assembly-executor` 等）收敛为归档状态
+**Then** 移除 `.cap/` 目录，并把 `openspec/specs/` 下与 `.cap/` 直接相关的条目（`v3-assembly-executor` 已确认相关；`claude-runtime`、`cap-default-interactive-entry` 等其余条目是否相关由本 Story 实现时逐一核实）收敛为归档状态——这些是 `openspec/specs/` 下的现存 spec，不是 `openspec/changes/` 下待处理的 change
 **And** `.cap/` 历史内容降级为证据参考，不再作为任何当前需求或架构的权威来源，不早于上述前提验证稳定执行。
 
 **Given** Story 4.5b/4.6 尚未完成，或真实烟雾测试尚未验证功能对等
