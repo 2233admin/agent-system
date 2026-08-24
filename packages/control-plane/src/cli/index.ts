@@ -27,6 +27,7 @@ import { BunClaudeProcessPort } from '../adapters/clients/claude/process-port';
 import { BunClaudeCapabilityProbe } from '../adapters/clients/claude/capability-probe';
 import { compileClaudeAssemblyManifest } from '../adapters/clients/claude/assembly-manifest';
 import { FsClaudeInvocationDirPort } from '../adapters/system/claude-invocation-dir';
+import { FsClaudeContentMaterializer } from '../adapters/clients/claude/content-materializer';
 import type {
   ConfigRevisionRepository,
   LaunchPlanRepository,
@@ -34,6 +35,7 @@ import type {
   OmpProcessPort,
   LaunchContextWriter,
   ClaudeCapabilityProbePort,
+  ClaudeContentMaterializerPort,
   ClaudeInvocationDirPort,
   ClaudeLaunchContextWriter,
   ClaudeProcessPort,
@@ -439,6 +441,7 @@ export interface CliOverrides {
   readonly claudeCapabilityProbe?: ClaudeCapabilityProbePort;
   readonly claudeLaunchContextWriter?: ClaudeLaunchContextWriter;
   readonly claudeInvocationDirPort?: ClaudeInvocationDirPort;
+  readonly claudeContentMaterializer?: ClaudeContentMaterializerPort;
 }
 
 /**
@@ -468,6 +471,7 @@ export interface FullDeps extends LaunchDeps, LaunchClaudeFreshDeps {
   readonly claudeCapabilityProbe: ClaudeCapabilityProbePort;
   readonly claudeLaunchContextWriter: ClaudeLaunchContextWriter;
   readonly claudeInvocationDirPort: ClaudeInvocationDirPort;
+  readonly claudeContentMaterializer: ClaudeContentMaterializerPort;
 }
 
 /**
@@ -511,6 +515,7 @@ export async function openDeps(overrides: CliOverrides): Promise<FullDeps | null
     claudeCapabilityProbe: overrides.claudeCapabilityProbe ?? new BunClaudeCapabilityProbe(claudeProcessPort),
     claudeLaunchContextWriter: overrides.claudeLaunchContextWriter ?? new FsClaudeLaunchContextWriter(),
     claudeInvocationDirPort: overrides.claudeInvocationDirPort ?? new FsClaudeInvocationDirPort(),
+    claudeContentMaterializer: overrides.claudeContentMaterializer ?? new FsClaudeContentMaterializer(),
   };
 }
 

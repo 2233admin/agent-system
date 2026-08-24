@@ -8,15 +8,17 @@
  * -- but never routed through `resolveClientSupport`/`prepareLaunchPlan`/
  * `launchOmp` themselves. Two reasons:
  *
- *  1. `resolveClientSupport('claude-code')` is pinned by an existing OMP
- *     Story test (`tests/application/launch.test.ts`'s "不支持的客户端"
- *     case) as always returning `supported: false` for `claude-code` --
- *     that is OMP/the CLI's own existing product boundary (Story 4.1's
- *     `Never` boundary explicitly left `domain/client.ts` untouched for the
- *     same reason). Flipping it would regress that pinned test. This
- *     Story's own launch entrypoints are Claude-specific already (calling
+ *  1. `[Story 4.6]` `resolveClientSupport('claude-code')` now returns
+ *     `supported: true` (this file's own adapter, delivered across
+ *     Story 4.1~4.5b, is exactly what makes that true) -- but these
+ *     entrypoints still never route through it. This file's launch
+ *     entrypoints are Claude-specific already (calling
  *     `prepareClaudeFreshLaunchPlan` at all *is* the "this client is
- *     supported here" signal), so they never need that generic gate.
+ *     supported here" signal), so re-checking that generic gate here would
+ *     be redundant, not load-bearing. `tests/application/launch.test.ts`'s
+ *     "不支持的客户端" case now pins `codex-cli` instead (see
+ *     `tests/domain/client.test.ts` for the flipped `claude-code`
+ *     assertion).
  *  2. `launchOmp` is hardcoded to OMP's own ports/argv-building/skills-only
  *     assembly story; forking a small, explicit set of Claude-specific
  *     functions here (mirroring its structure, not its OMP-specific
@@ -53,12 +55,12 @@ import { argvContributingCapabilityIds, compileClaudeAdapterPlan, determineClaud
 import type { ClaudeAdapterPlan } from '../adapters/clients/claude/adapter-plan';
 import { compileClaudeAssemblyManifest } from '../adapters/clients/claude/assembly-manifest';
 import type { ClaudeAssemblyManifest } from '../adapters/clients/claude/assembly-manifest';
-import { materializeClaudeContent } from '../adapters/clients/claude/content-materializer';
 import type { ClaudeContentMaterializationResult, ClaudeMaterializationFailure } from '../adapters/clients/claude/content-materializer';
 import { InvalidTransitionError, LaunchPlanNotFoundError, type LaunchDeps } from './launch';
 import { ConfigNotFoundError, ConfigUnsupportedError, getConfigRevisionDetail } from './queries';
 import type {
   ClaudeCapabilityProbePort,
+  ClaudeContentMaterializerPort,
   ClaudeInvocationDirPort,
   ClaudeLaunchContextWriter,
   ClaudeProcessPort,
@@ -74,6 +76,8 @@ export interface LaunchClaudeFreshDeps extends LaunchDeps {
   readonly claudeCapabilityProbe: ClaudeCapabilityProbePort;
   readonly claudeLaunchContextWriter: ClaudeLaunchContextWriter;
   readonly claudeInvocationDirPort: ClaudeInvocationDirPort;
+  /** `[Epic 4 retro fix]` AD-21 content materialization, now behind the same kind of port every other real-IO collaborator here already uses. */
+  readonly claudeContentMaterializer: ClaudeContentMaterializerPort;
 }
 
 function generateId(prefix: string): string {
@@ -471,7 +475,7 @@ export async function launchClaudeFresh(
   // fallback to an unhandled rejection.
   let materialization: ClaudeContentMaterializationResult;
   try {
-    materialization = await materializeClaudeContent(revision, invocationDir);
+    materialization = await deps.claudeContentMaterializer.materialize(revision, invocationDir);
   } catch (error) {
     plan = applyFailure(plan, `content-materialization: ${(error as Error).message}`);
     await deps.launchPlanRepository.save(plan);

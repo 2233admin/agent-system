@@ -2,6 +2,7 @@ import type { Fact } from '../domain/facts';
 import type { StableConfigRevision, TriggerCategory } from '../domain/config';
 import type { ClientId } from '../domain/client';
 import type { LaunchPlan } from '../domain/activation';
+import type { ClaudeContentMaterializationResult } from '../adapters/clients/claude/content-materializer';
 
 /**
  * Read-only persistence port. Adapters implement this against whatever
@@ -384,6 +385,23 @@ export interface ClaudeLaunchContextWriter {
  */
 export interface ClaudeInvocationDirPort {
   prepare(operationId: string): Promise<string>;
+}
+
+/**
+ * `[Epic 4 retro fix]` AD-21's content materialization (real `fs` reads of
+ * `sourceRef`-resolved content, real writes under `<invocationDir>/
+ * materialized/`) as a port, matching every other real-IO collaborator
+ * `application/claude-launch.ts` depends on (`ClaudeProcessPort`,
+ * `ClaudeCapabilityProbePort`, `ClaudeLaunchContextWriter`,
+ * `ClaudeInvocationDirPort`) -- it was the one such collaborator called
+ * directly instead of through an injected port. `adapters/clients/claude/
+ * content-materializer.ts`'s `FsClaudeContentMaterializer` is the real
+ * implementation; its own free function (`materializeClaudeContent`) is
+ * kept as the narrow, independently-testable primitive this port's
+ * implementation wraps.
+ */
+export interface ClaudeContentMaterializerPort {
+  materialize(revision: StableConfigRevision, invocationDir: string): Promise<ClaudeContentMaterializationResult>;
 }
 
 /**

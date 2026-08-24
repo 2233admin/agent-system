@@ -121,9 +121,11 @@ async function readJson<T>(absPath: string): Promise<T> {
  * against `repoRoot` (the directory `capRoot` lives in), not `capRoot`
  * itself, since imports live outside `.cap/`. A plain project skill (not an
  * import) lives at the one real, already-verified convention
- * `.cap/capabilities/skills/<name>/` (Story 4.5's parity evidence; also see
- * this repo's own `.cap/capabilities/skills/*` directories). Never a
- * speculative third path shape.
+ * `.cap/capabilities/skills/<name>/` (Story 4.5's parity evidence, captured
+ * while this repo's own now-retired `.cap/capabilities/skills/*`
+ * directories -- see Story 4.7 -- still existed on disk; `tests/fixtures/
+ * cap-sample/` reproduces the same shape today). Never a speculative third
+ * path shape.
  */
 function resolveSkillSourceRef(
   name: string,

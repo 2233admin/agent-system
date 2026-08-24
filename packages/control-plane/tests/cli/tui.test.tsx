@@ -6,6 +6,7 @@ import { TuiApp, runAutoConfirmLaunch, runTuiWithDeps, type RunTuiHooks, type Tu
 import type { FullDeps } from '../../src/cli/index';
 import { t } from '../../src/cli/i18n';
 import { confirmLaunchPlan, prepareLaunchPlan } from '../../src/application/launch';
+import { FsClaudeContentMaterializer } from '../../src/adapters/clients/claude/content-materializer';
 import type { ClientId } from '../../src/domain/client';
 import type { LaunchPlan } from '../../src/domain/activation';
 import { known } from '../../src/domain/facts';
@@ -235,6 +236,7 @@ function fakeFullDeps(): {
   const claudeCapabilityProbe = new FakeClaudeCapabilityProbe();
   const claudeLaunchContextWriter = new FakeClaudeLaunchContextWriter();
   const claudeInvocationDirPort = new FakeClaudeInvocationDirPort();
+  const claudeContentMaterializer = new FsClaudeContentMaterializer();
   return {
     deps: {
       configRepository,
@@ -246,6 +248,7 @@ function fakeFullDeps(): {
       claudeCapabilityProbe,
       claudeLaunchContextWriter,
       claudeInvocationDirPort,
+      claudeContentMaterializer,
     },
     configRepository,
     launchPlanRepository,

@@ -11,6 +11,9 @@
  */
 export type ClientId = 'omp' | 'claude-code' | 'codex-cli';
 
+/** Every `ClientId` value, in the same fixed order as the type's declaration -- for callers that must enumerate all clients (e.g. a cross-client "most recent" lookup) without duplicating the literal list. */
+export const ALL_CLIENT_IDS: readonly ClientId[] = ['omp', 'claude-code', 'codex-cli'];
+
 export interface ClientSupport {
   readonly supported: boolean;
   /** Present iff `supported` is `false`. Never a placeholder/shim excuse. */

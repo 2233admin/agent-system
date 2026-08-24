@@ -10,6 +10,7 @@ import {
   prepareClaudeFreshLaunchPlan,
   type LaunchClaudeFreshDeps,
 } from '../../src/application/claude-launch';
+import { FsClaudeContentMaterializer } from '../../src/adapters/clients/claude/content-materializer';
 import { InvalidTransitionError, LaunchPlanNotFoundError, confirmLaunchPlan, rejectLaunchPlan } from '../../src/application/launch';
 import { transitionLaunchPlan } from '../../src/domain/activation';
 import type { ClientId } from '../../src/domain/client';
@@ -214,6 +215,7 @@ function buildDeps(options: { readonly realInvocationBaseDir?: string } = {}) {
   const claudeCapabilityProbe = new FakeClaudeCapabilityProbe();
   const claudeLaunchContextWriter = new FakeClaudeLaunchContextWriter();
   const claudeInvocationDirPort = new FakeClaudeInvocationDirPort(options.realInvocationBaseDir ?? null);
+  const claudeContentMaterializer = new FsClaudeContentMaterializer();
   const deps: LaunchClaudeFreshDeps = {
     configRepository,
     launchPlanRepository,
@@ -221,6 +223,7 @@ function buildDeps(options: { readonly realInvocationBaseDir?: string } = {}) {
     claudeCapabilityProbe,
     claudeLaunchContextWriter,
     claudeInvocationDirPort,
+    claudeContentMaterializer,
   };
   return { deps, configRepository, launchPlanRepository, claudeProcessPort, claudeCapabilityProbe, claudeLaunchContextWriter, claudeInvocationDirPort };
 }

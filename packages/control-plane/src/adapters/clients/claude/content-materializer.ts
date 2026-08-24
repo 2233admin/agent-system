@@ -222,3 +222,17 @@ export async function materializeClaudeContent(
   ]);
   return { instructions, skills, mcp };
 }
+
+/**
+ * `[Epic 4 retro fix]` Real `ClaudeContentMaterializerPort` implementation --
+ * a thin wrapper so `application/claude-launch.ts` depends on the port
+ * interface (`application/ports.ts`), not this module's free function
+ * directly. `materializeClaudeContent` itself stays the narrow, directly
+ * unit-tested primitive (`tests/adapters/claude-content-materializer.test.ts`
+ * is unaffected by this wrapper).
+ */
+export class FsClaudeContentMaterializer {
+  async materialize(revision: StableConfigRevision, invocationDir: string): Promise<ClaudeContentMaterializationResult> {
+    return materializeClaudeContent(revision, invocationDir);
+  }
+}
