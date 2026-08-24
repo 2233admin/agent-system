@@ -1,10 +1,11 @@
 import { createHash } from 'node:crypto';
-import { rename, writeFile } from 'node:fs/promises';
+import { rename } from 'node:fs/promises';
 
 import type { SelfUpdatePort } from '../../application/ports';
 import { resolveAssetName } from './asset-target';
 import { parseSha256Sums } from './checksum';
 import { isNewerVersion } from './version-compare';
+import { writeToSameDirTempFile } from '../system/atomic-write';
 
 /**
  * The one and only endpoint this adapter ever reads -- fixed, read-only
@@ -94,8 +95,7 @@ async function withTimeout<T>(timeoutMs: number, run: (signal: AbortSignal) => P
  * second" approach.
  */
 async function replaceBinary(execPath: string, currentVersion: string, bytes: Uint8Array): Promise<void> {
-  const tempPath = `${execPath}.download`;
-  await writeFile(tempPath, bytes, { mode: 0o755 });
+  const tempPath = await writeToSameDirTempFile(execPath, bytes, { mode: 0o755, tempSuffix: '.download' });
   const backupPath = `${execPath}.${currentVersion}.bak`;
   await rename(execPath, backupPath);
   await rename(tempPath, execPath);

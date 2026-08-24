@@ -192,6 +192,8 @@ class FakeClaudeInvocationDirPort implements ClaudeInvocationDirPort {
    * exercise real content materialization pass a real, `mkdtemp`-created
    * `realBaseDir` instead.
    */
+  readonly cleanedUp: string[] = [];
+
   constructor(private readonly realBaseDir: string | null = null) {}
 
   async prepare(operationId: string): Promise<string> {
@@ -205,6 +207,13 @@ class FakeClaudeInvocationDirPort implements ClaudeInvocationDirPort {
       return dir;
     }
     return `/fake/claude-invocations/${operationId}`;
+  }
+
+  async cleanup(invocationDir: string): Promise<void> {
+    this.cleanedUp.push(invocationDir);
+    if (this.realBaseDir !== null) {
+      rmSync(invocationDir, { recursive: true, force: true });
+    }
   }
 }
 

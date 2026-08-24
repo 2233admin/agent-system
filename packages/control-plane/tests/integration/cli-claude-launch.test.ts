@@ -126,12 +126,19 @@ class FakeClaudeLaunchContextWriter implements ClaudeLaunchContextWriter {
 }
 
 class FakeClaudeInvocationDirPort implements ClaudeInvocationDirPort {
+  readonly cleanedUp: string[] = [];
+
   constructor(private readonly baseDir: string) {}
 
   async prepare(operationId: string): Promise<string> {
     const dir = path.join(this.baseDir, operationId);
     mkdirSync(dir, { recursive: true });
     return dir;
+  }
+
+  async cleanup(invocationDir: string): Promise<void> {
+    this.cleanedUp.push(invocationDir);
+    rmSync(invocationDir, { recursive: true, force: true });
   }
 }
 

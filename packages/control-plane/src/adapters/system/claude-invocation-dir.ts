@@ -1,4 +1,4 @@
-import { mkdirSync } from 'node:fs';
+import { mkdirSync, rmSync } from 'node:fs';
 import path from 'node:path';
 
 import { defaultDbPath } from '../../cli/db-path';
@@ -27,5 +27,14 @@ export class FsClaudeInvocationDirPort implements ClaudeInvocationDirPort {
     const dir = path.join(claudeInvocationRootDir(), operationId);
     mkdirSync(dir, { recursive: true });
     return dir;
+  }
+
+  /** `[Epic 4 retro fix]` Best-effort per the port's contract -- a removal failure (e.g. a file still held open on Windows) is swallowed, never thrown. */
+  async cleanup(invocationDir: string): Promise<void> {
+    try {
+      rmSync(invocationDir, { recursive: true, force: true });
+    } catch {
+      // Intentionally swallowed -- see the port's Design Notes.
+    }
   }
 }

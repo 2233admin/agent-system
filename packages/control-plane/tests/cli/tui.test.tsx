@@ -216,6 +216,10 @@ class FakeClaudeInvocationDirPort implements ClaudeInvocationDirPort {
   async prepare(operationId: string): Promise<string> {
     return `/fake/claude-invocations/${operationId}`;
   }
+
+  async cleanup(): Promise<void> {
+    // No real filesystem behind this fake -- nothing to remove.
+  }
 }
 
 /** Builds a full, in-memory `FullDeps` bag for `runTuiWithDeps()` tests. */

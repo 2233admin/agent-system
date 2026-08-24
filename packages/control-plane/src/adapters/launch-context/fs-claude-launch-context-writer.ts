@@ -1,8 +1,8 @@
-import { mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 
 import { defaultDbPath } from '../../cli/db-path';
 import type { ClaudeLaunchContext, ClaudeLaunchContextWriter } from '../../application/ports';
+import { writeJsonLaunchContext } from './fs-json-context-writer';
 
 /**
  * `[Story 4.3]` Writes under the same state root the SQLite database lives
@@ -18,10 +18,6 @@ export function claudeLaunchContextDir(): string {
 
 export class FsClaudeLaunchContextWriter implements ClaudeLaunchContextWriter {
   async write(context: ClaudeLaunchContext): Promise<string> {
-    const dir = claudeLaunchContextDir();
-    mkdirSync(dir, { recursive: true });
-    const filePath = path.join(dir, `${context.planId}.json`);
-    writeFileSync(filePath, JSON.stringify(context, null, 2), 'utf8');
-    return filePath;
+    return writeJsonLaunchContext(claudeLaunchContextDir(), context.planId, context);
   }
 }

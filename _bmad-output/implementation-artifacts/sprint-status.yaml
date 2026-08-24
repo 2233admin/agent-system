@@ -29,7 +29,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 # - Retrospective appends its action items to action_items; the status view surfaces open ones
 generated: 08-22-2026 00:00
-last_updated: 08-24-2026 19:00
+last_updated: 08-24-2026 20:05
 project: agent-system
 project_key: NOKEY
 tracking_system: file-system
@@ -239,7 +239,7 @@ action_items:
       this epic's follow-up formally schedules it rather than re-disclosing it a fourth
       time."
     owner: "control-plane maintainer"
-    status: open
+    status: done
     ref: "_bmad-output/implementation-artifacts/epic-4-retro-2026-08-24.md"
   - id: "epic-4-retro-item-14-application-claude-launch-ts-calls-conte"
     epic: 4
@@ -296,5 +296,13 @@ action_items:
       design precedent but the code itself is not shared. Low-value, small candidate
       for a shared helper."
     owner: "control-plane maintainer"
-    status: open
+    status: done
     ref: "_bmad-output/implementation-artifacts/epic-4-retro-2026-08-24.md"
+  - id: "epic-4-retro-item-18-fslaunchcontextwriter-omp-adapters-launc"
+    epic: 4
+    action: "FsLaunchContextWriter（OMP，adapters/launch-context/fs-launch-context-writer.ts）与
+      FsClaudeLaunchContextWriter（Claude，adapters/launch-context/fs-claude-launch-context-writer.ts）近乎逐字重复（mkdir
+      + writeFileSync(JSON.stringify(...)) 四行体），且是 Epic 4 唯一一处没有注释解释为什么不共享的重复。"
+    owner: "control-plane maintainer"
+    status: done
+    ref: ""

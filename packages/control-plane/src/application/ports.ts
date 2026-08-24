@@ -385,6 +385,18 @@ export interface ClaudeLaunchContextWriter {
  */
 export interface ClaudeInvocationDirPort {
   prepare(operationId: string): Promise<string>;
+  /**
+   * `[Epic 4 retro fix]` Removes a previously-`prepare`d invocation
+   * directory (including any AD-21 `materialized/` content under it) once
+   * the launch it belonged to has reached a terminal state. Every real
+   * call site already holds a `spawn()` result (which only resolves after
+   * the child process has fully exited -- see `ClaudeProcessPort`'s Design
+   * Notes) or never spawned a process at all, so cleanup is always safe by
+   * the time it is called; never before. Best-effort and must never throw
+   * -- a cleanup failure (e.g. a file still locked by an unrelated process)
+   * must never mask or override the launch's real outcome.
+   */
+  cleanup(invocationDir: string): Promise<void>;
 }
 
 /**

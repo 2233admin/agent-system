@@ -15,15 +15,16 @@
  *
  * Content never enters SQLite, a projection, a receipt or this package's
  * persisted `ClaudeAdapterPlan` (AD-6/AD-19 unchanged) -- it only ever lives
- * inside this invocation-scoped directory, which is cleaned up alongside the
- * rest of the invocation directory once the launch reaches a terminal state
- * (AD-21; see that invocation-dir cleanup's own, still-open gap noted there).
+ * inside this invocation-scoped directory, which `launchClaudeFresh`
+ * (`application/claude-launch.ts`) removes via `ClaudeInvocationDirPort
+ * .cleanup` once the launch reaches a terminal state (AD-21).
  */
-import { cp, mkdir, readFile, rename, writeFile } from 'node:fs/promises';
+import { cp, mkdir, readFile, rename } from 'node:fs/promises';
 import path from 'node:path';
 
 import { isKnown } from '../../../domain/facts';
 import type { CapabilityReference, StableConfigRevision } from '../../../domain/config';
+import { writeToSameDirTempFile } from '../../system/atomic-write';
 
 const MATERIALIZED_DIR_NAME = 'materialized';
 
@@ -75,11 +76,10 @@ function resolveSourcePath(reference: CapabilityReference): { readonly path: str
   return { path: reference.sourceRef.value };
 }
 
-/** AD-9's same-directory temp-file-then-rename discipline (mirrors `adapters/self-update/github-release-updater.ts`'s `replaceBinary`): no reader ever observes a half-written file. */
+/** AD-9's same-directory temp-file-then-rename discipline (shares its temp-write primitive with `adapters/self-update/github-release-updater.ts`'s `replaceBinary` -- see `writeToSameDirTempFile`): no reader ever observes a half-written file. */
 async function writeFileAtomic(filePath: string, content: string): Promise<void> {
   await mkdir(path.dirname(filePath), { recursive: true });
-  const tempPath = `${filePath}.${process.pid}.${Date.now()}.tmp`;
-  await writeFile(tempPath, content, 'utf8');
+  const tempPath = await writeToSameDirTempFile(filePath, content);
   await rename(tempPath, filePath);
 }
 

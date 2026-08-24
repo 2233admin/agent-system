@@ -461,170 +461,184 @@ export async function launchClaudeFresh(
     return outcomeFor(plan, 'planned', manifest, adapterPlan, [], '确认本机磁盘可写且 Agent System 状态目录权限正常后重试');
   }
 
-  // `[Story 4.5b]` AD-21: read `sourceRef`-resolved real content and write it
-  // under `invocationDir/materialized/` -- must happen after the invocation
-  // directory exists, before the launch context is written or `claude` is
-  // spawned. Any `required` group's failure fails this launch closed here,
-  // before any content is ever handed to a spawned process (never a partial
-  // materialization followed by a spawn -- see `resolveContentGroupDelivery`).
-  // `materializeClaudeContent` itself is designed to never throw (every real
-  // IO call it makes is individually caught and turned into a reported
-  // `ClaudeMaterializationFailure`), but this call site is still guarded the
-  // same way the `invocationDir` prepare step immediately above it is --
-  // defense in depth against any future/unforeseen throw, never a silent
-  // fallback to an unhandled rejection.
-  let materialization: ClaudeContentMaterializationResult;
+  // `[Epic 4 retro fix]` AD-21's cleanup constraint ("not before the spawned
+  // process may still be reading") is satisfied by construction: every path
+  // out of this `try` either never spawned `claude` at all, or already holds
+  // `spawnResult` -- and `ClaudeProcessPort.spawn` (see
+  // `adapters/clients/claude/process-port.ts`) only ever resolves after
+  // `proc.exited`, i.e. the child has already fully exited. So cleanup in
+  // `finally`, unconditionally, after every early `return` in this block,
+  // is always safe. Best-effort: `cleanup`'s own contract never throws (see
+  // `ClaudeInvocationDirPort`'s Design Notes), so it never masks whichever
+  // outcome the `try` block actually produced.
   try {
-    materialization = await deps.claudeContentMaterializer.materialize(revision, invocationDir);
-  } catch (error) {
-    plan = applyFailure(plan, `content-materialization: ${(error as Error).message}`);
-    await deps.launchPlanRepository.save(plan);
-    return outcomeFor(plan, 'planned', manifest, adapterPlan, [], '确认内容来源路径可读、本机磁盘可写后重试');
-  }
+    // `[Story 4.5b]` AD-21: read `sourceRef`-resolved real content and write it
+    // under `invocationDir/materialized/` -- must happen after the invocation
+    // directory exists, before the launch context is written or `claude` is
+    // spawned. Any `required` group's failure fails this launch closed here,
+    // before any content is ever handed to a spawned process (never a partial
+    // materialization followed by a spawn -- see `resolveContentGroupDelivery`).
+    // `materializeClaudeContent` itself is designed to never throw (every real
+    // IO call it makes is individually caught and turned into a reported
+    // `ClaudeMaterializationFailure`), but this call site is still guarded the
+    // same way the `invocationDir` prepare step immediately above it is --
+    // defense in depth against any future/unforeseen throw, never a silent
+    // fallback to an unhandled rejection.
+    let materialization: ClaudeContentMaterializationResult;
+    try {
+      materialization = await deps.claudeContentMaterializer.materialize(revision, invocationDir);
+    } catch (error) {
+      plan = applyFailure(plan, `content-materialization: ${(error as Error).message}`);
+      await deps.launchPlanRepository.save(plan);
+      return outcomeFor(plan, 'planned', manifest, adapterPlan, [], '确认内容来源路径可读、本机磁盘可写后重试');
+    }
 
-  const instructionsDelivery = resolveContentGroupDelivery(
-    revision.instructions.length > 0,
-    materialization.instructions.failures,
-    () =>
-      materialization.instructions.appendSystemPromptText !== null
-        ? ['--append-system-prompt', materialization.instructions.appendSystemPromptText]
-        : [],
-    requiredForContentGroup(manifest, 'claude.append-system-prompt-delivery'),
-    'claude.append-system-prompt-delivery',
-  );
-  const skillsDelivery = resolveContentGroupDelivery(
-    revision.skills.length > 0,
-    materialization.skills.failures,
-    () => (materialization.skills.pluginDirPath !== null ? ['--plugin-dir', materialization.skills.pluginDirPath] : []),
-    requiredForContentGroup(manifest, 'claude.plugin-dir-delivery'),
-    'claude.plugin-dir-delivery',
-  );
-  // `[Story 4.5b]` `--strict-mcp-config` here duplicates the static flag
-  // `adapter-plan.ts`'s `CAPABILITY_ARGV_MAP` already contributes for
-  // `claude.mcp-project-scope-control` whenever that capability is relevant
-  // (mcp non-empty) and supported/degraded -- which is guaranteed true by
-  // the time this branch can even be reached (a `required`, relevant
-  // capability that were `unsupported`/`unknown` would already have blocked
-  // manifest compilation). Passing a boolean flag twice is harmless (last
-  // value wins / idempotent), and AD-21's own Rule literally describes
-  // `--mcp-config <path> --strict-mcp-config` as one atomic delivery pair,
-  // so this is kept self-contained rather than relying on the static argv's
-  // separately-computed contribution. Currently unreachable with real
-  // `.cap/` data (both real profiles have empty `mcp`) -- same "path not yet
-  // reachable, still correctly implemented" status the spec calls out.
-  const mcpDelivery = resolveContentGroupDelivery(
-    revision.mcp.length > 0,
-    materialization.mcp.failures,
-    () =>
-      materialization.mcp.mcpConfigPath !== null
-        ? ['--mcp-config', materialization.mcp.mcpConfigPath, '--strict-mcp-config']
-        : [],
-    requiredForContentGroup(manifest, 'claude.mcp-project-scope-control'),
-    'claude.mcp-project-scope-control',
-  );
-
-  // `[Story 4.5b]` Collect *every* blocked content group, not just the first
-  // -- mirrors the `manifestResult.kind === 'blocked'` branch above, which
-  // lists all of `missingRequiredCapabilities` rather than a single one.
-  // Multiple groups can legitimately fail to materialize simultaneously
-  // (e.g. both Instructions and Skills reference unreadable `sourceRef`s),
-  // and every one of them belongs in the failure reason / `affectedCapabilities`.
-  const blockedDeliveries = [instructionsDelivery.blocked, skillsDelivery.blocked, mcpDelivery.blocked].filter(
-    (blocked): blocked is { readonly capabilityId: string; readonly reason: string } => blocked !== null,
-  );
-  if (blockedDeliveries.length > 0) {
-    plan = applyFailure(
-      plan,
-      `content-materialization-blocked: ${blockedDeliveries.map((blocked) => blocked.reason).join('; ')}`,
+    const instructionsDelivery = resolveContentGroupDelivery(
+      revision.instructions.length > 0,
+      materialization.instructions.failures,
+      () =>
+        materialization.instructions.appendSystemPromptText !== null
+          ? ['--append-system-prompt', materialization.instructions.appendSystemPromptText]
+          : [],
+      requiredForContentGroup(manifest, 'claude.append-system-prompt-delivery'),
+      'claude.append-system-prompt-delivery',
     );
-    await deps.launchPlanRepository.save(plan);
-    return outcomeFor(
-      plan,
-      'planned',
-      manifest,
-      adapterPlan,
-      blockedDeliveries.map((blocked) => blocked.capabilityId),
-      '确认对应内容（Instructions/Skills/MCP）的来源路径存在且可读后重试，或改用不引用该内容的配置修订',
+    const skillsDelivery = resolveContentGroupDelivery(
+      revision.skills.length > 0,
+      materialization.skills.failures,
+      () => (materialization.skills.pluginDirPath !== null ? ['--plugin-dir', materialization.skills.pluginDirPath] : []),
+      requiredForContentGroup(manifest, 'claude.plugin-dir-delivery'),
+      'claude.plugin-dir-delivery',
     );
-  }
+    // `[Story 4.5b]` `--strict-mcp-config` here duplicates the static flag
+    // `adapter-plan.ts`'s `CAPABILITY_ARGV_MAP` already contributes for
+    // `claude.mcp-project-scope-control` whenever that capability is relevant
+    // (mcp non-empty) and supported/degraded -- which is guaranteed true by
+    // the time this branch can even be reached (a `required`, relevant
+    // capability that were `unsupported`/`unknown` would already have blocked
+    // manifest compilation). Passing a boolean flag twice is harmless (last
+    // value wins / idempotent), and AD-21's own Rule literally describes
+    // `--mcp-config <path> --strict-mcp-config` as one atomic delivery pair,
+    // so this is kept self-contained rather than relying on the static argv's
+    // separately-computed contribution. Currently unreachable with real
+    // `.cap/` data (both real profiles have empty `mcp`) -- same "path not yet
+    // reachable, still correctly implemented" status the spec calls out.
+    const mcpDelivery = resolveContentGroupDelivery(
+      revision.mcp.length > 0,
+      materialization.mcp.failures,
+      () =>
+        materialization.mcp.mcpConfigPath !== null
+          ? ['--mcp-config', materialization.mcp.mcpConfigPath, '--strict-mcp-config']
+          : [],
+      requiredForContentGroup(manifest, 'claude.mcp-project-scope-control'),
+      'claude.mcp-project-scope-control',
+    );
 
-  const dynamicContentArgv = [...instructionsDelivery.argv, ...skillsDelivery.argv, ...mcpDelivery.argv];
-  const dynamicContentCapabilityIds = [
-    ...(instructionsDelivery.argv.length > 0 ? ['claude.append-system-prompt-delivery'] : []),
-    ...(skillsDelivery.argv.length > 0 ? ['claude.plugin-dir-delivery'] : []),
-    ...(mcpDelivery.argv.length > 0 ? ['claude.mcp-project-scope-control'] : []),
-  ];
-  const finalArgv = [...adapterPlan.argv, ...dynamicContentArgv];
+    // `[Story 4.5b]` Collect *every* blocked content group, not just the first
+    // -- mirrors the `manifestResult.kind === 'blocked'` branch above, which
+    // lists all of `missingRequiredCapabilities` rather than a single one.
+    // Multiple groups can legitimately fail to materialize simultaneously
+    // (e.g. both Instructions and Skills reference unreadable `sourceRef`s),
+    // and every one of them belongs in the failure reason / `affectedCapabilities`.
+    const blockedDeliveries = [instructionsDelivery.blocked, skillsDelivery.blocked, mcpDelivery.blocked].filter(
+      (blocked): blocked is { readonly capabilityId: string; readonly reason: string } => blocked !== null,
+    );
+    if (blockedDeliveries.length > 0) {
+      plan = applyFailure(
+        plan,
+        `content-materialization-blocked: ${blockedDeliveries.map((blocked) => blocked.reason).join('; ')}`,
+      );
+      await deps.launchPlanRepository.save(plan);
+      return outcomeFor(
+        plan,
+        'planned',
+        manifest,
+        adapterPlan,
+        blockedDeliveries.map((blocked) => blocked.capabilityId),
+        '确认对应内容（Instructions/Skills/MCP）的来源路径存在且可读后重试，或改用不引用该内容的配置修订',
+      );
+    }
 
-  const knownDifferences = computeClaudeKnownDifferences(revision, manifest, materialization);
-  const applyResult: 'applied' | 'degraded' = knownDifferences.length === 0 && manifest.manifestStatus === 'ready' ? 'applied' : 'degraded';
+    const dynamicContentArgv = [...instructionsDelivery.argv, ...skillsDelivery.argv, ...mcpDelivery.argv];
+    const dynamicContentCapabilityIds = [
+      ...(instructionsDelivery.argv.length > 0 ? ['claude.append-system-prompt-delivery'] : []),
+      ...(skillsDelivery.argv.length > 0 ? ['claude.plugin-dir-delivery'] : []),
+      ...(mcpDelivery.argv.length > 0 ? ['claude.mcp-project-scope-control'] : []),
+    ];
+    const finalArgv = [...adapterPlan.argv, ...dynamicContentArgv];
 
-  await deps.claudeLaunchContextWriter.write({
-    version: 1,
-    planId: plan.planId,
-    operationId: plan.operationId,
-    revisionId: plan.revisionId,
-    configName: plan.configName,
-    client: 'claude-code',
-    launchTarget: 'fresh',
-    launchedAt: new Date().toISOString(),
-    applyResult,
-    knownDifferences,
-    adapterPlanHash: adapterPlan.planHash,
-  });
+    const knownDifferences = computeClaudeKnownDifferences(revision, manifest, materialization);
+    const applyResult: 'applied' | 'degraded' = knownDifferences.length === 0 && manifest.manifestStatus === 'ready' ? 'applied' : 'degraded';
 
-  let spawnResult: ClaudeSpawnResult;
-  try {
-    params.onSpawning?.();
-    spawnResult = await deps.claudeProcessPort.spawn({
-      argv: finalArgv,
-      env: { CLAUDE_CONFIG_DIR: invocationDir },
-      cwd: invocationDir,
+    await deps.claudeLaunchContextWriter.write({
+      version: 1,
+      planId: plan.planId,
+      operationId: plan.operationId,
+      revisionId: plan.revisionId,
+      configName: plan.configName,
+      client: 'claude-code',
+      launchTarget: 'fresh',
+      launchedAt: new Date().toISOString(),
+      applyResult,
+      knownDifferences,
+      adapterPlanHash: adapterPlan.planHash,
     });
-  } catch (error) {
-    plan = applyFailure(plan, `spawn-process: ${(error as Error).message}`);
+
+    let spawnResult: ClaudeSpawnResult;
+    try {
+      params.onSpawning?.();
+      spawnResult = await deps.claudeProcessPort.spawn({
+        argv: finalArgv,
+        env: { CLAUDE_CONFIG_DIR: invocationDir },
+        cwd: invocationDir,
+      });
+    } catch (error) {
+      plan = applyFailure(plan, `spawn-process: ${(error as Error).message}`);
+      await deps.launchPlanRepository.save(plan);
+      return outcomeFor(
+        plan,
+        'planned',
+        manifest,
+        adapterPlan,
+        [...argvContributingCapabilityIds(manifest.capabilityPolicy), ...dynamicContentCapabilityIds],
+        '确认 claude 二进制已安装并可从 PATH 直接执行后重试',
+      );
+    }
+
+    const started = transitionLaunchPlan(plan, { type: 'process-started' });
+    if (!started.ok) {
+      throw new InvalidTransitionError(plan.planId, plan.phase, 'process-started', started.reason);
+    }
+    plan = started.plan;
     await deps.launchPlanRepository.save(plan);
-    return outcomeFor(
-      plan,
-      'planned',
-      manifest,
-      adapterPlan,
-      [...argvContributingCapabilityIds(manifest.capabilityPolicy), ...dynamicContentCapabilityIds],
-      '确认 claude 二进制已安装并可从 PATH 直接执行后重试',
-    );
+
+    const outcome = deriveClaudeObservedOutcome(spawnResult, applyResult);
+    const observed = transitionLaunchPlan(plan, { type: 'observed', outcome: outcome.outcome, reason: outcome.reason });
+    if (!observed.ok) {
+      throw new InvalidTransitionError(plan.planId, plan.phase, 'observed', observed.reason);
+    }
+    plan = observed.plan;
+    await deps.launchPlanRepository.save(plan);
+
+    const isFailureOutcome = outcome.outcome === 'failed' || outcome.outcome === 'incomplete';
+    const affectedCapabilities = isFailureOutcome
+      ? [...argvContributingCapabilityIds(manifest.capabilityPolicy), ...dynamicContentCapabilityIds]
+      : manifest.degradedCapabilities;
+    const recoveryAction =
+      outcome.outcome === 'failed'
+        ? '查看 claude 进程退出码与输出，确认宿主是否拒绝了本次装配的硬控制边界后再重试'
+        : outcome.outcome === 'incomplete'
+          ? '确认 claude 进程未被信号意外终止（如手动结束进程或系统重启）后重试'
+          : null;
+
+    // The process genuinely spawned and its exit was captured (the
+    // `process-started` transition above only succeeds once `spawn()` has
+    // already resolved) -- this is unambiguously `observed`, regardless of
+    // which terminal outcome it landed on.
+    return outcomeFor(plan, 'observed', manifest, adapterPlan, affectedCapabilities, recoveryAction);
+  } finally {
+    await deps.claudeInvocationDirPort.cleanup(invocationDir);
   }
-
-  const started = transitionLaunchPlan(plan, { type: 'process-started' });
-  if (!started.ok) {
-    throw new InvalidTransitionError(plan.planId, plan.phase, 'process-started', started.reason);
-  }
-  plan = started.plan;
-  await deps.launchPlanRepository.save(plan);
-
-  const outcome = deriveClaudeObservedOutcome(spawnResult, applyResult);
-  const observed = transitionLaunchPlan(plan, { type: 'observed', outcome: outcome.outcome, reason: outcome.reason });
-  if (!observed.ok) {
-    throw new InvalidTransitionError(plan.planId, plan.phase, 'observed', observed.reason);
-  }
-  plan = observed.plan;
-  await deps.launchPlanRepository.save(plan);
-
-  const isFailureOutcome = outcome.outcome === 'failed' || outcome.outcome === 'incomplete';
-  const affectedCapabilities = isFailureOutcome
-    ? [...argvContributingCapabilityIds(manifest.capabilityPolicy), ...dynamicContentCapabilityIds]
-    : manifest.degradedCapabilities;
-  const recoveryAction =
-    outcome.outcome === 'failed'
-      ? '查看 claude 进程退出码与输出，确认宿主是否拒绝了本次装配的硬控制边界后再重试'
-      : outcome.outcome === 'incomplete'
-        ? '确认 claude 进程未被信号意外终止（如手动结束进程或系统重启）后重试'
-        : null;
-
-  // The process genuinely spawned and its exit was captured (the
-  // `process-started` transition above only succeeds once `spawn()` has
-  // already resolved) -- this is unambiguously `observed`, regardless of
-  // which terminal outcome it landed on.
-  return outcomeFor(plan, 'observed', manifest, adapterPlan, affectedCapabilities, recoveryAction);
 }
 
 /** Re-exported for callers that only need to reason about `LaunchPhase` alongside this file's outcome type. */
