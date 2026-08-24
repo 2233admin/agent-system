@@ -29,7 +29,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 # - Retrospective appends its action items to action_items; the status view surfaces open ones
 generated: 08-22-2026 00:00
-last_updated: 08-23-2026 21:30
+last_updated: 08-24-2026 00:00
 project: agent-system
 project_key: NOKEY
 tracking_system: file-system
@@ -57,7 +57,9 @@ development_status:
   4-3-fresh-target-的启动与观察: done
   4-4-already-running-session-target-的-requires-restart-路径: done
   4-5-cap-parity-验证与本仓自身切换: done
-  4-6-退役-cap-本体: backlog
+  4-5b-claude-adapter-内容物化能力: backlog
+  4-6-configs-cli-的-claude-入口: backlog
+  4-7-退役-cap-本体: backlog
   epic-4-retrospective: optional
 action_items:
   - id: "epic-1-retro-item-1-launchomp-packages-control-plane-src-app"

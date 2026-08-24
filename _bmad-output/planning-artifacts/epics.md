@@ -133,6 +133,8 @@ MVP-FR10：Epic 1 / Story 1.2 — OMP-only 与未来 adapter 边界。
 
 （2026-08-23 新增，见 `sprint-change-proposal-2026-08-23-cap-claude-codex-adapter.md`）
 
+**2026-08-24 范围补全：** Story 4.5 的 AC2（本仓自身切换）经调查证明其前置对象不存在——本仓自身交互式 Claude Code session 的装配与 `.cap` 无渲染管线关联，"切换"这个动作没有真实对象。真正阻挡"退役 `.cap`"的是两个此前未被识别的能力缺口：新 adapter 的 fresh 启动尚不具备真实内容物化能力（只传硬控制 flag，不交付 Instructions/Skills/MCP 内容），且 `configs` CLI 没有任何入口能调用新 adapter 的 Claude 相关代码。因此新增 Story 4.5b（内容物化能力）与 Story 4.6（CLI 入口），原 Story 4.6（退役 `.cap/` 本体）顺延为 Story 4.7，验收前提相应改写。详见下方对应 Story 正文与 `sprint-change-proposal-2026-08-24-cap-retirement-redesign.md`。
+
 ## Epic 1：查看、选择并使用 OMP 配置
 
 用户可以看清一个配置包含什么，必要时并列比较多个配置，然后亲自选择一个具体修订，经一次确认 fresh 启动 OMP；进入 OMP 后使用原生 resume，并只查看配置应用与客户端启动状态。
@@ -348,6 +350,13 @@ MVP-FR10：Epic 1 / Story 1.2 — OMP-only 与未来 adapter 边界。
 
 **实现需求：** Architecture Spine"`.cap/` 退役顺序"小节第 2、3 步。
 
+> **2026-08-24 范围收窄：** AC1（parity 验证）已完成，保持有效。AC2（本仓自身切换）经调查（见
+> `spec-4-5-cap-parity-验证与本仓自身切换.md` 的"2026-08-24 追加调查"）证明其对象不存在——本仓
+> 自身交互式 session 的 skills/CLAUDE.md 由 Claude Code 原生项目目录发现机制读取 git 跟踪文件，
+> 与 `.cap` 的渲染管线无关。AC2 收敛为"确认并记录这一调查结论"，不再要求任何切换动作；下方 AC2
+> 正文保留原文存档，不再是本 Story 的待办。真正的能力缺口拆分为 Story 4.5b（内容物化）与
+> Story 4.6（CLI 入口）。
+
 **Acceptance Criteria:**
 
 **Given** 新 adapter 已能对本仓现有 `.cap/profiles/general.toml`、`.cap/profiles/agent-assembler.toml` 两个 profile 产出 `AdapterPlan`
@@ -360,22 +369,52 @@ MVP-FR10：Epic 1 / Story 1.2 — OMP-only 与未来 adapter 边界。
 **Then** 本仓自身运行的 Claude Code session（包括当前维护本仓的这个 session）从 `.cap/` 切换到新 adapter 产出的 manifest/plan
 **And** 切换过程中不出现 skill/profile 装配能力中断的时间窗口；如无法保证不中断，先记录为阻塞项，不强行切换。
 
-### Story 4.6：退役 `.cap/` 本体
+### Story 4.5b：Claude adapter 内容物化能力
 
 作为维护本仓 Agent System 的负责人，
-我希望在确认本仓自身切换稳定后才移除 `.cap/`，
+我希望新 spawn 的 Claude Code 进程能真正收到装配意图声明的 Instructions/Skills/MCP 内容，
+以便 fresh 启动的会话不只是拿到硬控制 flag，而是功能对等于 `.cap` 的 `cap use <role> --cli claude`（`--plugin-dir` 交付 Skill 内容）。
+
+**实现需求：** Architecture Spine AD-19（AdapterPlan/RuntimeLaunchSpec 边界）、AD-6（内容所有权与调用作用域边界）。具体物化机制（`RuntimeLaunchSpec` 如何从 `StableConfigRevision` 的 Skills/Instructions/MCP 引用生成 Claude 进程可读的文件/目录、隔离边界如何保证调用结束后清理）留给下一轮 `bmad-architecture` 产出，本条目前是占位草稿，不是最终验收标准。
+
+**Acceptance Criteria（草稿，待架构阶段细化）：**
+
+**Given** 一份声明了非空 Instructions/Skills/MCP 引用的装配意图
+**When** `launchClaudeFresh` 编译并启动
+**Then** 新 spawn 的隔离 Claude 进程实际能读取到这些引用对应的内容，而不是被 `computeClaudeKnownDifferences` 恒记为"未物化"
+**And** 物化过程遵守 AD-6 的调用作用域边界，不持久化私域原文、凭据或动态任务内容，调用结束后清理临时物化产物。
+
+### Story 4.6：`configs` CLI 的 Claude 入口
+
+作为长期使用 Claude Code 的个人实践者，
+我希望能通过 `configs use --client claude-code`/`configs switch --client claude-code` 真正触发新 adapter，
+以便新 adapter 的能力不再只被测试调用，而是有真实可用的产品入口。
+
+**实现需求：** `domain/client.ts` 的 `resolveClientSupport` 从硬编码 `unsupported` 改为真实探测结果；复用 Story 1.2 已建立的 `use`/`switch` 确认与生命周期模式。
+
+**Acceptance Criteria（草稿，待架构/实现阶段细化）：**
+
+**Given** 用户在 `configs` CLI 执行 `use <id> --client claude-code` 或 `switch <id> --client claude-code`
+**When** `resolveClientSupport('claude-code')` 返回真实探测结果而非硬编码 unsupported
+**Then** 命令真实触发新 adapter 的 fresh/already-running 判定与对应生命周期（复用 Story 4.3/4.4 已实现的逻辑）
+**And** 不改变 OMP 侧 `use`/`switch` 既有行为，不引入跨客户端配置或 Session 等价语义。
+
+### Story 4.7（原 Story 4.6）：退役 `.cap/` 本体
+
+作为维护本仓 Agent System 的负责人，
+我希望在确认新 adapter 已功能对等 `.cap` 后才移除 `.cap/`，
 以便 `.cap/` 的历史内容降级为证据参考而不是被仓促删除导致无法回溯。
 
-**实现需求：** Architecture Spine"`.cap/` 退役顺序"小节第 4 步。
+**实现需求：** Architecture Spine"`.cap/` 退役顺序"小节第 4 步（下一轮 `bmad-architecture` 需重写该小节的第 1～3 步，移除"本仓自身切换"这一步的现有表述）。
 
 **Acceptance Criteria:**
 
-**Given** Story 4.5 的本仓自身切换已稳定运行
+**Given** Story 4.5b（内容物化）与 Story 4.6（CLI 入口）均已完成，且新 adapter 的 fresh Claude 启动经真实烟雾测试验证——对 `general`、`agent-assembler` 两个 profile 交付的 Skills/Instructions/MCP 内容与 `cap use <role> --cli claude` 功能对等
 **When** 执行 `.cap/` 退役
 **Then** 移除 `.cap/` 目录，并把治理它的 openspec change（`v3-assembly-executor` 等）收敛为归档状态
-**And** `.cap/` 历史内容降级为证据参考，不再作为任何当前需求或架构的权威来源，不早于 Story 4.5 稳定验证执行。
+**And** `.cap/` 历史内容降级为证据参考，不再作为任何当前需求或架构的权威来源，不早于上述前提验证稳定执行。
 
-**Given** Story 4.5 尚未验证稳定
+**Given** Story 4.5b/4.6 尚未完成，或真实烟雾测试尚未验证功能对等
 **When** 有人尝试执行退役
 **Then** 阻止退役，明确说明"不得先退役后设计替代"（Architecture Spine 约束）
 **And** 不产生"部分退役"的中间态。
