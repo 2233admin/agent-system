@@ -29,7 +29,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 # - Retrospective appends its action items to action_items; the status view surfaces open ones
 generated: 08-22-2026 00:00
-last_updated: 08-23-2026 20:15
+last_updated: 08-23-2026 21:30
 project: agent-system
 project_key: NOKEY
 tracking_system: file-system
@@ -56,7 +56,7 @@ development_status:
   4-2-装配-claude-code-的确定性-adapterplan: done
   4-3-fresh-target-的启动与观察: done
   4-4-already-running-session-target-的-requires-restart-路径: done
-  4-5-cap-parity-验证与本仓自身切换: backlog
+  4-5-cap-parity-验证与本仓自身切换: done
   4-6-退役-cap-本体: backlog
   epic-4-retrospective: optional
 action_items:
@@ -171,3 +171,15 @@ action_items:
     owner: "repo owner / 下一次 CI 工具迭代"
     status: open
     ref: "_bmad-output/implementation-artifacts/epic-2-retro-2026-08-23.md"
+  - id: "epic-4-story-4-5-ac2-blocked-story-4-6-not-executable"
+    epic: 4
+    action: "Story 4.5 用真实调用 prepareClaudeAlreadyRunningLaunchPlan（从真实 .cap/ 派生的
+      general revisionId）证实：本仓自身这个正在维护的、非本产品拥有的 Claude Code session，在当前
+      adapter（Story 4.1～4.4）能力下只能解析为既有终态 requires-restart（observationStage 恒为
+      planned，manifest/adapterPlan 恒为 null）——不存在可以不重启就重配置本仓真实、已在运行 session
+      装配来源的代码路径。据此 AC2（本仓自身切换）正式记录为阻塞项，不强行执行，.cap/ 保持完全不变。
+      Story 4.6（退役 .cap/ 本体）继续被本条阻塞，不得在 AC2 解除前执行；只有当新 adapter 获得对
+      already-running、非本产品拥有的会话做安全热更新的真实、已核实机制后，才能重新评估解除。"
+    owner: "repo owner / 下一次 Epic 4 迭代"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/spec-4-5-cap-parity-验证与本仓自身切换.md"
