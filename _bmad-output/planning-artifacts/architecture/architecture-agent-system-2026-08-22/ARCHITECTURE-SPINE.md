@@ -7,7 +7,7 @@ paradigm: '六边形模块化单体（Hexagonal Modular Monolith）'
 scope: '以 OMP 为首个客户端的稳定配置、启动装配、观察、验证、Bad Case 演进与跨 Session 追溯；保留后续 Claude Code/Codex CLI 接入边界（完整目标态；当前锁定 MVP 见 epics.md，是本范围的严格子集，见下方“MVP 范围边界”小节）'
 status: final
 created: '2026-08-22'
-updated: '2026-08-24'
+updated: '2026-08-25'
 binds: [WF-1, WF-2, WF-3, FR-1, FR-2, FR-3, FR-4, FR-5, FR-6, FR-7, FR-8, FR-9, FR-10, FR-11, FR-12, FR-13, FR-14, NFR-1, NFR-2, NFR-3, NFR-4, NFR-5, NFR-6, NFR-7, NFR-8, NFR-9]
 sources:
   - '../../prds/prd-agent-system-2026-08-21/prd.md'
@@ -212,6 +212,19 @@ flowchart LR
 - **阻塞前提（Story 4.5b 必须先修，不是可选项）：** 今天经 `src/adapters/sources/cap-fs.ts`（`loadCapConfigRevisions`，由 `scripts/seed-from-cap.ts` 调用）从 `.cap/` 灌入的修订，其每个 `CapabilityReference` 的 `sourceRef`/`contentFingerprint` 都被硬编码为 `CAP_FS_FIELD_NOT_CAPTURED`（即 `Unknown`）——本条设想的"当前可靠可解析来源"在实现落地前并不存在，若不修复，AD-10 fail-closed 会让本仓现存的每一条 `.cap`-seeded 修订在 Claude 侧全部降级/不支持，`.cap/` 退役顺序第 2 步的真实烟雾 parity 也无法通过。修复范围有界：`cap-fs.ts` 读取 `.cap/` 时本就知道每个 Skill/Instruction/MCP 条目的真实磁盘路径，只是当前丢弃未记录；Story 4.5b 必须先让它把这个已知路径写入 `sourceRef`，而不是发明新的名字→路径映射规则（`epic-3-context.md` 的"不应在实现层面自行发明映射规则"约束的是尚无协议的真实数据源接入，如 GitHub/本地目录导入，不是修正一个已知但被丢弃的字段）。真实数据源接入协议本身仍是 Epic 3 未拍板的开放问题，不阻塞本条——遇到那类当前无法解析的来源时按上方 fail-closed 规则处理。
 - **Probe 前提：** `--plugin-dir`、`--append-system-prompt` 当前只有文档/`.cap` 既有证据核实过，Story 4.1 的 `BunClaudeCapabilityProbe` 尚未把它们纳入探测（与已探测的 `--permission-mode`/`--setting-sources`/`--strict-mcp-config` 不同）；按 AD-15"文档声称但未经 release-pinned probe/smoke 证实的能力保持 Unknown"的既有原则，Story 4.5b 必须先把这两个 flag 纳入 probe 覆盖，不能只凭本轮文档核实就当作 `supported`。同时，Story 4.1/4.5 已记录的版本漂移（`.cap` 核实基线 2.1.236 vs 本机实测 2.1.241，目前只有 `console.warn`、未持久化）在 Story 4.5b 落地前必须重新 probe 一次，不得复用旧快照证据。
 
+### AD-22 — 自我开发装配与产品装配面共用同一条路径；客户端原生发现不是装配面 [ADOPTED]
+
+- **Binds:** AD-1、AD-4、AD-6、AD-8、AD-19、AD-20、AD-21；`entrypoints/agent-system.md`；本仓 Skill 资产面（`plugins/`、`.claude/skills`、`.agents/skills`、`_bmad/`）
+- **Prevents:** 把"客户端原生发现 git 跟踪文件"当成一条受认可的装配面，从而让产品为一条无 manifest、无 capability 状态、无 receipt 的路径背书（顶撞 AD-8 的事实层级与 AD-19 的客户端合同）；把上游可复现的第三方 Skill 字节当成仓库源码长期跟踪（形状上等同于同时提交 lockfile 与 `node_modules`）；仓库规则强制加载一批本仓会话结构性不可见的 Skill，使硬门静默降级为空操作；先退役跟踪、后落地替代，重走 `.cap/` 已明确禁止的顺序。
+- **Rule：** 产品装配面（消费者是 `configs` 的用户）与本仓自我开发装配面（消费者是在本仓工作的 agent 会话）是两个不同的**消费者**，但共用同一条装配路径与同一套合同——不为后者另立机制。
+  - **唯一装配路径。** 本仓 agent 会话获得 Instructions/Skills/MCP 的唯一受认可方式是经 `configs use <revisionId> --client <clientId>` 启动，按 AD-21 在调用作用域内物化交付。客户端原生项目目录发现（Claude Code 读 `.claude/skills/` 已由本仓 session 直接观察证实；`.agents/skills/` 服务 Codex 是**未核实推断**——来源只是 BMad 安装器声明了 `ides: [claude-code, codex, pi]` 三个目标而仓内只有两个目录，按 AD-15 原则在有真实 probe/smoke 证据前保持 Unknown）**不是**装配面：它不产生 `AssemblyManifest`、不绑定 `capabilityStatus`、不产生 receipt，因此在 AD-8 的事实层级里不能为任何能力声称 `observationStage`。未经 `configs` 启动的会话按定义不具备本产品装配的能力——这是本条明确接受的结果，不是待修的缺陷。
+  - **Skill 字节的所有权按来源判定，不按存放位置。** 第三方 Skill 组（当前唯一实例 `bmad`，fork 上游 v6.11.0，49 个成员）的字节是**上游可复现产物**，不是本仓源码：仓库跟踪其 **pin**，不跟踪其字节，字节由该 pin 在每台机器上复现。每个 `fork` 组都必须有一个被跟踪的 pin，声明上游 ref 与可复现的取得方式；`bmad` 的 pin 是 `_bmad/_config/manifest.yaml` 的 `installation.version` 加 `_bmad/_config/skill-manifest.csv`，那是 BMad 安装器专有的产物，是当前唯一实例而不是通用格式——再出现来自其他上游的 `fork` 组时，其 pin 落点按本条要求另行确定，不得省略，也不得挪用 BMad 的清单。本仓自研 Skill 组（`plugins/` 下 `own`／`vendor` 各组）的字节是本仓源码，继续跟踪。
+  - **组是第一结构。** 装卸、版本、发现、判定与复核都以**组**为单位，不以单个 Skill 为单位（当前 12 个组 / 82 个 Skill：判定 12 次，不是 82 次）。一个组可以服务多个事项，组内成员互相调用（路由、deprecated 转发），拆组会拆断这些调用，因此组是不可再分的装配与判定单元；`configs` 的装配意图、上面的字节所有权判据与下面的退役顺序全部按组表达。组的来源三分——`own`（自研，无上游）、`fork`（取自上游、承诺零本地改动、更新即拉上游新版）、`vendor`（取自上游但已打补丁，必须逐处登记）——是上面"按来源判归属"的判据本身，不是描述性标签；`fork` 的零改动必须可机械验证（内容指纹与上游 ref 不符即承诺已破，须转 `vendor` 或把改动推回上游），不接受仅凭声明。该模型此前只存在于 `tools/skill_registry/README.md`（一个工具的 README，不在权威面上），本条将其固定。
+  - **退役顺序（严格按序，不得先退役后落地）。** 复用 `.cap/` 退役已确立的三步形状：**(1) 落地替代**——`configs` 具备把一批磁盘上的 Skill 目录变成 `sourceRef` 可解析之修订的供给能力（缺口记于 `#173`），且本仓自身的装配意图能被表达为一条真实修订；**并且必须在这一步一并裁定 `sourceRef` 的跨机器可移植性语义**——本条规定第三方组字节由每台机器各自复现，同一条修订在两台机器上对应的绝对路径必然不同，而 AD-21 只说"把 `sourceRef` 解析为真实内容"、既有 `content-materializer.ts` 的实现把它当作可直接使用的路径、AD-21 的阻塞前提段又要求 `cap-fs.ts` 写入"已知的真实磁盘路径"，三处合起来事实上假定了绝对路径，与每机复现直接冲突。绝对路径、仓库相对路径还是符号引用，选哪一种留给这一步依据真实证据裁定，本条不预先选定；本条**禁止的是让两个实现者各自发明**——该语义必须一次裁定并同时约束 AD-21 的解析侧与供给侧，否则一方产出的修订在另一方手里会按 AD-10 静默全量降级为 `unsupported`，且没有任何门能指出根因；**(2) parity 验证**——经 `configs use` 启动的本仓会话，其实际可用 Skill 集合与今天由原生发现得到的集合做真实烟雾对照，不是清单比对；**(3) 退役**——`.claude/skills/`、`.agents/skills/` 改为非跟踪并进入 `.gitignore`，`skill-asset-checks.yml` 的双份字节一致门随之退役。第 (2) 步稳定之前，两份保持 git 跟踪、一致门继续生效。
+  - **装配权威唯一。** `plugins/skill-imports.toml` 当前自称"当前默认装配声明"，实际只列 1 条且无任何产品代码读取（全仓唯一引用者是一致性测试 `plugins/tests/workflow-routing.test.ts`）——它不是装配权威。装配权威只有 `configs` 的修订（AD-4）。该文件与 `plugins/README.md` 的对应措辞在退役第 (3) 步一并收敛，不在此之前单独改动。
+  - **规则与能力必须同真。** 仓库规则（`entrypoints/agent-system.md` 及其投影）不得强制加载一个本仓当前装配下不可获得的 Skill。任一时点二者必须一致：要么该 Skill 进入本仓装配意图，要么该规则改写或删除。"加载可用的 X"这类措辞**不构成豁免**——它把硬门静默降级为空操作，正是本条要防的失败模式。当前已知不一致：`entrypoints/agent-system.md` 第 62 行要求的 `orchestrated-collaboration`、第 78／84 行要求的 `adaptive-problem-solving`（后者含"父目标验收"硬门）都只存在于 `plugins/`，不在任何客户端的原生发现路径上，对本仓会话结构性不可见；退役第 (1) 步必须把它们纳入本仓装配意图，否则该步不算完成。
+- **开放问题（不阻塞本条，落地第 (1) 步时判断）：** Codex CLI 侧尚无等价的 `configs` 启动入口（Codex 仍按 AD-1 Deferred），因此第 (2) 步的 parity 验证在 Codex 侧暂时无法执行。是否允许两个客户端按各自节奏分别退役各自的投影目录（先退 `.claude/skills/`、`.agents/skills/` 等 Codex 激活后再退），留待第 (1) 步落地时依据当时的真实能力判断，不在本条预先裁定。
+
 ## 一致性约定
 
 | Concern | Convention |
@@ -349,6 +362,7 @@ erDiagram
 | 机械检查与低激活负担；NFR-7~9 | application、CLI、capability probe、测试门 | AD-11、AD-15、AD-19 |
 | 后续客户端接入边界 | client adapter port、manifest/plan/receipt schemas | AD-1、AD-3、AD-19 |
 | Epic 4：Claude Code 装配（Instructions/Skills/MCP 硬控制、内容物化、CLI 入口）| domain/activation（复用）、application、Claude client adapter | AD-1、AD-19、AD-20、AD-21 |
+| 本仓自我开发装配（Skill 资产存放、组织与进入会话的路径） | `plugins/`、`_bmad/` pin、`configs` 修订与 Claude/OMP client adapter | AD-4、AD-8、AD-19、AD-21、AD-22 |
 
 > **MVP 范围提示：** 当前锁定 MVP（epics.md）只落地与 MVP-FR1～MVP-FR10 对应的部分。"WF-1 配置建立与修订"行中的候选/推荐（AD-16）与"跨 Session 追溯"行中的 opaque locator 持久化（AD-7/AD-13/AD-19 对应条款）延后；"三层验证与首轮样本"行（AD-8、AD-11、AD-17）在 MVP 期间是外部开发验收门，AD-8 的事实层级/Known-Unknown 表达本身仍在 MVP 内用于状态视图。
 
@@ -363,6 +377,7 @@ erDiagram
 - **目标 OMP smoke：**在钉住 OMP/Bun artifact 上执行 fresh→取得 opaque locator→explicit resume；完成配置修订、Skills/MCP 启动装配、extension observation、失败重试与导出；覆盖非 ASCII/空格路径、既有全局配置、未知 capability 与 bridge 不可用。
 - **Claude Code adapter contract（Epic 4）：**fresh target 覆盖同一 Adapter contract 门（capabilityId/subject、required/optional、supported/degraded/unsupported/unknown、退出码与 receipt 解释）；already-running session target 专项覆盖 AD-20——验证 `apply` 在该 target 下必然解析为 `requires-restart`、`observationStage` 在重启前不越过 `planned`，且对同一 plan 无论 target 判断结果如何都不产生部分应用的 SQLite 事实；与 `.cap/` 现有 lock/render 产物的 parity 验证按"`.cap/` 退役顺序"第 2 步执行，覆盖 AD-21 物化后的真实交付内容，不止是 manifest 结构比对。
 - **Claude adapter 内容物化合同（AD-21，Story 4.5b）：**验证每个 `CapabilityReference` 的 `sourceRef` 解析结果只进入调用作用域内的 invocation 目录，从不写入 SQLite/投影/receipt；调用终态后物化产物被清理，不留存；`sourceRef` 不可解析时对应 capability 正确记为 `unsupported`/`degraded`，不产生占位内容或静默跳过。
+- **自我开发装配一致性（AD-22，退役第 (1) 步落地后生效的待建门，不是现行门）：**在 AD-22 退役顺序第 (1) 步完成之前，本仓处于该条明确允许的过渡态（规则强制的三个 Skill 尚不可见、两份投影仍被跟踪），此门不适用；第 (1) 步完成即随之生效。届时机械校验"仓库规则强制加载的每个 Skill 都在本仓当前装配意图内"——`entrypoints/agent-system.md` 及其投影中出现的每个 Skill 名，必须能在本仓装配意图里解析到一个真实来源；解析不到即失败，不接受"加载可用的 X"措辞作为豁免。退役第 (2) 步的 parity 验证是一次性真实烟雾对照（经 `configs use` 启动的会话实际可用 Skill 集合 vs 原生发现集合），不是清单比对，也不是长期双运行。
 - **产品验收：**按 AD-17 执行 T-1/T-2/T-3（或记录理由的 T-4），每任务 1 个基线加 2 个稳定配置样本且至少 1 个不同 native Session；自动化不能替代真实任务观察。
 
 ## `.cap/` 退役顺序（Epic 4）
@@ -389,4 +404,5 @@ erDiagram
 - 性能 SLO 与数据库归档阈值：PRD 未给量级；以真实激活测量，出现瓶颈后再定。
 - 候选、推荐与用户裁决（AD-16）：MVP 不实现，用户直接选择已存在配置；只有新证据与负责人明确裁决才重开（epics.md AR15）。
 - Explicit resume 启动参数、opaque native Session locator 持久化与 Session lease/fencing（AD-7、AD-13、AD-19 对应条款）：MVP 不实现，resume 完全由 OMP 原生界面负责；只有新证据与负责人明确裁决才重开（epics.md AR15）。
+- Codex CLI 侧的 `configs` 启动入口与 `.agents/skills/` 投影退役（AD-22 第 (3) 步的 Codex 半边）：Codex 本身仍 Deferred，无入口即无法做 parity 验证；只有 Codex 按 AD-1 被独立证据激活后重开。
 - 三层验证与首轮样本退出门作为产品运行时功能（AD-11、AD-17）：MVP 期间保留为外部开发验收门，不向终端用户暴露；只有新证据与负责人明确裁决才重开（epics.md AR15）。
