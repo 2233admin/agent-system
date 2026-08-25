@@ -1,6 +1,6 @@
 interface:
-  display_name: "Operating Ledger Maintenance"
-  short_description: "Keep Agent-system needs and work visible in GitHub"
+  display_name: "经营总账"
+  short_description: "维护跨 Session 的经营总账观察面"
 
 policy:
   allow_implicit_invocation: true

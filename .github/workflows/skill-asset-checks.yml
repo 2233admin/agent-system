@@ -1,0 +1,65 @@
+name: Skill asset checks
+
+# 守两条不变量，都只校验版本化来源，不代表任何运行端已安装或生效：
+#   1. Skill 资产面（tools/skill_registry）与选型面（plugins/docs/skills-overview.md）
+#      对同一批 Skill 的 L1 读数一致，且 registry.md 与其来源没有漂移；
+#   2. BMad 安装器按 ides: [claude-code, codex, pi] 写出的两份副本保持逐字节相同。
+#
+# 第 2 条不是洁癖：两份副本是同一个组的两个安装点，登记面的全部统计都建立在
+# "两份相同"之上。历史上有过只改一边的先例（137aeb0，已于 2026-08-24 回退），
+# 少改一边会静默分叉且没有任何机制会发现。
+#
+# 去重本身留给 configs 的 client adapter（Epic 4）——一个源投影到各客户端才是
+# 架构上的归宿；在那之前先保证不分叉。
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "tools/skill_registry/**"
+      - "plugins/**"
+      - ".cap/capabilities/skills/**"
+      - ".agents/skills/**"
+      - ".claude/skills/**"
+      - ".github/workflows/skill-asset-checks.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "tools/skill_registry/**"
+      - "plugins/**"
+      - ".cap/capabilities/skills/**"
+      - ".agents/skills/**"
+      - ".claude/skills/**"
+      - ".github/workflows/skill-asset-checks.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  assets:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      # Node 原生剥离 TypeScript 类型，无构建、无依赖。固定 24：24 起无需 flag。
+      # 与 plugins/tests 的两份检查同一条件。
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+
+      - name: Check skill registry cross-reads and generated output
+        run: node tools/skill_registry/skill-registry.ts --check
+
+      # 只比较 SKILL.md 与 references 等版本化内容；__pycache__、.pytest_cache 等
+      # 本机运行残留不属于来源，排除后再比。
+      - name: Check BMad install copies have not diverged
+        run: |
+          diff -r \
+            --exclude=__pycache__ \
+            --exclude=.pytest_cache \
+            --exclude='*.pyc' \
+            .agents/skills .claude/skills

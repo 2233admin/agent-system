@@ -37,6 +37,11 @@
       "source": "./plugins/skill-maintenance"
     },
     {
+      "name": "skill-appraisal",
+      "version": "0.1.0",
+      "source": "./plugins/skill-appraisal"
+    },
+    {
       "name": "resource-observability",
       "version": "0.2.4",
       "description": "只读的 Codex／Claude 账户容量与单会话 Token 回执；不负责调度。",

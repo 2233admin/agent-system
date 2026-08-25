@@ -1,6 +1,6 @@
 interface:
-  display_name: "Issue Delivery"
-  short_description: "Deliver one ready GitHub Issue through a dedicated branch and Draft PR"
+  display_name: "Issue 交付"
+  short_description: "把已就绪 Issue 交付成 PR 或证据评论"
 
 policy:
   allow_implicit_invocation: true

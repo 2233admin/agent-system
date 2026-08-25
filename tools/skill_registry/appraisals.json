@@ -1,0 +1,29 @@
+{
+  "comment": "plugins/ 之外的判定认知。plugins/ 内 13 个 Skill 的同类字段由 plugins/tests/workflow-routing.json 的 skillLifecycle 承载，不在此重复——每个 Skill 只有一个来源，避免两处漂移。",
+
+  "groupComment": "组级认知优先：vendored 或 fork 组的失效来自上游版本，全组共享同一条失效条件与同一次复核，写一次而不是逐个成员写。skills 里的逐个条目只用于组内确实需要单独判定的成员，会覆盖组级值。",
+
+  "groups": {
+    "bmad": {
+      "invalidatedWhen": "上游 bmad-code-org/BMAD-METHOD 发布高于 v6.11.0 的版本；或本仓再次出现对 .agents/skills、.claude/skills 的本地改动（fork 承诺零改动，一旦有改动即降级为 vendor）。",
+      "minimalRecheck": "① git diff --stat 7024901 -- .agents/skills .claude/skills 应为空，且 diff -rq .agents/skills .claude/skills 无差异——两条任一不空即 fork 承诺已破。② 查 https://github.com/bmad-code-org/BMAD-METHOD/releases 是否有高于 v6.11.0 的版本。③ 升级后跑 uv run .agents/skills/bmad-retrospective/scripts/tests/test_sprint_status.py，Windows 基线为 87 passed / 4 failed；那 4 个失败（atomic_write_preserves_mode、unreadable_target、symlinked_target、write_failure_restore）全部源于 Windows 没有 POSIX 权限语义，与本仓无关，多出任何失败才需下钻。",
+      "lastVerified": "2026-08-24",
+      "suspect": false,
+      "evidence": "2026-08-24 核实：epic-1-retro-item-5 声称的『无法写入 epic 级状态』不成立。sprint_plan.py（bmad-sprint-planning，epic 键的真正属主）自 v6.11.0 起就有 generate --set KEY=STATUS，docstring 明写 the repair path is allowed to downgrade，_parse_sets 用 classify_key + RANKS[kind] 按 epic 词表校验。已 dry-run 验证 --set epic-3=done 返回 explicit_set 且零写入。此前加在 sprint_status.py（bmad-retrospective）的 65 行是功能重复且放错脚本，已于本次全部回退。注意：generate --set 会从 epics.md 重新生成，当前会 drop 5 条 epics.md 未覆盖的 story 键——那是本仓 epics.md 与 sprint-status.yaml 的漂移，不是 bmad 的问题。"
+    },
+    "cap-assembly": {
+      "invalidatedWhen": "CAP 退役（Epic 4 Story 4-6）落地，或 .cap 的 manifest／profile／lock 语义变更。",
+      "minimalRecheck": "读 _bmad-output/implementation-artifacts/sprint-status.yaml 的 4-6-退役-cap-本体 状态；仍为 backlog 则本组结论继续成立。",
+      "lastVerified": "2026-08-24",
+      "suspect": false
+    },
+    "openspec": {
+      "invalidatedWhen": "package.json 锁定的 @fission-ai/openspec 版本不再是 1.9.0；或各 openspec-* SKILL.md 的 compatibility 字段与实际 CLI 版本不符。",
+      "minimalRecheck": "比对 package.json 的 @fission-ai/openspec 版本与 .cap/capabilities/skills/openspec-*/SKILL.md 的 compatibility 声明，两者一致即结论成立。",
+      "lastVerified": "2026-08-24",
+      "suspect": false
+    }
+  },
+
+  "skills": {}
+}

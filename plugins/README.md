@@ -30,7 +30,7 @@
 
 以下发布记录保留迁移前编号以便仓库维护者溯源；其中私有链接对公共协作者不可用，只是可选历史来源。当前行为、贡献要求和验收必须在本仓公开内容中自足表达。
 
-仓库目前包含八个可安装 Plugin：`grilling` `0.1.2`、`self-improvement` `0.1.7`、`skill-maintenance` `0.1.0`、`knowledge-maintenance` `0.1.3`、`orchestrated-collaboration` `0.2.7`、`adaptive-problem-solving` `0.2.12`、`resource-observability` `0.2.4` 与 `github-collaboration` `0.3.18`。
+仓库目前包含九个可安装 Plugin：`grilling` `0.1.2`、`self-improvement` `0.1.7`、`skill-maintenance` `0.1.0`、`skill-appraisal` `0.1.0`、`knowledge-maintenance` `0.1.3`、`orchestrated-collaboration` `0.2.7`、`adaptive-problem-solving` `0.2.12`、`resource-observability` `0.2.4` 与 `github-collaboration` `0.3.18`。
 
 仓库资产、Marketplace 可安装目录和当前默认装配是三个不同状态：`plugins/` 保存可发布资产，两份 Marketplace 只声明可安装来源，当前 profile 只按 `plugins/skill-imports.toml` 显式装配（此前由已退役的 `.cap/skill-imports.toml` 承载，见 Epic 4 Story 4.7）。`github-collaboration` 与 `self-improvement` 同级，都是仓内可安装资产；二者不会因为出现在 Marketplace 或插件目录中就自动进入当前 profile。
 
@@ -51,6 +51,8 @@
 `self-improvement` `0.1.7` 把承载位置已确定为 Skill 的纠正交给 `skill-maintenance`，自己只负责停止漂移、诊断根因、判断长期价值和选择持久载体，不再复制来源盘点、预算、版本、clean cutover 或审查协议。
 
 `skill-maintenance` `0.1.0` 在明确创建、审计、修正、拆分、升级、迁移或退役 Skill 时进入：先绑定当前行为合同与授权，预注册行为判据，再同步主合同、按需 reference、全部调用者、双端发现入口、版本、生成物和复杂度预算；安全门零回退，调用者 clean cutover，方案／实施同源时必须独立审查。它不维护普通业务代码，也不替 `self-improvement` 决定一次纠正应该落到哪里。
+
+`skill-appraisal` `0.1.0` 判定一个 Skill **组**该不该收进当前体系：五道门依次是组边界（成员互相调用就不许拆）、事项归属（可跨多个）、净增量（不允许两个组覆盖同一个决定）、路由（组内每个成员的 `description` 单独可判）、来源与移植（`own`／`fork`／`vendor`，`fork` 的零改动必须可机械验证）。已收组到节拍时走复核路径而不是重判：只重跑被失效条件命中的那道门。每次判定必须留下失效条件与下次最少复核步骤，否则等于制造一个下次从零重做的负担。它只产出判定，不安装、不写配置、不改 profile；判定为「改造后收」时把执行交给 `skill-maintenance`。
 
 `knowledge-maintenance` 在多来源调研、可重复实验或重要决定前，先复用仍成立的当前知识，只补查变化、冲突和缺口；新结论逐条通过价值门与可信门后才能进入当前知识。它不保存原始会话，不替代研发记忆，也不决定知识平台、私域结构或知识图谱。
 
