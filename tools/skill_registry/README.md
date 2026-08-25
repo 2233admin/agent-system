@@ -113,17 +113,21 @@ SHA-256、许可证本地副本、逐条改造记录、以及“不得自动合�
 当前的事项划分与 12 个组的归属已由负责人于 2026-08-24 确认，记录在 `matters.json`
 的 `confirmed`；此后再改仍需新的明确确认。
 
-### frontmatter 三种写法
+### frontmatter 四种写法
 
-三处来源的 `description` 写法不统一，工具全部归一到“运行端实际看到的一行”后计字节：
+两处来源的 `description` 写法不统一，工具全部归一到“运行端实际看到的一行”后计字节
+（2026-08-24 实测重新核过一遍：此前这里记的是“三种写法”，其中“裸标量”标的来源
+`.cap/capabilities/skills/` 已随 Story 4.7 退役删除，而代码一直在处理、表里却从未记过的
+双引号写法确实还在用）：
 
 | 写法 | 出现在 |
 | --- | --- |
-| 折叠标量 `>-` | `plugins/` |
-| 裸标量 | `.cap/capabilities/skills/` |
-| 单引号并以 `''` 转义 | `.agents/skills/`（bmad） |
+| 折叠标量 `>-` | `plugins/`（14 个） |
+| 单引号并以 `''` 转义 | `.agents/skills/`（bmad，32 个） |
+| 裸标量 | `.agents/skills/`（bmad，13 个） |
+| 双引号并以 `\"` 转义 | `.agents/skills/`（bmad，4 个） |
 
-超出这三种记为“解析失败”并计入缺口，不静默按 0 处理。
+超出这四种记为“解析失败”并计入缺口，不静默按 0 处理。
 
 ## 已知落后项
 
@@ -132,13 +136,23 @@ SHA-256、许可证本地副本、逐条改造记录、以及“不得自动合�
   改它要动那条链的符合性测试，未做。
 - **`recheckStaleDays: 30` 已由负责人于 2026-08-24 确认**（记录见 `matters.json` 的 `confirmed`）。
   它仍不是实测得出的数字——改动只需新的确认，不需要新的证据。
-- **`epics.md` 与 `sprint-status.yaml` 已漂移。** `sprint_plan.py generate --set` 的 dry-run
-  显示会 drop 5 条 `epics.md` 未覆盖的 story 键（全为 `done`）。这是本仓的数据问题，
-  不是 bmad 的问题，但意味着当前直接跑该命令会丢记录。
+- **~~`epics.md` 与 `sprint-status.yaml` 已漂移。~~ 已于 2026-08-24 修复。** 原记录说 dry-run 会
+  drop 5 条 `epics.md` 未覆盖的 story 键（全为 `done`）；实测是 **6** 条——除 Epic 2／3 的 5 条
+  之外，Story 4.7 因为标题写成 `### Story 4.7（原 Story 4.6）：退役 .cap/ 本体`，派生键
+  `4-7-原-story-4-6-退役-cap-本体` 与 sprint-status.yaml 的 `4-7-退役-cap-本体` 对不上，会被
+  同时"新建一条 backlog + 丢弃一条 done"。修法：给 Epic 2／3 在 epics.md 补回 Story 标题与索引
+  （验收标准仍以各自 `spec-*.md` 为准，不重建副本），并把 4.7 的历史编号说明从标题移到正文。
+  现在 `generate --dry-run` 报 `in_sync: true`、`dropped_orphans: []`。
+  另需注意：`generate` **不加 `--dry-run` 就会直接写入** status 文件（`--set` 不是写入的开关），
+  本次核查时曾因此误写一次并从 git 还原。
 - **`epic-1-retro-item-5` 的结论是错的。** 它记为 `done`、理由是「给 `sprint_status.py`
   加了 `--set-epic-status`」；实际该能力上游本就有（`sprint_plan.py generate --set`），
   补丁已于 2026-08-24 全部回退。历史 retro 文档未改（那是当时认知的记录），正确结论
   记在 `appraisals.json` 的 `groups.bmad.evidence`。
 - **`bmad` 在仓库里存了两份**（`.agents/skills` 与 `.claude/skills`，内容完全相同，各 243 个
   文件，两份都被 git 跟踪）。一个组装到两个客户端不该在源里 vendor 两遍；登记面只计一份，
-  因此 75 与 872 KB 是保守值。
+  因此 75 与 872 KB 是保守值。2026-08-24 核实过一遍：这**不是**误提交（提交 `7024901`
+  的标题就是「跟踪 BMad skill 安装本体」，`.gitignore` 有整段说明），也**不是**等 Epic 4
+  就能去掉——Epic 4 的 adapter 只物化被它启动的 fresh 会话，而这两份是客户端从 git 跟踪
+  文件原生发现的（AD-20 的 2026-08-24 澄清）。缺的是上游「供给 + 分发」能力面，记在 #173；
+  在它落地前两份都必须保持被跟踪。

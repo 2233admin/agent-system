@@ -104,8 +104,10 @@ function markdownBytesRecursively(root: string): number {
   return total;
 }
 
-// 四处来源的 frontmatter 写法不统一：plugins 用折叠标量，.cap 与 deliverables 用
-// 裸标量，.agents（bmad）用单引号并以 '' 转义。全部归一到运行端实际看到的一行。
+// 两处来源的 frontmatter 写法不统一：plugins 用折叠标量；.agents（bmad）三种混用
+// ——单引号并以 '' 转义、裸标量、双引号并以 \" 转义。全部归一到运行端实际看到的
+// 一行。（原注释把裸标量的来源记作 .cap 与 deliverables：.cap 已随 Story 4.7 退役
+// 删除，deliverables 不在 scanRoots 里；裸标量今天来自 .agents。）
 export function descriptionBytes(skillBody: string): number | null {
   const block = /^description:\s*[>|][-+]?[ \t]*\n((?:[ \t]+.*(?:\n|$))*)/m.exec(skillBody);
   if (block) {

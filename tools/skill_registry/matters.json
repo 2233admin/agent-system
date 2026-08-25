@@ -164,7 +164,6 @@
 
   "scanRoots": [
     { "path": "plugins", "shape": "plugin" },
-    { "path": ".cap/capabilities/skills", "shape": "flat" },
     { "path": ".agents/skills", "shape": "flat" }
   ]
 }

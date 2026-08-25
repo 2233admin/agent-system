@@ -1,6 +1,4 @@
 import { Database } from 'bun:sqlite';
-import { mkdirSync } from 'node:fs';
-import path from 'node:path';
 // Embedded as text at bundle/compile time -- see the identical comment in
 // repository.ts. A runtime `import.meta.url`-relative path breaks once this
 // module is compiled into a standalone `bun build --compile` executable.
@@ -10,6 +8,7 @@ import type { ClientId } from '../../domain/client';
 import type { LaunchPhase, LaunchPlan, ObservedOutcome } from '../../domain/activation';
 import type { LaunchPlanRepository } from '../../application/ports';
 import { factColumns, factColumnToFact } from './fact-columns';
+import { openSqliteDatabase } from './connection';
 
 export interface LaunchPlanRow {
   plan_id: string;
@@ -100,12 +99,13 @@ export class SqliteLaunchPlanRepository implements LaunchPlanRepository {
   private readonly db: Database;
 
   constructor(dbPath: string) {
-    if (dbPath !== ':memory:') {
-      mkdirSync(path.dirname(dbPath), { recursive: true });
-    }
-    this.db = new Database(dbPath, { create: true });
-    this.db.exec('PRAGMA journal_mode = WAL;');
-    this.db.exec('PRAGMA foreign_keys = ON;');
+    // `[并发缺陷修复 2026-08-24]` 这个构造函数此前只设 `journal_mode`/
+    // `foreign_keys`，没设 `busy_timeout`——Epic 1 回顾按低严重度 defer 了。
+    // 换成 `openSqliteDatabase` 后这个缺口不再可能出现：本仓储和
+    // `SqliteConfigRevisionRepository` 共用同一个 `.sqlite3` 文件（见
+    // `cli/index.ts` 的 `openDeps()`，两者对同一路径先后构造），两个连接必须
+    // 就等待策略取得一致。
+    this.db = openSqliteDatabase(dbPath);
     this.runMigration();
   }
 

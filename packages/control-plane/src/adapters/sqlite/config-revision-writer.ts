@@ -21,8 +21,6 @@
  */
 
 import { Database } from 'bun:sqlite';
-import { mkdirSync } from 'node:fs';
-import path from 'node:path';
 
 import { parseCandidateRevision, parseEvidenceRef, parseSupersedesRevisionId, parseTriggerCategory } from '../../application/establish';
 import { SupersedesConflictError } from '../../application/ports';
@@ -30,6 +28,7 @@ import type { EstablishConfigRevisionParams, ConfigRevisionWriter } from '../../
 import type { StableConfigRevision } from '../../domain/config';
 import { runConfigRevisionMigrations } from './repository';
 import { factColumns } from './fact-columns';
+import { openSqliteDatabase } from './connection';
 
 /**
  * `[Story 3.2]` The exact substring SQLite's error message contains when
@@ -48,16 +47,7 @@ export class SqliteConfigRevisionWriter implements ConfigRevisionWriter {
   private readonly db: Database;
 
   constructor(dbPath: string) {
-    if (dbPath !== ':memory:') {
-      mkdirSync(path.dirname(dbPath), { recursive: true });
-    }
-    this.db = new Database(dbPath, { create: true });
-    // Install the wait policy before changing the database journal mode:
-    // `PRAGMA journal_mode = WAL` itself can contend when two fresh
-    // processes open the same database concurrently.
-    this.db.exec('PRAGMA busy_timeout = 5000;');
-    this.db.exec('PRAGMA journal_mode = WAL;');
-    this.db.exec('PRAGMA foreign_keys = ON;');
+    this.db = openSqliteDatabase(dbPath);
     runConfigRevisionMigrations(this.db);
   }
 
