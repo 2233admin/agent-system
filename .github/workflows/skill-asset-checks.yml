@@ -19,7 +19,6 @@ on:
     paths:
       - "tools/skill_registry/**"
       - "plugins/**"
-      - ".cap/capabilities/skills/**"
       - ".agents/skills/**"
       - ".claude/skills/**"
       - ".github/workflows/skill-asset-checks.yml"
@@ -29,7 +28,6 @@ on:
     paths:
       - "tools/skill_registry/**"
       - "plugins/**"
-      - ".cap/capabilities/skills/**"
       - ".agents/skills/**"
       - ".claude/skills/**"
       - ".github/workflows/skill-asset-checks.yml"
