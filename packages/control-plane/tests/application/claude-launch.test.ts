@@ -43,7 +43,34 @@ function ref(kind: CapabilityReference['kind'], name: string, sourceRef: Capabil
 
 /** Tracks tmp dirs created by individual tests below so they always get cleaned up, even on failure. */
 const tmpDirsToClean: string[] = [];
+
+/**
+ * `[Story 3.4]` 需要真实物化内容的测试，会把全仓共用的那个供给根
+ * （`cli/supply-root.ts`）指向自己的临时目录，因为 `sourceRef` 如今只能是
+ * 供给根内的相对 POSIX 路径——这些测试此前用的绝对 `mkdtemp` 路径会被
+ * fail-closed 拒掉。覆盖值是**保存并恢复**的，不是只 `delete`，因此不可能泄漏
+ * 到别的测试文件里。
+ */
+let originalSupplyRoot: string | undefined;
+let supplyRootOverridden = false;
+
+function useSupplyRoot(dir: string): void {
+  if (!supplyRootOverridden) {
+    originalSupplyRoot = process.env.CONTROL_PLANE_SUPPLY_ROOT;
+    supplyRootOverridden = true;
+  }
+  process.env.CONTROL_PLANE_SUPPLY_ROOT = dir;
+}
+
 afterEach(() => {
+  if (supplyRootOverridden) {
+    if (originalSupplyRoot === undefined) {
+      delete process.env.CONTROL_PLANE_SUPPLY_ROOT;
+    } else {
+      process.env.CONTROL_PLANE_SUPPLY_ROOT = originalSupplyRoot;
+    }
+    supplyRootOverridden = false;
+  }
   while (tmpDirsToClean.length > 0) {
     const dir = tmpDirsToClean.pop()!;
     rmSync(dir, { recursive: true, force: true });
@@ -324,18 +351,17 @@ describe('launchClaudeFresh', () => {
   test('[Story 4.5b] AC1 内容真实物化成功: instructions/skills 的真实内容被读出并交付, 不再报告"未物化"差异', async () => {
     const sourceDir = makeTmpDir('control-plane-claude-launch-materialize-src-');
     const invocationBaseDir = makeTmpDir('control-plane-claude-launch-materialize-inv-');
-    const promptPath = path.join(sourceDir, 'general.md');
-    writeFileSync(promptPath, 'Be a helpful general-purpose assistant.', 'utf8');
-    const skillDir = path.join(sourceDir, 'skills', 'openspec-explore');
-    mkdirSync(skillDir, { recursive: true });
-    writeFileSync(path.join(skillDir, 'SKILL.md'), '# openspec-explore\n\nExplore the spec.', 'utf8');
+    useSupplyRoot(sourceDir);
+    writeFileSync(path.join(sourceDir, 'general.md'), 'Be a helpful general-purpose assistant.', 'utf8');
+    mkdirSync(path.join(sourceDir, 'skills', 'openspec-explore'), { recursive: true });
+    writeFileSync(path.join(sourceDir, 'skills', 'openspec-explore', 'SKILL.md'), '# openspec-explore\n\nExplore the spec.', 'utf8');
 
     const { deps, configRepository, claudeLaunchContextWriter, claudeProcessPort } = buildDeps({ realInvocationBaseDir: invocationBaseDir });
     const rev = revision({
       configName: 'general',
       revisionId: 'rev-1',
-      instructions: [ref('instruction', 'general.md', known(promptPath))],
-      skills: [ref('skill', 'openspec-explore', known(skillDir))],
+      instructions: [ref('instruction', 'general.md', known('general.md'))],
+      skills: [ref('skill', 'openspec-explore', known('skills/openspec-explore'))],
     });
     const confirmed = await preparedAndConfirmed(deps, configRepository, rev);
 
@@ -420,19 +446,18 @@ describe('launchClaudeFresh', () => {
   test('[Story 4.5b][patch] 真实物化成功后宿主拒绝启动（非零退出码）: affectedCapabilities 含真正被交付的内容 capabilityId', async () => {
     const sourceDir = makeTmpDir('control-plane-claude-launch-materialize-fail-src-');
     const invocationBaseDir = makeTmpDir('control-plane-claude-launch-materialize-fail-inv-');
-    const promptPath = path.join(sourceDir, 'general.md');
-    writeFileSync(promptPath, 'Be a helpful general-purpose assistant.', 'utf8');
-    const skillDir = path.join(sourceDir, 'skills', 'openspec-explore');
-    mkdirSync(skillDir, { recursive: true });
-    writeFileSync(path.join(skillDir, 'SKILL.md'), '# openspec-explore', 'utf8');
+    useSupplyRoot(sourceDir);
+    writeFileSync(path.join(sourceDir, 'general.md'), 'Be a helpful general-purpose assistant.', 'utf8');
+    mkdirSync(path.join(sourceDir, 'skills', 'openspec-explore'), { recursive: true });
+    writeFileSync(path.join(sourceDir, 'skills', 'openspec-explore', 'SKILL.md'), '# openspec-explore', 'utf8');
 
     const { deps, configRepository, claudeProcessPort } = buildDeps({ realInvocationBaseDir: invocationBaseDir });
     claudeProcessPort.spawnResult = { exitCode: 13, signal: null };
     const rev = revision({
       configName: 'general',
       revisionId: 'rev-1',
-      instructions: [ref('instruction', 'general.md', known(promptPath))],
-      skills: [ref('skill', 'openspec-explore', known(skillDir))],
+      instructions: [ref('instruction', 'general.md', known('general.md'))],
+      skills: [ref('skill', 'openspec-explore', known('skills/openspec-explore'))],
     });
     const confirmed = await preparedAndConfirmed(deps, configRepository, rev);
 
@@ -458,16 +483,16 @@ describe('launchClaudeFresh', () => {
   test('[Story 4.5b][patch] 真实物化成功后 spawn 抛出（二进制不可达）: affectedCapabilities 含真正被交付的内容 capabilityId', async () => {
     const sourceDir = makeTmpDir('control-plane-claude-launch-materialize-throw-src-');
     const invocationBaseDir = makeTmpDir('control-plane-claude-launch-materialize-throw-inv-');
-    const skillDir = path.join(sourceDir, 'skills', 'openspec-explore');
-    mkdirSync(skillDir, { recursive: true });
-    writeFileSync(path.join(skillDir, 'SKILL.md'), '# openspec-explore', 'utf8');
+    useSupplyRoot(sourceDir);
+    mkdirSync(path.join(sourceDir, 'skills', 'openspec-explore'), { recursive: true });
+    writeFileSync(path.join(sourceDir, 'skills', 'openspec-explore', 'SKILL.md'), '# openspec-explore', 'utf8');
 
     const { deps, configRepository, claudeProcessPort } = buildDeps({ realInvocationBaseDir: invocationBaseDir });
     claudeProcessPort.spawnError = new Error('claude-binary-not-found');
     const rev = revision({
       configName: 'general',
       revisionId: 'rev-1',
-      skills: [ref('skill', 'openspec-explore', known(skillDir))],
+      skills: [ref('skill', 'openspec-explore', known('skills/openspec-explore'))],
     });
     const confirmed = await preparedAndConfirmed(deps, configRepository, rev);
 

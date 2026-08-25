@@ -1,7 +1,10 @@
-import { describe, expect, test } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 
 import { loadCapConfigRevisions } from '../../src/adapters/sources/cap-fs';
+import { validateSupplyRelativeRef } from '../../src/cli/supply-root';
 import { isKnown, isUnknown } from '../../src/domain/facts';
 
 const FIXTURE_ROOT = path.join(import.meta.dir, '..', 'fixtures', 'cap-sample');
@@ -92,22 +95,45 @@ describe('loadCapConfigRevisions (fixture, not the real repo .cap/)', () => {
     expect(reviewer.skills.map((s) => s.name)).not.toContain('review-checklist');
   });
 
-  test('[Story 4.5b] a plain project skill\'s sourceRef resolves to capabilities/skills/<name> under capRoot; an imported skill\'s sourceRef resolves to lock.json\'s own declared source under repoRoot', async () => {
+  test('[Story 4.5b][Story 3.4] a plain project skill\'s sourceRef points at capabilities/skills/<name> under capRoot; an imported skill\'s sourceRef points at lock.json\'s own declared source under repoRoot -- both recorded repoRoot-relative and POSIX-separated, never absolute', async () => {
     const revisions = await loadCapConfigRevisions(FIXTURE_ROOT);
     const general = revisions.find((r) => r.configName === 'general')!;
     const grilling = general.skills.find((s) => s.name === 'grilling')!;
     const openspecExplore = general.skills.find((s) => s.name === 'openspec-explore')!;
 
     expect(isKnown(openspecExplore.sourceRef) && openspecExplore.sourceRef.value).toBe(
-      path.join(FIXTURE_ROOT, 'capabilities', 'skills', 'openspec-explore'),
+      'cap-sample/capabilities/skills/openspec-explore',
     );
-    // `grilling` is declared in `project_skill_imports` with
-    // `source: "plugins/grilling/skills/grilling"` -- resolved against the
-    // directory `FIXTURE_ROOT` lives in (repoRoot), never against `FIXTURE_ROOT`
-    // itself, since imports live outside `.cap/`-equivalent roots.
-    expect(isKnown(grilling.sourceRef) && grilling.sourceRef.value).toBe(
-      path.join(path.dirname(FIXTURE_ROOT), 'plugins', 'grilling', 'skills', 'grilling'),
-    );
+    // `grilling` 在 `project_skill_imports` 里声明为
+    // `source: "plugins/grilling/skills/grilling"`——它的位置是相对
+    // `FIXTURE_ROOT` 所在的那个目录（repoRoot）算的，绝不是相对
+    // `FIXTURE_ROOT` 本身，因为 import 住在 `.cap/` 等价根之外。这也正是本
+    // loader 隐含的唯一供给根是 repoRoot 而不是 capRoot 的原因：相对 capRoot，
+    // 这一条只能用 `../` 逃逸出去，而那是 Story 3.4 的合同要拒绝的。
+    expect(isKnown(grilling.sourceRef) && grilling.sourceRef.value).toBe('plugins/grilling/skills/grilling');
+  });
+
+  test('[Story 3.4] every Known sourceRef this loader emits satisfies the portability contract -- checked with the one shared predicate, never a hand-copied paraphrase of it', async () => {
+    const revisions = await loadCapConfigRevisions(FIXTURE_ROOT);
+    const supplyRoot = path.dirname(FIXTURE_ROOT);
+    const allRefs = revisions.flatMap((r) => [...r.instructions, ...r.skills, ...r.mcp, ...r.hooks, ...r.plugins]);
+    expect(allRefs.length).toBeGreaterThan(0);
+
+    for (const capabilityRef of allRefs) {
+      if (!isKnown(capabilityRef.sourceRef)) {
+        continue;
+      }
+      // 刻意用解析侧运行的*同一个* `validateSupplyRelativeRef`：在这里手抄
+      // 第二份规则副本会与真规则漂移，然后给启动侧本会拒绝的引用发合格证。
+      expect(validateSupplyRelativeRef(capabilityRef.sourceRef.value, supplyRoot).ok).toBe(true);
+    }
+  });
+
+  test('[Story 3.4] the instruction prompt sourceRef is repoRoot-relative POSIX too -- one revision, one supply root', async () => {
+    const revisions = await loadCapConfigRevisions(FIXTURE_ROOT);
+    const general = revisions.find((r) => r.configName === 'general')!;
+    const prompt = general.instructions[0]!;
+    expect(isKnown(prompt.sourceRef) && prompt.sourceRef.value).toBe('cap-sample/prompts/general.md');
   });
 
   test('[Story 4.5b] mcp/hooks/plugins sourceRef stays honestly Unknown -- no real directory convention exists for them', async () => {
@@ -119,6 +145,81 @@ describe('loadCapConfigRevisions (fixture, not the real repo .cap/)', () => {
     for (const capabilityRef of [...general.mcp, ...general.hooks, ...general.plugins]) {
       expect(isUnknown(capabilityRef.sourceRef)).toBe(true);
     }
+  });
+});
+
+describe('[Story 3.4 patch] illegal declared data degrades to Unknown, never to a doomed sourceRef', () => {
+  let repoRoot: string;
+  let capRoot: string;
+
+  beforeEach(() => {
+    repoRoot = mkdtempSync(path.join(os.tmpdir(), 'control-plane-cap-fs-illegal-'));
+    capRoot = path.join(repoRoot, '.cap');
+    mkdirSync(path.join(capRoot, 'profiles'), { recursive: true });
+  });
+
+  afterEach(() => {
+    rmSync(repoRoot, { recursive: true, force: true });
+  });
+
+  /** 写出一个最小 CAP 形态目录，其声明数据是刻意做成敌意的。 */
+  function writeCap(promptPath: string, importSource: string): void {
+    writeFileSync(
+      path.join(capRoot, 'manifest.toml'),
+      'version = 3\n\n[profiles]\ngeneral = ".cap/profiles/general.toml"\n',
+      'utf8',
+    );
+    writeFileSync(path.join(capRoot, 'profiles', 'general.toml'), `version = 3\nprompt = "${promptPath}"\n`, 'utf8');
+    writeFileSync(
+      path.join(capRoot, 'lock.json'),
+      JSON.stringify({
+        profiles: {
+          general: {
+            layer_digest: 'sha256:illegal-fixture',
+            inventory: { skills: ['imported'], mcps: [], hooks: [], plugins: [] },
+          },
+        },
+        project_skill_imports: [{ name: 'imported', source: importSource }],
+      }),
+      'utf8',
+    );
+  }
+
+  test('an import source escaping the supply root is Unknown, not `../outside/...`', async () => {
+    writeCap('.cap/prompts/general.md', '../outside/grilling');
+    const revisions = await loadCapConfigRevisions(capRoot);
+    const imported = revisions[0]!.skills.find((skill) => skill.name === 'imported')!;
+    expect(isUnknown(imported.sourceRef)).toBe(true);
+  });
+
+  test('an absolute import source is Unknown, never spliced onto repoRoot', async () => {
+    writeCap('.cap/prompts/general.md', process.platform === 'win32' ? 'D:/elsewhere/grilling' : '/elsewhere/grilling');
+    const revisions = await loadCapConfigRevisions(capRoot);
+    const imported = revisions[0]!.skills.find((skill) => skill.name === 'imported')!;
+    expect(isUnknown(imported.sourceRef)).toBe(true);
+  });
+
+  test('a backslash-separated import source is Unknown on every platform -- the same string must not mean two things', async () => {
+    writeCap('.cap/prompts/general.md', 'plugins\\grilling\\skills\\grilling');
+    const revisions = await loadCapConfigRevisions(capRoot);
+    const imported = revisions[0]!.skills.find((skill) => skill.name === 'imported')!;
+    expect(isUnknown(imported.sourceRef)).toBe(true);
+  });
+
+  test('a declared prompt escaping the CAP directory is Unknown -- path.join must not be allowed to swallow it', async () => {
+    writeCap('../../outside-the-repo.md', 'plugins/grilling/skills/grilling');
+    const revisions = await loadCapConfigRevisions(capRoot);
+    expect(isUnknown(revisions[0]!.instructions[0]!.sourceRef)).toBe(true);
+    // ……而同一条修订里那个合法的 import 不受影响：降级是按引用逐条发生的，
+    // 不会把整条修订抹白。
+    const imported = revisions[0]!.skills.find((skill) => skill.name === 'imported')!;
+    expect(isKnown(imported.sourceRef) && imported.sourceRef.value).toBe('plugins/grilling/skills/grilling');
+  });
+
+  test('an absolute declared prompt is Unknown (path.join(root, "/abs/x") would otherwise yield <root>/abs/x)', async () => {
+    writeCap(process.platform === 'win32' ? 'D:/elsewhere/general.md' : '/elsewhere/general.md', 'plugins/grilling/skills/grilling');
+    const revisions = await loadCapConfigRevisions(capRoot);
+    expect(isUnknown(revisions[0]!.instructions[0]!.sourceRef)).toBe(true);
   });
 });
 

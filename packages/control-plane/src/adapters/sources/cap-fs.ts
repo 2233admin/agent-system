@@ -24,7 +24,8 @@
 
 import path from 'node:path';
 
-import { type Known, known, unknown } from '../../domain/facts';
+import { type Fact, known, unknown } from '../../domain/facts';
+import { validateSupplyRelativeRef } from '../../cli/supply-root';
 import type { CapabilityKind, CapabilityReference, SourceCategory, StableConfigRevision } from '../../domain/config';
 
 /**
@@ -98,9 +99,63 @@ interface CapLock {
  * works unchanged against the real repo's `.cap/` and against a
  * self-contained fixture directory that omits the prefix.
  */
+function stripCapPrefix(declaredPath: string): string {
+  return declaredPath.startsWith('.cap/') ? declaredPath.slice('.cap/'.length) : declaredPath;
+}
+
 function resolveCapRelativePath(capRoot: string, declaredPath: string): string {
-  const normalized = declaredPath.startsWith('.cap/') ? declaredPath.slice('.cap/'.length) : declaredPath;
-  return path.join(capRoot, normalized);
+  return path.join(capRoot, stripCapPrefix(declaredPath));
+}
+
+/**
+ * `[Story 3.4]` 本 loader 产出的每一条 `sourceRef` 都必须满足跨机器可移植性
+ * 合同：**库内相对 POSIX 路径**（见 `domain/config.ts` 的
+ * `CapabilityReference.sourceRef`）。它此前产出的绝对路径，如今会被
+ * `content-materializer.ts` fail-closed 拒掉。
+ *
+ * 本 loader 输出所隐含的供给根是 **`repoRoot`（`capRoot` 所在的那个目录），不是
+ * `capRoot`**，而且只能如此：一条修订的全部引用必须对*同一个*根解析，而
+ * CAP 形态目录里的 `project_skill_imports[].source`（例如
+ * `plugins/grilling/skills/grilling`）就住在 `capRoot` *之外*。相对 `capRoot`
+ * 它们只能写成 `../plugins/...`——恰恰是合同要拒绝的逃逸形态。相对 `repoRoot`，
+ * 则每一条引用都留在根之内。
+ *
+ * `[Story 3.4 patch]` 产出侧自检，以及它为什么必须落在这个位置：声明路径会用
+ * 解析侧用的同一个 `validateSupplyRelativeRef` 对 `capRoot` 校验，且在任何
+ * `path.join` *之前*；不通过就降级为本 loader 别处已经在用的那个诚实
+ * `Unknown`。两个细节都要紧。输入是*声明数据*，不是本模块自己的常量——一个
+ * 绝对的、逃逸的（`../outside/x`）、带盘符的或分隔符反向的 profile `prompt` 或
+ * `lock.json` `source`，否则就会产出一条违反合同的 `sourceRef`（win32 上甚至
+ * 可能拼出「仓库根 + 另一个盘符」的怪路径）；而伪造一个坏指针，严格劣于承认这
+ * 个指针未知（AD-8/AD-21 的 `Never` 边界）。至于为什么不能先 join：先 join 会
+ * *掩盖*绝对路径这一情形——`path.join(root, '/abs/x')` 会欣然给出
+ * `<root>/abs/x`。
+ *
+ * 一旦确认声明路径确实落在 `capRoot` 之内，再给它前缀上 `capRoot` 自己的名字，
+ * 就足以把它变成 `repoRoot` 相对——因为 `repoRoot` 就是 `path.dirname(capRoot)`，
+ * 落在其内是构造上必然的。这里刻意*不*做第二次完整校验：那次校验永远不可能触发，
+ * 而一个不可达的检查就是一个会悄悄腐烂的检查。唯一一种真能破坏这次拼接的退化输入
+ * ——`capRoot` 本身就是文件系统根、因而没有名字可用来做前缀——单独显式拒绝。
+ *
+ * `[Story 3.4 patch]` 注意这里*没有*声称的东西：产出的字符串一般**不**等同于
+ * CAP 数据里声明的那个路径。`manifest.toml` 声明的是带字面 `.cap/` 前缀的
+ * repo-root-relative 路径，`stripCapPrefix` 把该前缀剥掉，本函数随后又用
+ * `basename(capRoot)` 重新加上前缀——两者只有在 `basename(capRoot)` 本身就是
+ * `.cap`（即已退役的真实 `.cap/` 布局）时才重合。对
+ * `tests/fixtures/cap-sample/` 来说，声明的 `.cap/prompts/general.md` 因此会
+ * 产出 `cap-sample/prompts/general.md`。只有 `project_skill_imports[].source`
+ * ——它不带 `.cap/` 前缀，本来就是 repo-root-relative——原样往返不变。
+ */
+function capSupplyRef(capRoot: string, declaredPath: string): Fact<string> {
+  const insideCap = validateSupplyRelativeRef(stripCapPrefix(declaredPath), capRoot);
+  if (!insideCap.ok) {
+    return CAP_FS_FIELD_NOT_CAPTURED;
+  }
+  const capName = path.basename(capRoot);
+  if (capName.length === 0) {
+    return CAP_FS_FIELD_NOT_CAPTURED;
+  }
+  return known(`${capName}/${insideCap.ref}`);
 }
 
 async function readToml<T>(absPath: string): Promise<T> {
@@ -126,18 +181,29 @@ async function readJson<T>(absPath: string): Promise<T> {
  * directories -- see Story 4.7 -- still existed on disk; `tests/fixtures/
  * cap-sample/` reproduces the same shape today). Never a speculative third
  * path shape.
+ *
+ * `[Story 3.4]` 两个分支现在都产出 `repoRoot` 相对的 POSIX 路径，而不再是绝对
+ * 路径——为什么这里隐含的供给根是 `repoRoot`，见 `capSupplyRef`。*位置*没有任何
+ * 变化，变的只是记录它们所用的（与机器无关的）形态。
+ *
+ * `[Story 3.4 patch]` 返回类型由 `Known` 放宽为 `Fact`：`lock.json` 里声明的
+ * import `source` 是任意外部数据，因此一个无法表达成合法库内相对引用的值，会降级
+ * 为 `mcp`/`hook`/`plugin` 已经在用的那个诚实 `Unknown`。import 分支直接校验
+ * 声明字符串本身（按约定它本来就是 repo-root-relative），而不是先把它 join 到
+ * `repoRoot` 上，因为 join 会掩盖「声明的是绝对路径」这一情形。
  */
 function resolveSkillSourceRef(
   name: string,
   capRoot: string,
   repoRoot: string,
   importSourceByName: ReadonlyMap<string, string>,
-): Known<string> {
+): Fact<string> {
   const importSource = importSourceByName.get(name);
   if (importSource !== undefined) {
-    return known(path.join(repoRoot, importSource));
+    const verdict = validateSupplyRelativeRef(importSource, repoRoot);
+    return verdict.ok ? known(verdict.ref) : CAP_FS_FIELD_NOT_CAPTURED;
   }
-  return known(resolveCapRelativePath(capRoot, `capabilities/skills/${name}`));
+  return capSupplyRef(capRoot, `capabilities/skills/${name}`);
 }
 
 /**
@@ -234,7 +300,13 @@ export async function loadCapConfigRevisions(capRoot: string): Promise<StableCon
           // human-readable summary text; this loader was simply discarding
           // it as a provenance pointer before now (AD-21's blocking
           // prerequisite).
-          sourceRef: known(resolveCapRelativePath(capRoot, profile.prompt)),
+          //
+          // `[Story 3.4]` 记录为 `repoRoot` 相对、POSIX 分隔的形态，与
+          // `resolveSkillSourceRef` 用的是同一个供给根约定——一条修订，一个根。
+          // 这里若是绝对路径，会被 `content-materializer.ts` fail-closed 拒掉；
+          // 声明的 `prompt` 若无法合法表达，则降级为 `Unknown`，而不是产出一个
+          // 注定被拒的字符串。
+          sourceRef: capSupplyRef(capRoot, profile.prompt),
           contentFingerprint: CAP_FS_FIELD_NOT_CAPTURED,
         },
       ],

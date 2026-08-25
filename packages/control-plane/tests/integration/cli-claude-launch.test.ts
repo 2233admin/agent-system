@@ -12,6 +12,7 @@ import path from 'node:path';
 
 import { main } from '../../src/cli/index';
 import { SqliteConfigRevisionRepository } from '../../src/adapters/sqlite/repository';
+import { SUPPLY_REF_REJECTION_MARKER } from '../../src/cli/supply-root';
 import { known } from '../../src/domain/facts';
 import type { Fact } from '../../src/domain/facts';
 import type { CapabilityReference, SourceCategory, StableConfigRevision } from '../../src/domain/config';
@@ -153,6 +154,12 @@ let claudeProcessPort: FakeClaudeProcessPort;
 let claudeCapabilityProbe: FakeClaudeCapabilityProbe;
 let claudeLaunchContextWriter: FakeClaudeLaunchContextWriter;
 let claudeInvocationDirPort: FakeClaudeInvocationDirPort;
+/**
+ * `[Story 3.4]` 每个测试前后保存并恢复（不是只 `delete`）：自我开发本仓的人
+ * 完全可能在环境里正当地导出了 `CONTROL_PLANE_SUPPLY_ROOT`，本套件不得把它
+ * 抹掉给下一个测试文件用。
+ */
+let originalSupplyRoot: string | undefined;
 
 beforeEach(() => {
   tmpDir = mkdtempSync(path.join(os.tmpdir(), 'control-plane-cli-claude-launch-'));
@@ -161,6 +168,9 @@ beforeEach(() => {
   dbPath = path.join(tmpDir, 'db.sqlite3');
   process.env.CONTROL_PLANE_DB_PATH = dbPath;
   process.env.CONFIGS_LANG = 'en';
+  // `[Story 3.4]` 下面每一条 `sourceRef` 都是相对这个根的。
+  originalSupplyRoot = process.env.CONTROL_PLANE_SUPPLY_ROOT;
+  process.env.CONTROL_PLANE_SUPPLY_ROOT = tmpDir;
 
   logs = [];
   errors = [];
@@ -184,6 +194,11 @@ afterEach(() => {
   console.error = originalError;
   delete process.env.CONTROL_PLANE_DB_PATH;
   delete process.env.CONFIGS_LANG;
+  if (originalSupplyRoot === undefined) {
+    delete process.env.CONTROL_PLANE_SUPPLY_ROOT;
+  } else {
+    process.env.CONTROL_PLANE_SUPPLY_ROOT = originalSupplyRoot;
+  }
   rmSync(tmpDir, { recursive: true, force: true });
 });
 
@@ -200,27 +215,28 @@ function overrides() {
   return { claudeProcessPort, claudeCapabilityProbe, claudeLaunchContextWriter, claudeInvocationDirPort };
 }
 
-/** A real, on-disk skill directory + instruction file so materialization actually succeeds. */
-function makeRealSkillAndInstruction(): { readonly skillDir: string; readonly instructionFile: string } {
-  const skillDir = path.join(tmpDir, 'skills', 'my-skill');
-  mkdirSync(skillDir, { recursive: true });
-  writeFileSync(path.join(skillDir, 'SKILL.md'), '# My Skill\n', 'utf8');
+/**
+ * 在供给根下写出真实存在的 skill 目录与指令文件，好让物化真的能成功。
+ * `[Story 3.4]` 返回的是**供给根内相对 POSIX** 形态的 `sourceRef`，即唯一
+ * 合法形态。
+ */
+function makeRealSkillAndInstruction(): { readonly skillRef: string; readonly instructionRef: string } {
+  mkdirSync(path.join(tmpDir, 'skills', 'my-skill'), { recursive: true });
+  writeFileSync(path.join(tmpDir, 'skills', 'my-skill', 'SKILL.md'), '# My Skill\n', 'utf8');
+  writeFileSync(path.join(tmpDir, 'instructions.md'), 'Be a helpful agent.', 'utf8');
 
-  const instructionFile = path.join(tmpDir, 'instructions.md');
-  writeFileSync(instructionFile, 'Be a helpful agent.', 'utf8');
-
-  return { skillDir, instructionFile };
+  return { skillRef: 'skills/my-skill', instructionRef: 'instructions.md' };
 }
 
 describe('configs use --client claude-code', () => {
   test('无 active plan + 真实内容物化: fresh launch reaches succeeded, delivers --plugin-dir/--append-system-prompt', async () => {
-    const { skillDir, instructionFile } = makeRealSkillAndInstruction();
+    const { skillRef, instructionRef } = makeRealSkillAndInstruction();
     seed([
       sampleRevision({
         configName: 'general',
         revisionId: 'rev-1',
-        skills: [ref('skill', 'my-skill', known(skillDir))],
-        instructions: [ref('instruction', 'core', known(instructionFile), 'project-prompt')],
+        skills: [ref('skill', 'my-skill', known(skillRef))],
+        instructions: [ref('instruction', 'core', known(instructionRef), 'project-prompt')],
       }),
     ]);
 
@@ -360,7 +376,7 @@ describe('configs use --client claude-code', () => {
       sampleRevision({
         configName: 'general',
         revisionId: 'rev-1',
-        skills: [ref('skill', 'missing-skill', known(path.join(tmpDir, 'does-not-exist-skill-dir')))],
+        skills: [ref('skill', 'missing-skill', known('does-not-exist-skill-dir'))],
       }),
     ]);
 
@@ -372,6 +388,29 @@ describe('configs use --client claude-code', () => {
     expect(claudeProcessPort.lastSpawnParams).toBeNull();
     expect(output).toContain('Affected capabilities: claude.plugin-dir-delivery');
     expect(output).toContain('Claude recovery:');
+  });
+
+  test('[Story 3.4] 非法 sourceRef 的诊断必须抵达用户可见输出：同时含非法值与当时生效的供给根', async () => {
+    // 本 Story 的 Problem 就是「无门可指根因」。拒绝原因只有一路活过
+    // `resolveSourcePath` 到终端之间的每一层才有用——只在 adapter 边界断言的话，
+    // `describeMaterializationFailures` 把原因丢掉、只打裸 capability 名，测试
+    // 是发现不了的。
+    const illegalRef = '../escaped-outside-the-supply-root';
+    seed([
+      sampleRevision({
+        configName: 'general',
+        revisionId: 'rev-1',
+        skills: [ref('skill', 'escaping-skill', known(illegalRef))],
+      }),
+    ]);
+
+    const code = await main(['use', 'rev-1', '--client', 'claude-code', '--yes'], overrides());
+    expect(code).toBe(1);
+    const output = logs.join('\n');
+    expect(output).toContain(SUPPLY_REF_REJECTION_MARKER);
+    expect(output).toContain(illegalRef);
+    expect(output).toContain(path.resolve(tmpDir));
+    expect(claudeProcessPort.lastSpawnParams).toBeNull();
   });
 
   test('claude 进程非零退出: shows failure phase/reason, does not fabricate success', async () => {
