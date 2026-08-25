@@ -1,8 +1,8 @@
-import { mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 
 import { defaultDbPath } from '../../cli/db-path';
 import type { LaunchContext, LaunchContextWriter } from '../../application/ports';
+import { writeJsonLaunchContext } from './fs-json-context-writer';
 
 /**
  * Writes under the same state root the SQLite database lives under
@@ -16,10 +16,6 @@ export function launchContextDir(): string {
 
 export class FsLaunchContextWriter implements LaunchContextWriter {
   async write(context: LaunchContext): Promise<string> {
-    const dir = launchContextDir();
-    mkdirSync(dir, { recursive: true });
-    const filePath = path.join(dir, `${context.planId}.json`);
-    writeFileSync(filePath, JSON.stringify(context, null, 2), 'utf8');
-    return filePath;
+    return writeJsonLaunchContext(launchContextDir(), context.planId, context);
   }
 }

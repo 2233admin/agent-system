@@ -4,7 +4,7 @@
 # Skill 资产面
 
 **组是第一结构。** 装卸、版本、发现、判定、复核都以组为单位，不以 Skill 为单位——
-76 个 Skill 实际是 12 个组，判定 12 次，不是 76 次。
+63 个 Skill 实际是 10 个组，判定 10 次，不是 63 次。
 
 ## 组的形态
 
@@ -30,11 +30,11 @@
 
 ## 当前缺口
 
-共 76 个 Skill / 12 个组，递归维护面 880,414 字节。
+共 63 个 Skill / 10 个组，递归维护面 852,881 字节。
 
 | 缺口 | 数量 | 含义 |
 | --- | ---: | --- |
-| 未打包（Claude 侧） | 3 | 无 plugin.json／不在两份 Marketplace，因而无版本号；OMP 侧不受影响——它本就不走 plugin 道 |
+| 未打包（Claude 侧） | 1 | 无 plugin.json／不在两份 Marketplace，因而无版本号；OMP 侧不受影响——它本就不走 plugin 道 |
 | 未归组 | 0 | 归组规则未覆盖，需在 matters.json 声明 |
 | 外来组改动状况未核实 | 0 | 不知道是 fork 还是 vendor，升级会静默丢改动 |
 | 外来组无更新触发条件 | 0 | 上游发新版没人知道，等于不更新 |
@@ -49,18 +49,16 @@
 
 | 组 | 成员 | 维护面 | 占比 | 版本 | Claude 打包 | 服务事项 | 来源 | 本地改动 |
 | --- | ---: | ---: | ---: | --- | --- | --- | --- | --- |
-| **Issue 与 PR** `github-collaboration` | 6 | 124.1 KB | 14.4% | 0.3.18 | 是 | E3 推进仓库事项 | own | — |
-| **问题求解治理** `adaptive-problem-solving` | 1 | 132.0 KB | 15.4% | 0.2.12 | 是 | X 横切面（不满足独立验收判据，不单独立事项） | own | — |
-| **多席协作** `orchestrated-collaboration` | 1 | 50.2 KB | 5.8% | 0.2.7 | 是 | X 横切面（不满足独立验收判据，不单独立事项） | own | — |
-| **资源观测** `resource-observability` | 1 | 9.7 KB | 1.1% | 0.2.4 | 是 | X 横切面（不满足独立验收判据，不单独立事项） | own | — |
+| **Issue 与 PR** `github-collaboration` | 6 | 124.1 KB | 14.9% | 0.3.18 | 是 | E3 推进仓库事项 | own | — |
+| **问题求解治理** `adaptive-problem-solving` | 1 | 132.0 KB | 15.9% | 0.2.12 | 是 | X 横切面（不满足独立验收判据，不单独立事项） | own | — |
+| **多席协作** `orchestrated-collaboration` | 1 | 50.2 KB | 6.0% | 0.2.7 | 是 | X 横切面（不满足独立验收判据，不单独立事项） | own | — |
+| **资源观测** `resource-observability` | 1 | 9.7 KB | 1.2% | 0.2.4 | 是 | X 横切面（不满足独立验收判据，不单独立事项） | own | — |
 | **自我改进** `self-improvement` | 1 | 16.0 KB | 1.9% | 0.1.7 | 是 | X 横切面（不满足独立验收判据，不单独立事项） | own | — |
-| **Skill 维护** `skill-maintenance` | 1 | 3.8 KB | 0.4% | 0.1.0 | 是 | E4 管 Skill 本身 | own | — |
-| **Skill 鉴别** `skill-appraisal` | 1 | 8.0 KB | 0.9% | 0.1.0 | 是 | E4 管 Skill 本身 | own | — |
-| **知识维护** `knowledge-maintenance` | 1 | 6.3 KB | 0.7% | 0.1.3 | 是 | E4 管 Skill 本身 | own | — |
+| **Skill 维护** `skill-maintenance` | 1 | 3.8 KB | 0.5% | 0.1.0 | 是 | E4 管 Skill 本身 | own | — |
+| **Skill 鉴别** `skill-appraisal` | 1 | 8.0 KB | 1.0% | 0.1.0 | 是 | E4 管 Skill 本身 | own | — |
+| **知识维护** `knowledge-maintenance` | 1 | 6.3 KB | 0.8% | 0.1.3 | 是 | E4 管 Skill 本身 | own | — |
 | **盘问** `grilling` | 1 | 3.9 KB | 0.5% | 0.1.2 | 是 | X 横切面（不满足独立验收判据，不单独立事项） | **vendor** 84fdeffd12f2ee307994d1eb6feb48173b6e0502（2026-08-06） | **1 处** |
-| `bmad` | 49 | 478.8 KB | 55.7% | **无** | **否** | E2 造软件、E5 想清楚一件事 | **fork** v6.11.0（2026-08-24 核实为上游当前最新版） | 零 |
-| `openspec` | 6 | 12.4 KB | 1.4% | **无** | **否** | E1 装配 Agent 配置、E2 造软件 | own | — |
-| **CAP 装配** `cap-assembly` | 7 | 14.5 KB | 1.7% | **无** | **否** | E1 装配 Agent 配置 | own | — |
+| `bmad` | 49 | 478.8 KB | 57.5% | **无** | **否** | E2 造软件、E5 想清楚一件事 | **fork** v6.11.0（2026-08-24 核实为上游当前最新版） | 零 |
 
 来源三分：`own` 我们自己写的，随便改，没有上游；`fork` 从外部拿来直接用，承诺零本地改动，更新＝拉上游新版；`vendor` 从外部拿来但打了补丁，必须登记每处改动，上游更新后需重新打补丁。kind 与 dependsOn 是两回事：一个 own 组可以依赖外部工具版本（如 openspec 组依赖 @fission-ai/openspec 1.9.0）。dependsOn 的 updateTrigger 是该组的失效条件之一，与 kind 无关。
 
@@ -224,42 +222,9 @@
 | `bmad-ux` | `.agents/skills/bmad-ux` | 145 B | 10.4 KB | 13.9 KB | 2026-08-24 | 有 | 有 |
 | `bmad-validate-prd` | `.agents/skills/bmad-validate-prd` | 54 B | 2.9 KB | 0.0 KB | 2026-08-24 | 有 | 有 |
 
-### openspec
-
-服务事项 **E1** 装配 Agent 配置｜**E2** 造软件　来源 `own`　**未打包**
-
-**依赖外部工具** `@fission-ai/openspec` `1.9.0`（锁于 package.json + bun.lock）　更新触发：各 SKILL.md 的 compatibility 字段：仅兼容 OpenSpec CLI 1.9.0，升级 CLI 时必须复核本合同
-
-> 6 个 openspec-* 是本仓自己写的中文项目内适配（见各 SKILL.md 的 source 字段），不是上游文件副本；上游 OpenSpec 是 npm 依赖，由 package.json 锁版本。.agents/skills/openspec-*/ 与 .claude/skills/openspec-*/ 是 CLI 生成的安装副本，已在 .gitignore 排除。变更方法包，服务于任何要做变更的事项。当前 openspec/config.yaml 绑死 .cap（三处），提取时必须换掉，尤其归档门。
-
-| Skill | 位置 | L1 | L2 | L3 | 上次复核 | 失效条件 | 最少复核步骤 |
-| --- | --- | ---: | ---: | ---: | --- | --- | --- |
-| `openspec-apply-change` | `.cap/capabilities/skills/openspec-apply-change` | 184 B | 1.9 KB | 0.0 KB | 2026-08-24 | 有 | 有 |
-| `openspec-archive-change` | `.cap/capabilities/skills/openspec-archive-change` | 192 B | 2.0 KB | 0.0 KB | 2026-08-24 | 有 | 有 |
-| `openspec-explore` | `.cap/capabilities/skills/openspec-explore` | 225 B | 2.1 KB | 0.0 KB | 2026-08-24 | 有 | 有 |
-| `openspec-propose` | `.cap/capabilities/skills/openspec-propose` | 242 B | 2.4 KB | 0.0 KB | 2026-08-24 | 有 | 有 |
-| `openspec-sync-specs` | `.cap/capabilities/skills/openspec-sync-specs` | 177 B | 2.0 KB | 0.0 KB | 2026-08-24 | 有 | 有 |
-| `openspec-update-change` | `.cap/capabilities/skills/openspec-update-change` | 231 B | 2.0 KB | 0.0 KB | 2026-08-24 | 有 | 有 |
-
-### CAP 装配 · cap-assembly
-
-服务事项 **E1** 装配 Agent 配置　来源 `own`　**未打包**
-
-> CAP 装配自身的能力组。CAP 退役排在 Epic 4 Story 4-6，本组归宿跟随该 Story。
-
-| Skill | 位置 | L1 | L2 | L3 | 上次复核 | 失效条件 | 最少复核步骤 |
-| --- | --- | ---: | ---: | ---: | --- | --- | --- |
-| `agent-assembler` | `.cap/capabilities/skills/agent-assembler` | 208 B | 3.0 KB | 0.0 KB | 2026-08-24 | 有 | 有 |
-| `agent-behavior-evaluation` | `.cap/capabilities/skills/agent-behavior-evaluation` | 197 B | 1.9 KB | 0.0 KB | 2026-08-24 | 有 | 有 |
-| `agent-prompt-design` | `.cap/capabilities/skills/agent-prompt-design` | 193 B | 1.7 KB | 0.0 KB | 2026-08-24 | 有 | 有 |
-| `agent-skill-design` | `.cap/capabilities/skills/agent-skill-design` | 206 B | 1.5 KB | 0.0 KB | 2026-08-24 | 有 | 有 |
-| `capability-lifecycle` | `.cap/capabilities/skills/capability-lifecycle` | 236 B | 2.0 KB | 0.0 KB | 2026-08-24 | 有 | 有 |
-| `capability-profile-closure` | `.cap/capabilities/skills/capability-profile-closure` | 221 B | 2.1 KB | 0.0 KB | 2026-08-24 | 有 | 有 |
-| `spec-change-pack` | `.cap/capabilities/skills/spec-change-pack` | 235 B | 2.2 KB | 0.0 KB | 2026-08-24 | 有 | 有 |
-
 ## 复核依据
 
-17 条复核依据，覆盖 76/76 个 Skill。复核按下列步骤做，不重判。
+15 条复核依据，覆盖 63/63 个 Skill。复核按下列步骤做，不重判。
 
 ### bmad
 
@@ -270,22 +235,6 @@
 **下次最少复核步骤** ① git diff --stat 7024901 -- .agents/skills .claude/skills 应为空，且 diff -rq .agents/skills .claude/skills 无差异——两条任一不空即 fork 承诺已破。② 查 https://github.com/bmad-code-org/BMAD-METHOD/releases 是否有高于 v6.11.0 的版本。③ 升级后跑 uv run .agents/skills/bmad-retrospective/scripts/tests/test_sprint_status.py，Windows 基线为 87 passed / 4 failed；那 4 个失败（atomic_write_preserves_mode、unreadable_target、symlinked_target、write_failure_restore）全部源于 Windows 没有 POSIX 权限语义，与本仓无关，多出任何失败才需下钻。
 
 **本次判定依据** 2026-08-24 核实：epic-1-retro-item-5 声称的『无法写入 epic 级状态』不成立。sprint_plan.py（bmad-sprint-planning，epic 键的真正属主）自 v6.11.0 起就有 generate --set KEY=STATUS，docstring 明写 the repair path is allowed to downgrade，_parse_sets 用 classify_key + RANKS[kind] 按 epic 词表校验。已 dry-run 验证 --set epic-3=done 返回 explicit_set 且零写入。此前加在 sprint_status.py（bmad-retrospective）的 65 行是功能重复且放错脚本，已于本次全部回退。注意：generate --set 会从 epics.md 重新生成，当前会 drop 5 条 epics.md 未覆盖的 story 键——那是本仓 epics.md 与 sprint-status.yaml 的漂移，不是 bmad 的问题。
-
-### openspec
-
-组级 · 覆盖 6 个成员｜来源 `appraisals.json · groups.openspec`｜上次复核 2026-08-24
-
-**什么会让它失效** package.json 锁定的 @fission-ai/openspec 版本不再是 1.9.0；或各 openspec-* SKILL.md 的 compatibility 字段与实际 CLI 版本不符。
-
-**下次最少复核步骤** 比对 package.json 的 @fission-ai/openspec 版本与 .cap/capabilities/skills/openspec-*/SKILL.md 的 compatibility 声明，两者一致即结论成立。
-
-### CAP 装配 · cap-assembly
-
-组级 · 覆盖 7 个成员｜来源 `appraisals.json · groups.cap-assembly`｜上次复核 2026-08-24
-
-**什么会让它失效** CAP 退役（Epic 4 Story 4-6）落地，或 .cap 的 manifest／profile／lock 语义变更。
-
-**下次最少复核步骤** 读 _bmad-output/implementation-artifacts/sprint-status.yaml 的 4-6-退役-cap-本体 状态；仍为 backlog 则本组结论继续成立。
 
 ### adaptive-problem-solving
 

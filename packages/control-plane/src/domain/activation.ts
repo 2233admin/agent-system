@@ -4,9 +4,20 @@
  *
  * `LaunchPlan` is immutable: every transition returns a *new* value rather
  * than mutating the input in place. Terminal phases never transition again,
- * with one explicit exception (`succeeded`/`degraded` -> `requires-restart`
- * on a `switch-requested` event) -- see the state diagram in the Story's
- * Design Notes.
+ * with two explicit exceptions, both AD-18-listed transitions into/within
+ * the terminal set rather than new states:
+ *   1. `succeeded`/`degraded` -> `requires-restart` on a `switch-requested`
+ *      event -- a *terminal* phase transitioning to another terminal phase.
+ *   2. `[Story 4.4]` `prepared` -> `requires-restart` on a
+ *      `target-requires-restart` event -- the mirror image: a *non*-terminal
+ *      phase short-circuiting straight into a terminal one. This is AD-20's
+ *      "already-running session" launch target: the product does not own
+ *      that process, so `apply` can only ever resolve to the existing
+ *      `requires-restart` terminal phase, never attempting `applying`/
+ *      `observing` at all (no partial-application fact is ever produced).
+ * Neither exception introduces a new `LaunchPhase` value -- see the state
+ * diagram in Story 4.3's Design Notes and Story 4.4's Design Notes for the
+ * second exception's rationale.
  */
 
 import { type Fact, known, unknown } from './facts';
@@ -68,7 +79,8 @@ export type LaunchPlanEvent =
   | { readonly type: 'process-started' }
   | { readonly type: 'apply-failed'; readonly reason: string }
   | { readonly type: 'observed'; readonly outcome: ObservedOutcome; readonly reason?: string }
-  | { readonly type: 'switch-requested' };
+  | { readonly type: 'switch-requested' }
+  | { readonly type: 'target-requires-restart' };
 
 /**
  * An immutable launch plan. `confirmedAt`/`failureReason`/`observedOutcome`
@@ -88,8 +100,11 @@ export interface LaunchPlan {
   /**
    * Why the plan is in its current terminal phase, when that is known --
    * covers `prepared-failed`/`apply-failed` reasons, why a plan was
-   * `cancelled` (user rejection) and why a `succeeded`/`degraded` plan
-   * moved to `requires-restart` (a switch was requested).
+   * `cancelled` (user rejection), why a `succeeded`/`degraded` plan
+   * moved to `requires-restart` (a switch was requested), and
+   * `[Story 4.4]` why a `prepared` plan moved straight to `requires-restart`
+   * (`'already-running-session-target'` -- AD-20's already-running launch
+   * target).
    */
   readonly failureReason: Fact<string>;
   readonly observedOutcome: Fact<ObservedOutcome>;
@@ -166,6 +181,14 @@ export function transitionLaunchPlan(
       }
       if (event.type === 'prepared-failed') {
         return { ok: true, plan: withFailure(plan, 'failed', event.reason) };
+      }
+      if (event.type === 'target-requires-restart') {
+        // `[Story 4.4]` AD-20's already-running launch target: this product
+        // does not own that process, so `apply` short-circuits straight to
+        // the existing `requires-restart` terminal phase from `prepared`
+        // itself -- never `awaiting-confirmation`/`applying`/`observing` --
+        // so no partial-application fact is ever produced.
+        return { ok: true, plan: withFailure(plan, 'requires-restart', 'already-running-session-target') };
       }
       break;
     }
@@ -255,6 +278,32 @@ function deriveApplyResult(plan: LaunchPlan): Fact<'applied' | 'degraded'> {
   // reusable here without fabricating a new reason/observedAt.
   return plan.observedOutcome;
 }
+
+/**
+ * `[Story 4.3]` AD-8's independent "how far did the running assembly
+ * actually get observed" axis. Deliberately never conflated with `phase`
+ * (governs lifecycle *legality*, not evidence tier) or `validationMethod`
+ * (AD-11's separate, independent axis). `verified` requires three-tier
+ * validation with no blocking Unknown (AD-11) -- no client adapter in this
+ * codebase produces it yet.
+ *
+ * Deliberately **not** paired with a `derive(phase: LaunchPhase)` pure
+ * projection here: `phase` alone cannot reconstruct this axis losslessly.
+ * `LaunchPhase`'s `'failed'` value is reachable two different ways --
+ * `'applying' --(apply-failed)--> 'failed'` (the process was *never*
+ * spawned: capability/revision/infra failed before launch) and
+ * `'observing' --(observed, outcome:'failed')--> 'failed'` (the process
+ * genuinely launched and exited non-zero) -- and both collapse to the same
+ * `phase: 'failed'` value with no residual trace of which path was taken.
+ * A generic `phase`-only projection would therefore have to guess, silently
+ * misreporting a pre-launch failure as `'observed'` (AD-8/AD-10 forbid
+ * exactly this kind of fabricated evidence). Callers that know their own
+ * real control-flow history (e.g. `application/claude-launch.ts`'s
+ * `launchClaudeFresh`) must track and report this value explicitly as they
+ * go, rather than reconstructing it after the fact from a persisted
+ * `LaunchPlan` alone.
+ */
+export type ObservationStage = 'planned' | 'launched' | 'observed' | 'verified';
 
 /** Pure projection from a `LaunchPlan` (+ externally observed facts) to `LaunchStatus`. */
 export function deriveLaunchStatus(

@@ -21,8 +21,25 @@ import { SqliteLaunchPlanRepository } from '../adapters/sqlite/launch-repository
 import { BunOmpProcessPort, defaultExtensionPath, findDenylistedForwardedArg } from '../adapters/omp/process-port';
 import { BunOmpCapabilityProbe } from '../adapters/omp/capability-probe';
 import { FsLaunchContextWriter } from '../adapters/launch-context/fs-launch-context-writer';
+import { FsClaudeLaunchContextWriter } from '../adapters/launch-context/fs-claude-launch-context-writer';
 import { GithubReleaseUpdater } from '../adapters/self-update/github-release-updater';
-import type { ConfigRevisionRepository, LaunchPlanRepository, OmpCapabilityProbePort, OmpProcessPort, LaunchContextWriter } from '../application/ports';
+import { BunClaudeProcessPort } from '../adapters/clients/claude/process-port';
+import { BunClaudeCapabilityProbe } from '../adapters/clients/claude/capability-probe';
+import { compileClaudeAssemblyManifest } from '../adapters/clients/claude/assembly-manifest';
+import { FsClaudeInvocationDirPort } from '../adapters/system/claude-invocation-dir';
+import { FsClaudeContentMaterializer } from '../adapters/clients/claude/content-materializer';
+import type {
+  ConfigRevisionRepository,
+  LaunchPlanRepository,
+  OmpCapabilityProbePort,
+  OmpProcessPort,
+  LaunchContextWriter,
+  ClaudeCapabilityProbePort,
+  ClaudeContentMaterializerPort,
+  ClaudeInvocationDirPort,
+  ClaudeLaunchContextWriter,
+  ClaudeProcessPort,
+} from '../application/ports';
 import {
   ConfigNotFoundError,
   ConfigUnsupportedError,
@@ -61,6 +78,13 @@ import {
   requestConfigSwitch,
   type LaunchDeps,
 } from '../application/launch';
+import {
+  launchClaudeFresh,
+  prepareClaudeAlreadyRunningLaunchPlan,
+  prepareClaudeFreshLaunchPlan,
+  type ClaudeLaunchOutcome,
+  type LaunchClaudeFreshDeps,
+} from '../application/claude-launch';
 import { readYesNo } from './confirm-prompt';
 import { defaultDbPath } from './db-path';
 import { t } from './i18n';
@@ -169,6 +193,18 @@ function parseUseOrSwitch(kind: 'use' | 'switch', rest: readonly string[]): Pars
     if (!support.supported) {
       return { kind: 'unsupported-client', clientId: clientRaw, reason: support.reason ?? 'unsupported client' };
     }
+  }
+
+  // `[Story 4.6 review fix]` `claude-code` has no forwarded-args delivery
+  // mechanism at all (`launchClaudeFresh`/`ClaudeSpawnParams` never accept
+  // one) -- rejected here, before any repository is opened, with a typed
+  // usage error, rather than being silently dropped by `runClaudeLaunchFlow`
+  // (which never reads `forwardedArgs`).
+  if (clientRaw === 'claude-code' && forwardedArgs.length > 0) {
+    return {
+      kind: 'usage-error',
+      message: `${t('parseError.forwardedArgsUnsupportedForClaude', { command: kind })}\n${usageLine()}`,
+    };
   }
 
   // Rejected here -- before any repository is opened, any plan is created
@@ -400,6 +436,12 @@ export interface CliOverrides {
   readonly ompPort?: OmpProcessPort;
   readonly capabilityProbe?: OmpCapabilityProbePort;
   readonly contextWriter?: LaunchContextWriter;
+  /** `[Story 4.6]` Claude-side port overrides, same purpose as the three above. */
+  readonly claudeProcessPort?: ClaudeProcessPort;
+  readonly claudeCapabilityProbe?: ClaudeCapabilityProbePort;
+  readonly claudeLaunchContextWriter?: ClaudeLaunchContextWriter;
+  readonly claudeInvocationDirPort?: ClaudeInvocationDirPort;
+  readonly claudeContentMaterializer?: ClaudeContentMaterializerPort;
 }
 
 /**
@@ -418,12 +460,18 @@ export interface ClosableLaunchPlanRepository extends LaunchPlanRepository {
   close(): void;
 }
 
-export interface FullDeps extends LaunchDeps {
+export interface FullDeps extends LaunchDeps, LaunchClaudeFreshDeps {
   readonly configRepository: ClosableConfigRevisionRepository;
   readonly launchPlanRepository: ClosableLaunchPlanRepository;
   readonly ompPort: OmpProcessPort;
   readonly capabilityProbe: OmpCapabilityProbePort;
   readonly contextWriter: LaunchContextWriter;
+  /** `[Story 4.6]` Constructed the same way as the three OMP ports above -- no I/O in the constructor itself. */
+  readonly claudeProcessPort: ClaudeProcessPort;
+  readonly claudeCapabilityProbe: ClaudeCapabilityProbePort;
+  readonly claudeLaunchContextWriter: ClaudeLaunchContextWriter;
+  readonly claudeInvocationDirPort: ClaudeInvocationDirPort;
+  readonly claudeContentMaterializer: ClaudeContentMaterializerPort;
 }
 
 /**
@@ -450,12 +498,24 @@ export async function openDeps(overrides: CliOverrides): Promise<FullDeps | null
     return null;
   }
 
+  // `[Story 4.6]` Constructed once so `claudeCapabilityProbe`'s default can
+  // reuse the exact same port instance rather than spinning up a second,
+  // independent `BunClaudeProcessPort` -- both, like every construction in
+  // this function, are side-effect-free (no process spawned, no file
+  // touched) until a method is actually called on them.
+  const claudeProcessPort = overrides.claudeProcessPort ?? new BunClaudeProcessPort();
+
   return {
     configRepository,
     launchPlanRepository,
     ompPort: overrides.ompPort ?? new BunOmpProcessPort(),
     capabilityProbe: overrides.capabilityProbe ?? new BunOmpCapabilityProbe(),
     contextWriter: overrides.contextWriter ?? new FsLaunchContextWriter(),
+    claudeProcessPort,
+    claudeCapabilityProbe: overrides.claudeCapabilityProbe ?? new BunClaudeCapabilityProbe(claudeProcessPort),
+    claudeLaunchContextWriter: overrides.claudeLaunchContextWriter ?? new FsClaudeLaunchContextWriter(),
+    claudeInvocationDirPort: overrides.claudeInvocationDirPort ?? new FsClaudeInvocationDirPort(),
+    claudeContentMaterializer: overrides.claudeContentMaterializer ?? new FsClaudeContentMaterializer(),
   };
 }
 
@@ -559,6 +619,127 @@ async function runLaunchFlow(
   }
 
   console.log(renderLaunchFailure(finalPlan));
+  return 1;
+}
+
+/**
+ * `[Story 4.6 review fix]` Appends `ClaudeLaunchOutcome`'s failure-kind-
+ * specific `recoveryAction`/`affectedCapabilities` after `renderLaunchFailure`'s
+ * generic, static message -- `renderLaunchFailure(plan)` alone only ever
+ * shows the fixed `failure.recovery` text (the same one OMP failures show),
+ * dropping the specific guidance `launchClaudeFresh` computed for *this*
+ * failure (e.g. which capability blocked it, or that a content source path
+ * could not be read). Never replaces `renderLaunchFailure`'s output --
+ * purely additive, and a no-op when the outcome carries neither (e.g. the
+ * already-running branch's non-failure `requires-restart` outcome never
+ * reaches this function at all).
+ */
+function renderClaudeLaunchOutcomeDetails(outcome: ClaudeLaunchOutcome): string | null {
+  const lines: string[] = [];
+  if (outcome.affectedCapabilities.length > 0) {
+    lines.push(t('claudeFailure.affectedCapabilities', { capabilities: outcome.affectedCapabilities.join(', ') }));
+  }
+  if (outcome.recoveryAction !== null) {
+    lines.push(t('claudeFailure.recoveryAction', { recoveryAction: outcome.recoveryAction }));
+  }
+  return lines.length > 0 ? lines.join('\n') : null;
+}
+
+/**
+ * `[Story 4.6]` `use`/`switch --client claude-code` entrypoint. Structurally
+ * mirrors `runLaunchFlow` above (prepare -> one-time confirmation ->
+ * confirm+launch -> final status), but calls the Claude-specific functions
+ * Story 4.3/4.4/4.5b delivered instead of `prepareLaunchPlan`/`launchOmp`,
+ * and -- unlike `runLaunchFlow` -- checks `findActiveForClient` for *both*
+ * `use` and `switch` (not only `switch`): a `configs use --client claude-code`
+ * against an already-running Claude Code session must be recognized as
+ * already-running too, not just a `switch`. This is why `params` carries no
+ * `mode` -- the routing is identical for both subcommands.
+ *
+ * The already-running branch never asks for confirmation (Story 4.4:
+ * `prepareClaudeAlreadyRunningLaunchPlan` resolves straight to the existing
+ * `requires-restart` terminal phase) and is not itself a failure -- its
+ * final status is shown the same way a successful fresh launch's is
+ * (`getLaunchStatus`/`renderLaunchStatus`), exit code 0.
+ *
+ * `[Story 4.6 review fix]` `findActiveForClient` returns the most recently
+ * created plan for this client *regardless of phase* (its own doc comment)
+ * -- only a plan that actually reached `succeeded`/`degraded` represents a
+ * real, still-running Claude Code process; a `failed`/`cancelled`/
+ * `requires-restart` plan proves nothing is actually running, and must fall
+ * through to a genuine fresh attempt instead of being permanently
+ * misreported as already-running. Mirrors the phase check
+ * `requestConfigSwitch`'s `switch-requested` transition guard already
+ * enforces on the OMP side.
+ */
+async function runClaudeLaunchFlow(deps: FullDeps, params: { readonly id: string; readonly yes: boolean }): Promise<number> {
+  const active = await deps.launchPlanRepository.findActiveForClient('claude-code');
+  if (active !== null && (active.phase === 'succeeded' || active.phase === 'degraded')) {
+    const outcome = await prepareClaudeAlreadyRunningLaunchPlan(deps, { revisionId: params.id });
+    const clientVersion = await deps.claudeProcessPort.detectVersion();
+    const status = await getLaunchStatus(deps, outcome.plan.planId, clientVersion);
+    console.log(renderLaunchStatus(status));
+    return 0;
+  }
+
+  const plan = await prepareClaudeFreshLaunchPlan(deps, { revisionId: params.id });
+  if (plan.phase !== 'awaiting-confirmation') {
+    // Config not found/unsupported: prepareClaudeFreshLaunchPlan already
+    // carried the plan straight to `failed` instead of throwing.
+    console.log(renderLaunchFailure(plan));
+    return 1;
+  }
+
+  let revision;
+  try {
+    revision = await getConfigRevisionDetail(deps.configRepository, plan.revisionId);
+  } catch (error) {
+    if (isConfigQueryError(error)) {
+      console.log(renderQueryFailure(plan.revisionId, error));
+      return 1;
+    }
+    throw error;
+  }
+
+  // Pre-confirmation preview only: a single read-only probe+compile pass
+  // (never `materializeClaudeContent` -- that only ever runs inside
+  // `launchClaudeFresh`, after confirmation, bound to the real invocation
+  // directory). `launchClaudeFresh` never trusts this snapshot -- it probes
+  // and compiles again for real once confirmed (Design Notes).
+  const probeResults = await deps.claudeCapabilityProbe.probeHardControlCapabilities();
+  const previewManifestResult = compileClaudeAssemblyManifest(revision, probeResults);
+  const previewDifferences =
+    previewManifestResult.kind === 'blocked'
+      ? previewManifestResult.missingRequiredCapabilities.map((capabilityId) => `capability-blocked: ${capabilityId}`)
+      : [...previewManifestResult.manifest.degradedCapabilities];
+
+  const clientVersion = await deps.claudeProcessPort.detectVersion();
+  console.log(renderConfirmationSummary(plan, revision, clientVersion, previewDifferences, []));
+
+  const confirmed = params.yes || (await readYesNo(t('confirmation.prompt')));
+  if (!confirmed) {
+    const rejectedPlan = await rejectLaunchPlan(deps, plan.planId);
+    console.log(renderLaunchFailure(rejectedPlan));
+    return 1;
+  }
+
+  await confirmLaunchPlan(deps, plan.planId);
+  // `[DELTA]` Same handoff-line convention as `runLaunchFlow`: printed from
+  // `onSpawning`, i.e. only once `launchClaudeFresh` is actually about to
+  // spawn `claude`, never unconditionally here.
+  const outcome = await launchClaudeFresh(deps, {
+    planId: plan.planId,
+    onSpawning: () => console.log(renderHandoffLine()),
+  });
+
+  if (outcome.plan.phase === 'succeeded' || outcome.plan.phase === 'degraded') {
+    const status = await getLaunchStatus(deps, outcome.plan.planId, clientVersion);
+    console.log(renderLaunchStatus(status));
+    return 0;
+  }
+
+  const details = renderClaudeLaunchOutcomeDetails(outcome);
+  console.log(details !== null ? [renderLaunchFailure(outcome.plan), details].join('\n') : renderLaunchFailure(outcome.plan));
   return 1;
 }
 
@@ -867,13 +1048,19 @@ export async function main(argv: readonly string[], overrides: CliOverrides = {}
 
       case 'use':
       case 'switch':
-        return await runLaunchFlow(deps, {
-          id: parsed.id,
-          client: parsed.client,
-          yes: parsed.yes,
-          forwardedArgs: parsed.forwardedArgs,
-          mode: parsed.kind,
-        });
+        // `[Story 4.6]` `claude-code` dispatches to its own flow -- OMP's
+        // `runLaunchFlow` (and its `mode`-dependent switch-vs-use branching,
+        // forwarded-args passthrough) is untouched and never reached for
+        // `claude-code`.
+        return parsed.client === 'claude-code'
+          ? await runClaudeLaunchFlow(deps, { id: parsed.id, yes: parsed.yes })
+          : await runLaunchFlow(deps, {
+              id: parsed.id,
+              client: parsed.client,
+              yes: parsed.yes,
+              forwardedArgs: parsed.forwardedArgs,
+              mode: parsed.kind,
+            });
 
       case 'status': {
         try {

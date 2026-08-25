@@ -98,7 +98,7 @@ const pluginDirectories = (path: string): string[] =>
       existsSync(join(path, entry, '.claude-plugin', 'plugin.json')),
   );
 const config = JSON.parse(read(join(repoRoot, 'tests', 'workflow-routing.json'))) as Config;
-const profileSkillImports = read(join(repositoryRoot, '.cap', 'skill-imports.toml'));
+const profileSkillImports = read(join(repoRoot, 'skill-imports.toml'));
 
 function markdownBytesRecursively(root: string): number {
   if (!existsSync(root)) return 0;
@@ -387,12 +387,12 @@ for (const [plugin, version] of Object.entries(config.pluginVersions)) {
 }
 for (const skill of declared) assert.ok(readme.includes(skill), `README 未提及当前 Skill ${skill}`);
 assert.ok(
-  readme.includes('仓库资产、Marketplace 可安装目录和 CAP profile 装配是三个不同状态') &&
-    readme.includes('`.cap/skill-imports.toml`') &&
+  readme.includes('仓库资产、Marketplace 可安装目录和当前默认装配是三个不同状态') &&
+    readme.includes('`plugins/skill-imports.toml`') &&
     profileSkillImports.includes('source = "plugins/grilling/skills/grilling"') &&
     !profileSkillImports.includes('plugins/github-collaboration/skills') &&
     !profileSkillImports.includes('plugins/self-improvement/skills'),
-  'README 与 CAP imports 必须明确区分可安装资产和当前 profile 装配',
+  'README 与 skill imports 必须明确区分可安装资产和当前 profile 装配',
 );
 assert.ok(
   readme.includes('`github-collaboration` 与 `self-improvement` 同级') &&

@@ -1,5 +1,5 @@
 {
-  "comment": "当前 Plugin／Skill 资产清单、路由边、生命周期、分层成本与可执行场景。plugins/ 与 Marketplace 表示可发布／可安装资产；当前 profile 装配只由 .cap/skill-imports.toml 决定。",
+  "comment": "当前 Plugin／Skill 资产清单、路由边、生命周期、分层成本与可执行场景。plugins/ 与 Marketplace 表示可发布／可安装资产；当前 profile 装配只由 plugins/skill-imports.toml 决定。",
   "edgeKinds": {
     "drive": "段调用：调用方把当前工作交给目标 Skill 完成那一段，并等待它的段结果。它转移的是执行，不是生命周期决定权——生命周期状态只由 lifecycle.owner 决定，因此非 owner 拥有 drive 边不构成第二个状态机。drive 边必须构成有向无环图。",
     "return": "把段结果交回生命周期决定者。它不是新的调用，因此不参与环判定；但只允许指向 driver。",
@@ -289,7 +289,7 @@
       "retiredBy": "https://github.com/zaurakworks/agent-system/pull/168",
       "retiredAt": "2026-08-24",
       "reason": "该门按 plugins/ 的资产数量计，却以运行上下文成本为理由。两者并不等价——门自己的旧说明就写着「plugins/ 资产数量不等于 profile 自动装配，当前装配只读 .cap/skill-imports.toml」，而该文件当时只引入 1 个（grilling）：13 个资产对应 1 个被装配。在 profile／config 装配的模型下，仓库里有多少资产不决定任一会话的上下文成本，因此数量上限拦不到它声称要拦的东西，只会把新增能力挡在门外。真正按运行成本计的门是 descriptionBudget（每项 1000 UTF-8 字节，三端实测），它逐项生效且与资产总数无关，继续保留。",
-      "replacedBy": "限制若有必要，属于装配层而非资产层：profile 的 [skills] allow 闭包、.cap/skill-imports.toml，以及 configs 的配置修订（stable_config_revision.skills_json）。OMP 侧对应 skills.includeSkills 与 ignoredSkills。本仓当前不在装配层设置数量上限，需要时由负责人在该层显式声明。",
+      "replacedBy": "限制若有必要，属于装配层而非资产层：plugins/skill-imports.toml（此前为 .cap/skill-imports.toml，.cap/ 已于 Epic 4 Story 4.7 退役），以及 configs 的配置修订（stable_config_revision.skills_json）。OMP 侧对应 skills.includeSkills 与 ignoredSkills。本仓当前不在装配层设置数量上限，需要时由负责人在该层显式声明。",
       "supersededExceptions": [
         {
           "dimension": "maxSkills",

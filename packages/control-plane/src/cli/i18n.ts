@@ -94,6 +94,14 @@ const zh: Dict = {
   'failure.reason': '原因：{reason}',
   'failure.recovery': '恢复建议：请查看上方原因；运行 `configs show {revisionId}` 重新核查该配置，问题解决后运行 `configs use {revisionId}` 重试。',
 
+  // `[Story 4.6 review fix]` `ClaudeLaunchOutcome` carries a
+  // failure-kind-specific `recoveryAction`/`affectedCapabilities` that
+  // `failure.recovery`'s generic, static text does not surface -- shown as
+  // extra lines appended after `renderLaunchFailure`'s output, never
+  // replacing it.
+  'claudeFailure.recoveryAction': 'Claude 恢复建议：{recoveryAction}',
+  'claudeFailure.affectedCapabilities': '受影响能力：{capabilities}',
+
   'switchAccepted.requiresRestart': '当前 OMP 进程（计划 {previousPlanId}）现在需要重启才能使用新配置。',
   'switchAccepted.newPlan': '已为修订版本 {revisionId} 创建新的启动计划（{planId}），等待新的确认。',
   'switchAccepted.noAutoResume': '当前进程不会被原地修改，也不会自动恢复。',
@@ -113,6 +121,12 @@ const zh: Dict = {
   'parseError.unknownCommand': '未知命令：{command}',
   'parseError.denylistedForwardedArg':
     'configs {command}：转发参数 "{arg}" 不被允许——如果原样传给真实的 `omp` 二进制文件，会破坏本 Story 单一扩展来源/复用默认 profile/不自动恢复这几条保证',
+  // `[Story 4.6 review fix]` `claude-code` has no forwarded-args delivery
+  // mechanism (`launchClaudeFresh`/`ClaudeSpawnParams` never accept one) --
+  // rejected here with a typed usage error instead of being silently
+  // dropped.
+  'parseError.forwardedArgsUnsupportedForClaude':
+    'configs {command}：`--client claude-code` 尚不支持在 `--` 之后转发参数',
   'openDeps.failed': 'configs：无法打开配置存储：{message}',
   'unexpectedFailure': 'configs：意外失败：{message}',
   'launchPlan.notFound': '未找到启动计划 {target}。请先运行 `configs use <id>`。',
@@ -210,6 +224,9 @@ const en: Dict = {
   'failure.reason': 'Reason: {reason}',
   'failure.recovery': 'Recovery: inspect the reason above; run `configs show {revisionId}` to re-check the configuration, then `configs use {revisionId}` to retry once resolved.',
 
+  'claudeFailure.recoveryAction': 'Claude recovery: {recoveryAction}',
+  'claudeFailure.affectedCapabilities': 'Affected capabilities: {capabilities}',
+
   'switchAccepted.requiresRestart': 'Current OMP process (plan {previousPlanId}) now requires a restart to use a new configuration.',
   'switchAccepted.newPlan': 'A new launch plan ({planId}) was created for revision {revisionId} and awaits a fresh confirmation.',
   'switchAccepted.noAutoResume': 'The current process is not modified in place and will not auto-resume.',
@@ -229,6 +246,8 @@ const en: Dict = {
   'parseError.unknownCommand': 'unknown command: {command}',
   'parseError.denylistedForwardedArg':
     "configs {command}: forwarded argument \"{arg}\" is not allowed -- it would defeat this Story's single-extension-source/default-profile/no-auto-resume guarantees when passed through to the real `omp` binary",
+  'parseError.forwardedArgsUnsupportedForClaude':
+    'configs {command}: forwarded arguments after `--` are not supported yet with `--client claude-code`',
   'openDeps.failed': 'configs: could not open configuration storage: {message}',
   'unexpectedFailure': 'configs: unexpected failure: {message}',
   'launchPlan.notFound': 'No launch plan found {target}. Run `configs use <id>` first.',

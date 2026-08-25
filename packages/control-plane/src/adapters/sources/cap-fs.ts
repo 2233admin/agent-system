@@ -1,10 +1,22 @@
 /**
- * Read-only adapter over `.cap/manifest.toml` + `.cap/profiles/*.toml` +
- * `.cap/lock.json`. This is NOT a product CLI capability -- per epics.md
- * AR16, "configuration supply" is out of this Story's scope. It exists
- * only to feed `scripts/seed-from-cap.ts` (developer-run, manual
- * verification) and test fixture generation. `configs list/show/compare`
- * never import from this module.
+ * Read-only adapter over a CAP-shaped directory: `manifest.toml` +
+ * `profiles/*.toml` + `lock.json` (the same shape the real repo `.cap/`
+ * directory used before Story 4.7 retired it). This is NOT a product CLI
+ * capability -- per epics.md AR16, "configuration supply" is out of this
+ * Story's scope. `configs list/show/compare` never import from this
+ * module; `configs establish`/`configs revise` (Story 3.1/3.2) are the
+ * supported non-interactive supply path.
+ *
+ * `[Story 4.7]` The real repo `.cap/` directory this loader originally read
+ * has been retired (see spec-4-7-退役-cap-本体.md) -- it no longer exists on
+ * disk in this repo. This module is kept because it is a generic,
+ * parameterized loader over the CAP-shaped directory layout, not something
+ * hardcoded to the (now-deleted) real `.cap/` path; it continues to be
+ * exercised against `tests/fixtures/cap-sample/`, an equivalently-shaped
+ * fixture directory, by `tests/adapters/cap-fs.test.ts` and other test
+ * files in this package. `scripts/seed-from-cap.ts`, the developer-run
+ * script that fed this loader with the real `.cap/` path, was deleted in
+ * the same Story for the same reason.
  *
  * It never reads prompt file *contents* -- only the path string declared
  * in the profile TOML -- and it never reads credentials.
@@ -12,7 +24,7 @@
 
 import path from 'node:path';
 
-import { known, unknown } from '../../domain/facts';
+import { type Known, known, unknown } from '../../domain/facts';
 import type { CapabilityKind, CapabilityReference, SourceCategory, StableConfigRevision } from '../../domain/config';
 
 /**
@@ -26,6 +38,17 @@ import type { CapabilityKind, CapabilityReference, SourceCategory, StableConfigR
  * revision itself are plain (non-`Fact`) NOT NULL columns, so this uses
  * the declared manifest path as real (if approximate) evidence rather
  * than inventing a value that claims more than this loader actually knows.
+ *
+ * `[Story 4.5b]` `contentFingerprint` remains this honest `Unknown` for
+ * every capability kind -- this loader still never hashes referenced
+ * content. `sourceRef` is no longer unconditionally this value: for
+ * instructions and skills, this loader already knows their real on-disk
+ * path (it just used to discard that knowledge -- see AD-21's blocking
+ * prerequisite) and now records it as `Known`. `mcp`/`hooks`/`plugins`
+ * still have no real directory convention under `.cap/capabilities/`
+ * (only `skills/` exists today), so their `sourceRef` stays this same
+ * honest `Unknown` -- inventing a path for them would be fabrication, not
+ * a fix (Story 4.5b's `Never` boundary).
  */
 const CAP_FS_FIELD_NOT_CAPTURED = unknown('not-captured-by-cap-fs-adapter', new Date(0).toISOString());
 
@@ -91,16 +114,53 @@ async function readJson<T>(absPath: string): Promise<T> {
 }
 
 /**
+ * `[Story 4.5b]` The one already-known, never-invented real path for a
+ * `skill` reference: an imported skill's real location is whatever
+ * `.cap/lock.json`'s own `project_skill_imports[].source` already declares
+ * (repo-root-relative, e.g. `plugins/grilling/skills/grilling`) -- resolved
+ * against `repoRoot` (the directory `capRoot` lives in), not `capRoot`
+ * itself, since imports live outside `.cap/`. A plain project skill (not an
+ * import) lives at the one real, already-verified convention
+ * `.cap/capabilities/skills/<name>/` (Story 4.5's parity evidence, captured
+ * while this repo's own now-retired `.cap/capabilities/skills/*`
+ * directories -- see Story 4.7 -- still existed on disk; `tests/fixtures/
+ * cap-sample/` reproduces the same shape today). Never a speculative third
+ * path shape.
+ */
+function resolveSkillSourceRef(
+  name: string,
+  capRoot: string,
+  repoRoot: string,
+  importSourceByName: ReadonlyMap<string, string>,
+): Known<string> {
+  const importSource = importSourceByName.get(name);
+  if (importSource !== undefined) {
+    return known(path.join(repoRoot, importSource));
+  }
+  return known(resolveCapRelativePath(capRoot, `capabilities/skills/${name}`));
+}
+
+/**
  * Only ever called with a non-empty `names` array when the profile actually
  * resolved in `lock.json` (see call sites: `inventory?.skills ?? []` is `[]`
  * whenever the profile is unresolved). There is therefore no "unresolved
  * capability name" case to represent here -- an unresolved profile's
  * unavailability is already carried by its `availability: Unknown(...)`.
+ *
+ * `[Story 4.5b]` `sourceRef` is only ever resolved to a `Known` real path for
+ * `kind === 'skill'` (see `resolveSkillSourceRef`'s Design Notes on why).
+ * `mcp`/`hook`/`plugin` keep the honest `CAP_FS_FIELD_NOT_CAPTURED` --
+ * `.cap/capabilities/` has no `mcp/`/`hooks/`/`plugins/` directory
+ * convention today (only `skills/` is real), and inventing one would be
+ * fabrication, not a fix (AD-21's `Never` boundary).
  */
 function mapCapabilityNames(
   names: readonly string[],
   kind: CapabilityKind,
   importNames: ReadonlySet<string>,
+  importSourceByName: ReadonlyMap<string, string>,
+  capRoot: string,
+  repoRoot: string,
 ): CapabilityReference[] {
   return names.map((name) => {
     const sourceCategory: SourceCategory = importNames.has(name) ? 'project-skill-import' : 'project-capability';
@@ -109,7 +169,7 @@ function mapCapabilityNames(
       name,
       sourceCategory: known(sourceCategory),
       summary: known(`${kind} reference: ${name}`),
-      sourceRef: CAP_FS_FIELD_NOT_CAPTURED,
+      sourceRef: kind === 'skill' ? resolveSkillSourceRef(name, capRoot, repoRoot, importSourceByName) : CAP_FS_FIELD_NOT_CAPTURED,
       contentFingerprint: CAP_FS_FIELD_NOT_CAPTURED,
     };
   });
@@ -132,6 +192,11 @@ export async function loadCapConfigRevisions(capRoot: string): Promise<StableCon
   const manifest = await readToml<CapManifest>(resolveCapRelativePath(capRoot, 'manifest.toml'));
   const lock = await readJson<CapLock>(resolveCapRelativePath(capRoot, 'lock.json'));
   const importNames = new Set((lock.project_skill_imports ?? []).map((entry) => entry.name));
+  // `[Story 4.5b]` `lock.json`'s own already-declared import source paths --
+  // see `resolveSkillSourceRef`'s Design Notes for why this is "already
+  // known, never invented" rather than a new mapping convention.
+  const importSourceByName = new Map((lock.project_skill_imports ?? []).map((entry) => [entry.name, entry.source]));
+  const repoRoot = path.dirname(capRoot);
   const observedAt = new Date().toISOString();
 
   const revisions: StableConfigRevision[] = [];
@@ -164,14 +229,19 @@ export async function loadCapConfigRevisions(capRoot: string): Promise<StableCon
           name: profile.prompt,
           sourceCategory: known<SourceCategory>('project-prompt'),
           summary: known(`prompt file reference: ${profile.prompt}`),
-          sourceRef: CAP_FS_FIELD_NOT_CAPTURED,
+          // `[Story 4.5b]` Real, already-known path -- the same one
+          // `buildScopeBoundary` above already reads to build the prompt's
+          // human-readable summary text; this loader was simply discarding
+          // it as a provenance pointer before now (AD-21's blocking
+          // prerequisite).
+          sourceRef: known(resolveCapRelativePath(capRoot, profile.prompt)),
           contentFingerprint: CAP_FS_FIELD_NOT_CAPTURED,
         },
       ],
-      skills: mapCapabilityNames(inventory?.skills ?? [], 'skill', importNames),
-      mcp: mapCapabilityNames(inventory?.mcps ?? [], 'mcp', importNames),
-      hooks: mapCapabilityNames(inventory?.hooks ?? [], 'hook', importNames),
-      plugins: mapCapabilityNames(inventory?.plugins ?? [], 'plugin', importNames),
+      skills: mapCapabilityNames(inventory?.skills ?? [], 'skill', importNames, importSourceByName, capRoot, repoRoot),
+      mcp: mapCapabilityNames(inventory?.mcps ?? [], 'mcp', importNames, importSourceByName, capRoot, repoRoot),
+      hooks: mapCapabilityNames(inventory?.hooks ?? [], 'hook', importNames, importSourceByName, capRoot, repoRoot),
+      plugins: mapCapabilityNames(inventory?.plugins ?? [], 'plugin', importNames, importSourceByName, capRoot, repoRoot),
       // `[Story 3.1]` This loader represents "the configuration as
       // currently declared in .cap/", not an Agent-session decision to
       // establish a new revision -- none of the three trigger categories

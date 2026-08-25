@@ -6,6 +6,7 @@ import { TuiApp, runAutoConfirmLaunch, runTuiWithDeps, type RunTuiHooks, type Tu
 import type { FullDeps } from '../../src/cli/index';
 import { t } from '../../src/cli/i18n';
 import { confirmLaunchPlan, prepareLaunchPlan } from '../../src/application/launch';
+import { FsClaudeContentMaterializer } from '../../src/adapters/clients/claude/content-materializer';
 import type { ClientId } from '../../src/domain/client';
 import type { LaunchPlan } from '../../src/domain/activation';
 import { known } from '../../src/domain/facts';
@@ -13,6 +14,14 @@ import type { Fact } from '../../src/domain/facts';
 import type { CapabilityReference, StableConfigRevision } from '../../src/domain/config';
 import type {
   CapabilityProbeResult,
+  ClaudeCapabilityProbePort,
+  ClaudeCapabilityProbeResult,
+  ClaudeInvocationDirPort,
+  ClaudeLaunchContext,
+  ClaudeLaunchContextWriter,
+  ClaudeProcessPort,
+  ClaudeSpawnParams,
+  ClaudeSpawnResult,
   ConfigRevisionRepository,
   LaunchContext,
   LaunchContextWriter,
@@ -173,6 +182,46 @@ class FakeLaunchContextWriter implements LaunchContextWriter {
   }
 }
 
+/**
+ * `[Story 4.6]` `FullDeps` now also carries the four Claude ports -- the
+ * TUI itself is untouched by this Story (out of scope) and never exercises
+ * these, but `fakeFullDeps()`'s return type must still satisfy `FullDeps`.
+ * Minimal no-op fakes only, never called by anything under test here.
+ */
+class FakeClaudeProcessPort implements ClaudeProcessPort {
+  async detectVersion() {
+    return known('9.9.9');
+  }
+  async captureHelpText() {
+    return known('');
+  }
+  async spawn(_params: ClaudeSpawnParams): Promise<ClaudeSpawnResult> {
+    return { exitCode: 0, signal: null };
+  }
+}
+
+class FakeClaudeCapabilityProbe implements ClaudeCapabilityProbePort {
+  async probeHardControlCapabilities(): Promise<readonly ClaudeCapabilityProbeResult[]> {
+    return [];
+  }
+}
+
+class FakeClaudeLaunchContextWriter implements ClaudeLaunchContextWriter {
+  async write(context: ClaudeLaunchContext): Promise<string> {
+    return `/fake/claude-launch-context/${context.planId}.json`;
+  }
+}
+
+class FakeClaudeInvocationDirPort implements ClaudeInvocationDirPort {
+  async prepare(operationId: string): Promise<string> {
+    return `/fake/claude-invocations/${operationId}`;
+  }
+
+  async cleanup(): Promise<void> {
+    // No real filesystem behind this fake -- nothing to remove.
+  }
+}
+
 /** Builds a full, in-memory `FullDeps` bag for `runTuiWithDeps()` tests. */
 function fakeFullDeps(): {
   readonly deps: FullDeps;
@@ -187,8 +236,24 @@ function fakeFullDeps(): {
   const ompPort = new FakeOmpProcessPort();
   const capabilityProbe = new FakeOmpCapabilityProbe();
   const contextWriter = new FakeLaunchContextWriter();
+  const claudeProcessPort = new FakeClaudeProcessPort();
+  const claudeCapabilityProbe = new FakeClaudeCapabilityProbe();
+  const claudeLaunchContextWriter = new FakeClaudeLaunchContextWriter();
+  const claudeInvocationDirPort = new FakeClaudeInvocationDirPort();
+  const claudeContentMaterializer = new FsClaudeContentMaterializer();
   return {
-    deps: { configRepository, launchPlanRepository, ompPort, capabilityProbe, contextWriter },
+    deps: {
+      configRepository,
+      launchPlanRepository,
+      ompPort,
+      capabilityProbe,
+      contextWriter,
+      claudeProcessPort,
+      claudeCapabilityProbe,
+      claudeLaunchContextWriter,
+      claudeInvocationDirPort,
+      claudeContentMaterializer,
+    },
     configRepository,
     launchPlanRepository,
     ompPort,

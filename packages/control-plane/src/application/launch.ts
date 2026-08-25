@@ -5,12 +5,13 @@ import {
   transitionLaunchPlan,
 } from '../domain/activation';
 import type { LaunchPhase, LaunchPlan, LaunchStatus, ObservedOutcome } from '../domain/activation';
-import { resolveClientSupport } from '../domain/client';
+import { resolveClientSupport, ALL_CLIENT_IDS } from '../domain/client';
 import type { ClientId } from '../domain/client';
 import type { StableConfigRevision } from '../domain/config';
-import type { Fact } from '../domain/facts';
+import { type Fact, unknown } from '../domain/facts';
 import { ConfigNotFoundError, ConfigUnsupportedError, getConfigRevisionDetail } from './queries';
 import type {
+  ClaudeProcessPort,
   ConfigRevisionRepository,
   LaunchContextWriter,
   LaunchPlanRepository,
@@ -88,6 +89,16 @@ export interface LaunchOmpDeps extends LaunchDeps {
 
 export interface LaunchStatusDeps extends LaunchDeps {
   readonly ompPort: OmpProcessPort;
+  /**
+   * `[Epic 4 retro fix]` Only consulted when resolving a `'claude-code'`
+   * plan's status without an explicit `clientVersion` override -- e.g. bare
+   * `configs status` (no plan id), which after `findMostRecentActivePlan`
+   * can now land on a Claude plan (Story 4.6 made `'claude-code'` a second
+   * real client). Optional so existing OMP-only callers/tests need not
+   * supply it; absent for a Claude plan, version resolution degrades to an
+   * honest Unknown rather than wrongly querying `ompPort`.
+   */
+  readonly claudeProcessPort?: Pick<ClaudeProcessPort, 'detectVersion'>;
 }
 
 function generateId(prefix: string): string {
@@ -358,38 +369,82 @@ export async function launchOmp(
 }
 
 /**
+ * `[Epic 4 retro fix]` No repository query exists for "most recently created
+ * plan across every client" (`findActiveForClient` is scoped to one client
+ * by design -- see its own doc comment). Bare `configs status` must not
+ * favor `'omp'` now that `'claude-code'` is a second real client
+ * (Story 4.6): fan out across every known client and keep the newest
+ * `createdAt` (ISO-8601 strings sort lexicographically the same as
+ * chronologically). `null` only when no client has ever produced a plan.
+ */
+async function findMostRecentActivePlan(repository: LaunchPlanRepository): Promise<LaunchPlan | null> {
+  const candidates = await Promise.all(ALL_CLIENT_IDS.map((client) => repository.findActiveForClient(client)));
+  return candidates.reduce<LaunchPlan | null>((newest, candidate) => {
+    if (candidate === null) {
+      return newest;
+    }
+    if (newest === null || candidate.createdAt > newest.createdAt) {
+      return candidate;
+    }
+    return newest;
+  }, null);
+}
+
+/**
  * MVP-FR6: read-only projection of a plan's launch status. Recomputes
  * `knownDifferences` fresh from the (immutable) revision rather than
  * persisting a copy, so `status` always reflects the same derivation
  * `launchOmp` used.
+ *
+ * `[Epic 4 retro fix]` `knownDifferences` is only recomputed this way for
+ * `'omp'` plans. `'claude-code'` plans (Story 4.6/AD-21) need a live
+ * capability probe + content-materialization result to know their real
+ * differences (`computeClaudeKnownDifferences` in `claude-launch.ts`) --
+ * that pair is computed once, at launch time, and deliberately never
+ * persisted (this is a read-only status projection, not a place to
+ * re-probe/re-materialize). Re-running OMP's own MVP-flavored
+ * `computeKnownDifferences` against a Claude revision produced the bug this
+ * fixes: a successful, fully-materialized Claude launch still printed
+ * `instructions-content-not-materialized-in-mvp`, which was simply false.
+ * An honest Unknown-style marker (mirroring the existing
+ * `revision-detail-unavailable-for-status-view` case just below) replaces
+ * it instead of fabricating client-specific detail this function cannot
+ * cheaply and safely recompute.
  */
 export async function getLaunchStatus(deps: LaunchStatusDeps, planId: string | null, clientVersion?: Fact<string>): Promise<LaunchStatus> {
-  const plan =
-    planId !== null
-      ? await deps.launchPlanRepository.findById(planId)
-      : await deps.launchPlanRepository.findActiveForClient('omp');
+  const plan = planId !== null ? await deps.launchPlanRepository.findById(planId) : await findMostRecentActivePlan(deps.launchPlanRepository);
   if (plan === null) {
     throw new LaunchPlanNotFoundError(planId ?? '(no active plan)');
   }
 
   let knownDifferences: string[];
-  try {
-    const revision = await getConfigRevisionDetail(deps.configRepository, plan.revisionId);
-    knownDifferences = computeKnownDifferences(revision);
-  } catch (error) {
-    // Only a typed "the revision itself couldn't be resolved" failure
-    // degrades the status view to an Unknown-style known-difference --
-    // any other (unexpected/infra) error must propagate, matching the
-    // `isConfigQueryError` discrimination pattern used elsewhere in this
-    // codebase rather than silently mislabeling it.
-    if (error instanceof ConfigNotFoundError || error instanceof ConfigUnsupportedError) {
-      knownDifferences = ['revision-detail-unavailable-for-status-view'];
-    } else {
-      throw error;
+  if (plan.client !== 'omp') {
+    knownDifferences = ['claude-known-differences-not-recomputed-for-status-view'];
+  } else {
+    try {
+      const revision = await getConfigRevisionDetail(deps.configRepository, plan.revisionId);
+      knownDifferences = computeKnownDifferences(revision);
+    } catch (error) {
+      // Only a typed "the revision itself couldn't be resolved" failure
+      // degrades the status view to an Unknown-style known-difference --
+      // any other (unexpected/infra) error must propagate, matching the
+      // `isConfigQueryError` discrimination pattern used elsewhere in this
+      // codebase rather than silently mislabeling it.
+      if (error instanceof ConfigNotFoundError || error instanceof ConfigUnsupportedError) {
+        knownDifferences = ['revision-detail-unavailable-for-status-view'];
+      } else {
+        throw error;
+      }
     }
   }
 
-  const resolvedClientVersion = clientVersion ?? (await deps.ompPort.detectVersion());
+  const resolvedClientVersion =
+    clientVersion ??
+    (await (plan.client === 'omp'
+      ? deps.ompPort.detectVersion()
+      : deps.claudeProcessPort !== undefined
+        ? deps.claudeProcessPort.detectVersion()
+        : Promise.resolve(unknown(`no-version-detector-available-for-client-${plan.client}`, new Date().toISOString()))));
   return deriveLaunchStatus(plan, resolvedClientVersion, knownDifferences);
 }
 

@@ -160,10 +160,16 @@ describe('prepareLaunchPlan', () => {
     expect(plan.revisionId).toBe('rev-1');
   });
 
-  test('不支持的客户端: claude-code/codex-cli throw before any plan is created or persisted', async () => {
+  // `[Story 4.6]` `resolveClientSupport('claude-code')` now returns
+  // `supported: true` (Story 4.1~4.5b delivered a real adapter) -- only
+  // `codex-cli` (no adapter exists) still hits this gate. See
+  // `tests/domain/client.test.ts` for the flipped `claude-code` assertion
+  // and `tests/application/claude-launch.test.ts`/
+  // `tests/integration/cli-claude-launch.test.ts` for the Claude adapter's
+  // own coverage.
+  test('不支持的客户端: codex-cli throws before any plan is created or persisted', async () => {
     const { deps, launchPlanRepository } = buildDeps();
 
-    await expect(prepareLaunchPlan(deps, { revisionId: 'rev-1', client: 'claude-code' })).rejects.toBeInstanceOf(UnsupportedClientError);
     await expect(prepareLaunchPlan(deps, { revisionId: 'rev-1', client: 'codex-cli' })).rejects.toBeInstanceOf(UnsupportedClientError);
     expect(launchPlanRepository.saveLog).toHaveLength(0);
   });

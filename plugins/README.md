@@ -32,7 +32,7 @@
 
 仓库目前包含九个可安装 Plugin：`grilling` `0.1.2`、`self-improvement` `0.1.7`、`skill-maintenance` `0.1.0`、`skill-appraisal` `0.1.0`、`knowledge-maintenance` `0.1.3`、`orchestrated-collaboration` `0.2.7`、`adaptive-problem-solving` `0.2.12`、`resource-observability` `0.2.4` 与 `github-collaboration` `0.3.18`。
 
-仓库资产、Marketplace 可安装目录和 CAP profile 装配是三个不同状态：`plugins/` 保存可发布资产，两份 Marketplace 只声明可安装来源，当前 profile 只按 `.cap/skill-imports.toml` 显式装配。`github-collaboration` 与 `self-improvement` 同级，都是仓内可安装资产；二者不会因为出现在 Marketplace 或插件目录中就自动进入当前 profile。
+仓库资产、Marketplace 可安装目录和当前默认装配是三个不同状态：`plugins/` 保存可发布资产，两份 Marketplace 只声明可安装来源，当前 profile 只按 `plugins/skill-imports.toml` 显式装配（此前由已退役的 `.cap/skill-imports.toml` 承载，见 Epic 4 Story 4.7）。`github-collaboration` 与 `self-improvement` 同级，都是仓内可安装资产；二者不会因为出现在 Marketplace 或插件目录中就自动进入当前 profile。
 
 `github-collaboration` 提供六个 GitHub 协作 Skill：`issue-workflow` 推进一棵 Issue 子树并消费负责人动作；`issue-delivery` 把已就绪 Issue 交付成 Draft PR 或自足证据评论；`issue-contract-compaction` 压缩漂移的 Issue 正文；`objective-to-issues` 建立原生父子 Issue 图；`operating-ledger-maintenance` 维护经营总账观察面；`pr-integration` 按当前 head 整合 PR。
 
@@ -174,7 +174,7 @@ node plugins/orchestrated-collaboration/tests/verify-three-party-review.test.ts
 
 - 当前目标、授权和边界：读取本仓公开、自足且经负责人明确激活的 Issue／PR；没有明确合同则只做当前请求的最小范围；
 - 当前可安装内容：读取本 README、两份 Marketplace 和对应 Plugin manifest；可安装不等于当前 profile 已装配；
-- 当前 profile 装配：读取 `.cap/skill-imports.toml`，只有显式列出的 Skill 会进入该 profile；
+- 当前 profile 装配：读取 `plugins/skill-imports.toml`，只有显式列出的 Skill 会进入该 profile；
 - **每个 Skill 替你做什么、什么时候用，以及 L1／L2／L3 与递归维护面实测：[`docs/skills-overview.md`](docs/skills-overview.md)**（生成产物，符合性测试钉住它不会漂）；
 - 「装了才算数」的部署方式、Skill 的失效条件、最少复核、退役路径与复杂度管理：[`docs/lifecycle.md`](docs/lifecycle.md)。其中「必须声明失效条件与最少复核步骤」「Skill 数量门」「分层体积必须递归、可复现」由本仓 CI 强制；
 - [方法资产模型](docs/asset-model.md)、[符合性检查](docs/conformance.md)、旧 Issue 和 `codex-work`：只作为历史或待核验材料，不默认指导新工作。
