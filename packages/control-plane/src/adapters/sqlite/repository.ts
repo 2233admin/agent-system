@@ -1,6 +1,4 @@
 import { Database } from 'bun:sqlite';
-import { mkdirSync } from 'node:fs';
-import path from 'node:path';
 // Embedded as text at bundle/compile time (Bun's `with { type: 'text' }`
 // import attribute) rather than resolved at runtime via `import.meta.url` +
 // `readFileSync` -- a runtime filesystem path is meaningless once this
@@ -15,6 +13,7 @@ import type { CapabilityReference, SourceCategory, StableConfigRevision } from '
 import type { ConfigRevisionRepository } from '../../application/ports';
 import { ConfigUnsupportedError } from '../../application/queries';
 import { factColumns, factColumnToFact } from './fact-columns';
+import { isDatabaseLocked, openSqliteDatabase } from './connection';
 
 /** The only `stable_config_revision.schema_version` this Story can read. */
 const SUPPORTED_SCHEMA_VERSION = 1;
@@ -267,45 +266,34 @@ const REVISION_COLUMNS = [
 ].join(', ');
 
 /**
- * `[Story 3.1]` Shared by `SqliteConfigRevisionRepository` and
- * `adapters/sqlite/config-revision-writer.ts`'s `SqliteConfigRevisionWriter`
- * -- both open the same `stable_config_revision` table and must apply the
- * exact same migrations regardless of which one happens to construct
- * first against a given database file.
+ * `[Story 3.1]` 由 `SqliteConfigRevisionRepository` 与
+ * `adapters/sqlite/config-revision-writer.ts` 的 `SqliteConfigRevisionWriter`
+ * 共用——两者打开的是同一张 `stable_config_revision` 表，无论谁先对某个数据库
+ * 文件完成构造，施加的迁移都必须完全一致。
  *
- * `0001_init.sql` stays naturally idempotent (`CREATE TABLE`/`CREATE INDEX
- * IF NOT EXISTS`), so it is simply re-executed every time. `0003_supply.sql`
- * is not -- `ALTER TABLE ... ADD COLUMN` has no `IF NOT EXISTS` form in
- * SQLite.
+ * `0001_init.sql` 天然幂等（`CREATE TABLE`／`CREATE INDEX IF NOT EXISTS`），
+ * 所以每次都直接重跑一遍。`0003_supply.sql` 不是——SQLite 的
+ * `ALTER TABLE ... ADD COLUMN` 没有 `IF NOT EXISTS` 写法。
  *
- * `[Review fix]` The three `ALTER TABLE ... ADD COLUMN` statements in
- * `0003_supply.sql` are gated *individually*, one `pragma_table_info`
- * existence check per column, rather than treating `trigger_category`'s
- * presence as a proxy for "the whole file already ran". A single combined
- * gate + one batched `db.exec(SUPPLY_SQL)` would run all three `ALTER`s
- * inside one transaction; on a history-carrying database that already has
- * some but not all of the three columns (e.g. only `supersedes_revision_id`
- * from an earlier partial run), the batch's later statements throw
- * `"duplicate column name"`, which rolls the *whole* transaction back --
- * including the columns that statement would have legitimately added --
- * and that failure was then swallowed as "someone else already migrated
- * this", silently leaving the database still missing columns. Gating each
- * `ALTER` independently means a half-migrated database gets exactly the
- * columns it's missing, nothing rolled back, nothing swallowed.
+ * `[审查修复]` `0003_supply.sql` 里那三条 `ALTER TABLE ... ADD COLUMN` 是*逐列
+ * 单独*门控的，每列一次 `pragma_table_info` 存在性检查，而不是拿
+ * `trigger_category` 在不在当作"整个文件已经跑过"的代理判断。合并成一个门控 +
+ * 一次批量 `db.exec(SUPPLY_SQL)` 会把三条 `ALTER` 放进同一个事务；对一个已经有
+ * 三列中的一部分、但不是全部的历史库（例如某次半途中断只加了
+ * `supersedes_revision_id`），批次里靠后的语句会抛 `"duplicate column name"`，
+ * 把*整个*事务回滚掉——连那条语句本该合法加上的列一起回滚——而这个失败随后又被
+ * 当成"别人已经迁移过了"吞掉，于是数据库缺列的状态被静默保留下来。逐列独立门控
+ * 意味着半迁移的库正好补上它缺的那几列，不回滚，不吞错。
  *
- * `[Review fix]` That per-column check-then-alter is still two separate
- * statements, not one atomic operation -- two independent connections
- * opening the same file at roughly the same time can both observe "this
- * column not migrated yet" and both attempt the same `ALTER TABLE`. Rather
- * than trying to close that race with cross-process locking, this sets
- * `PRAGMA busy_timeout` (see both constructors below) so SQLite itself
- * waits out short-lived lock contention instead of failing immediately,
- * and -- as a fallback for whatever contention outlasts that timeout --
- * treats SQLite's own rejection of the losing `ALTER TABLE ... ADD COLUMN`
- * (`"duplicate column name"`) *or* a lock-contention error
- * (`SQLITE_BUSY`/`"database is locked"`) as the authoritative "someone
- * else already has this, or is already applying it" signal and swallows
- * it -- any other error still propagates.
+ * `[审查修复]` 逐列的"先查后改"仍然是两条独立语句、不是一次原子操作——两个大约
+ * 同时打开同一文件的独立连接，可能都观察到"这一列还没迁移"，进而都去执行同一条
+ * `ALTER TABLE`。与其用跨进程锁去封这个竞态，这里依赖 `PRAGMA busy_timeout`
+ * （由 `connection.ts` 的 `openSqliteDatabase` 设置，现在三个仓储都从这个唯一
+ * 入口打开连接），让 SQLite 自己等过短暂的锁争用而不是立刻失败；再作为超出该
+ * 超时的争用的兜底，把 SQLite 对竞态输家那条 `ALTER TABLE ... ADD COLUMN` 的
+ * 拒绝（`"duplicate column name"`）*或*一个锁争用错误
+ * （`SQLITE_BUSY`／`"database is locked"`）当作"别人已经有这一列、或正在加"的
+ * 权威信号并吞掉——其余任何错误照常向上抛。
  */
 const SUPPLY_ADD_COLUMN_RE = /^ALTER TABLE\s+stable_config_revision\s+ADD COLUMN\s+(\w+)/i;
 
@@ -329,13 +317,16 @@ function columnExists(db: Database, table: string, column: string): boolean {
 }
 
 /**
- * A concurrent connection racing this exact migration -- lock contention
- * that outlasted `PRAGMA busy_timeout`, or the losing side of a
- * `duplicate column name` race -- not a real failure.
+ * 另一个连接正在跑同一次迁移造成的竞态——熬过 `PRAGMA busy_timeout` 的锁争用，
+ * 或者 `duplicate column name` 竞态里输掉的那一方——不是真的失败。
  */
 function isConcurrentMigrationRace(error: unknown): boolean {
+  // `[deferred-work 项修复]` busy 那一半现在走 `connection.ts` 共用的
+  // `isDatabaseLocked`：优先用 `bun:sqlite` 的结构化 `code === 'SQLITE_BUSY'`
+  // 而不是子串匹配，message 判断只留作兜底。`duplicate column name` 没有对应的
+  // 结构化 code（它是通用的 `SQLITE_ERROR`），所以仍然按 message 匹配。
   const message = ((error as Error).message ?? '').toLowerCase();
-  return message.includes('duplicate column name') || message.includes('sqlite_busy') || message.includes('database is locked');
+  return message.includes('duplicate column name') || isDatabaseLocked(error);
 }
 
 export function runConfigRevisionMigrations(db: Database): void {
@@ -367,8 +358,7 @@ export function runConfigRevisionMigrations(db: Database): void {
       if (!isConcurrentMigrationRace(error)) {
         throw error;
       }
-      // A concurrent connection won the race for this column/index --
-      // idempotent no-op, not a failure.
+      // 另一个连接赢下了这一列／这个索引的竞态——幂等空操作，不是失败。
     }
   }
 }
@@ -382,19 +372,7 @@ export class SqliteConfigRevisionRepository implements ConfigRevisionRepository 
   private readonly db: Database;
 
   constructor(dbPath: string) {
-    if (dbPath !== ':memory:') {
-      mkdirSync(path.dirname(dbPath), { recursive: true });
-    }
-    this.db = new Database(dbPath, { create: true });
-    // Install the wait policy before changing the database journal mode:
-    // `PRAGMA journal_mode = WAL` itself can contend when two fresh
-    // processes open the same database concurrently.
-    this.db.exec('PRAGMA busy_timeout = 5000;');
-    this.db.exec('PRAGMA journal_mode = WAL;');
-    // SQLite disables foreign key enforcement by default per connection --
-    // without this, `stable_config_revision`'s `REFERENCES stable_config`
-    // is decorative only.
-    this.db.exec('PRAGMA foreign_keys = ON;');
+    this.db = openSqliteDatabase(dbPath);
     runConfigRevisionMigrations(this.db);
   }
 
