@@ -1,6 +1,6 @@
 {
   "name": "skill-appraisal",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Appraise whether a Skill group should be adopted, which matters it serves, what it replaces, and how to recheck it cheaply next time.",
   "author": {
     "name": "zaurakworks"

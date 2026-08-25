@@ -122,9 +122,9 @@
         "suspect": false
       },
       "adaptive-problem-solving": {
-        "invalidatedWhen": "方法登记面的证据等级分布与登记面 README 声明不符；或三端 description 可见预算的实测基线（2026-08-11 测得 1000 UTF-8 字节）被新的实测推翻。",
-        "minimalRecheck": "逐卡取当前能力证据等级，与登记面 README 的 M0／M1 计数比对。三端 description 回显需要交互式观察运行端目录，不在本步内：预算门本身已由符合性测试守住，重测只在怀疑运行端截断行为变化时才做。",
-        "lastVerified": "2026-08-15",
+        "invalidatedWhen": "方法登记面的证据等级分布与登记面 README 声明不符；或三端 description 可见预算的实测基线（2026-08-11 测得 1000 UTF-8 字节）被新的实测推翻；或 INDEX 的「与装配内其他 Skill 的分界」表所列执行流程承载者（bmad-brainstorming、bmad-advanced-elicitation、bmad-forge-idea、bmad-party-mode、bmad-deep-recon、grilling）的 description 触发面发生变化，使该表的对应关系不再成立。",
+        "minimalRecheck": "逐卡取当前能力证据等级，与登记面 README 的 M0／M1 计数比对。再对 INDEX 分界表逐行确认对方Skill 仍存在且其 description 仍覆盖该方法（grep 触发词即可），不需要读正文。三端 description 回显需要交互式观察运行端目录，不在本步内：预算门本身已由符合性测试守住，重测只在怀疑运行端截断行为变化时才做。",
+        "lastVerified": "2026-08-25",
         "suspect": false
       },
       "self-improvement": {
@@ -194,9 +194,9 @@
         "suspect": false
       },
       "skill-appraisal": {
-        "invalidatedWhen": "组作为判定单位的前提变化：装配层不再按组声明能力（configs 的 stable_config_revision.skills_json 或 OMP 的 skills.customDirectories／includeSkills 语义改变），使「判定一个组」不再对应任何可装配的单位；或来源三分（own／fork／vendor）的判据——是否允许本地改动——不再能机械验证。",
-        "minimalRecheck": "① 读 tools/skill_registry/matters.json 的 formNote，确认其中记录的 OMP 实测结论（skill 走目录约定与 includeSkills，plugin 走 npm 包）仍与 omp config 中 skills.* 键一致。② 对任意一个 fork 组跑一次它自己的最少复核步骤，确认零改动仍可机械判定。两步都通过则本 Skill 的五门与复核路径继续成立。",
-        "lastVerified": "2026-08-24",
+        "invalidatedWhen": "组作为判定单位的前提变化：装配层不再按组声明能力（configs 的 stable_config_revision.skills_json 或 OMP 的 skills.customDirectories／includeSkills 语义改变），使「判定一个组」不再对应任何可装配的单位；或来源三分（own／fork／vendor）的判据——是否允许本地改动——不再能机械验证；或装配白名单语义被改成黑名单，使「改装配声明」不再是有效处置。",
+        "minimalRecheck": "① 读 tools/skill_registry/matters.json 的 assemblyAuthority 与 formNote，确认装配仍是白名单、且 OMP 实测结论仍与 omp config 的 skills.* 键一致。② 对任意一个 fork 组跑一次它自己的最少复核步骤，确认零改动仍可机械判定。两步都通过则本 Skill 的三种进入、五道门与处置顺序继续成立。",
+        "lastVerified": "2026-08-25",
         "suspect": false
       }
     }
@@ -270,9 +270,9 @@
         "workingSignals": "回执绑定当前 head，列出 checks、review、merge state、授权来源和合并后复核。"
       },
       "skill-appraisal": {
-        "forYou": "判定一个 Skill 组该不该收、归哪些事项、替代谁，并留下下次复核的最小步骤。",
-        "whenToUse": "有候选组要决定收不收、怀疑与现有组重复、需要定组的事项归属，或已收组到了复核节拍时。",
-        "workingSignals": "给出的是判定与证据，不是安装动作；每次判定都带失效条件和下次最少复核步骤，下一轮不用重判。"
+        "forYou": "判定一个 Skill 组该不该进当前装配、归哪些事项、与谁重叠，并留下下次复核的最小步骤。",
+        "whenToUse": "有候选组要决定收不收、组早已在用却从未判定过、怀疑与现有组重叠，或已判定过的组到了复核节拍时。",
+        "workingSignals": "给出的是判定与证据，不是安装动作；重叠优先在装配层处置而不是退役；每次判定都带失效条件和下次最少复核步骤。"
       }
     }
   },
@@ -312,10 +312,10 @@
     "skill-maintenance": "0.1.0",
     "knowledge-maintenance": "0.1.3",
     "orchestrated-collaboration": "0.2.7",
-    "adaptive-problem-solving": "0.2.12",
+    "adaptive-problem-solving": "0.2.13",
     "resource-observability": "0.2.4",
     "github-collaboration": "0.3.18",
-    "skill-appraisal": "0.1.0"
+    "skill-appraisal": "0.2.0"
   },
   "descriptionBudget": {
     "comment": "2026-08-11 用同一份 1906 UTF-8 字节描述对普通 Codex、Orca Codex 与 Claude Code 运行面目录做回显；两种 Codex 均在句中截断，Claude 完整可见。共同机械门取低于三端实测可见前缀的 1000 UTF-8 字节；70-D 已消费，adaptive-problem-solving 也必须满足共同门。",

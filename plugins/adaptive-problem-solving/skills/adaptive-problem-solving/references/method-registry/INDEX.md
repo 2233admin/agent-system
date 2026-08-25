@@ -28,6 +28,24 @@ P6 不改变 P1–P5 的主分类骨架，但获得可直接首跳的补充出�
 | P8 实施阻塞型 | 方向明确，瓶颈是模型、工具、环境、权限或协作配置 | [`aps-execution-configuration-check`](./cards/aps-execution-configuration-check.md) |
 | U 未能归型 | 两种以上类型都合理，或现有类型无法解释关键未知 | 列至多两个候选类型与一条区分证据；优先最小可逆探针，高影响分叉仍在时只问一个最小问题 |
 
+## 与装配内其他 Skill 的分界
+
+卡片承载的是方法的**进入条件、硬门、成本画像与退出条件**，不是执行流程。当前装配内若已有承载该方法执行流程的 Skill，命中该卡后路由到它，只保留本卡的进入／退出／成本判断，不自己再走一遍执行步骤。
+
+已知会形成这种关系的对应（当且仅当对方在当前装配内）：
+
+| 本登记面的卡 | 执行流程承载者 |
+| --- | --- |
+| `structured-brainstorming` | `bmad-brainstorming` |
+| `premortem`、`red-team-analysis` | `bmad-advanced-elicitation` |
+| `devils-advocacy`、`grilling-decision-tree` | `bmad-forge-idea`、`grilling` |
+| `team-a-team-b`、`multi-perspective-adversarial-review` | `bmad-party-mode` |
+| `aps-bounded-research` | `bmad-deep-recon` |
+
+**在不在装配内由装配声明决定，不由资产是否存在决定。** 仓库里有 `bmad` 不等于当前装配里有它——装配是白名单，没声明即不存在。因此本表不是无条件生效的路由，而是"若命中且对方在装配内"的分界规则。
+
+对方不在装配内时，按卡片的执行定义直接做，不因为表里列了它就等待或降级。
+
 ## 组合上限
 
 默认组合深度为 2：一张主卡加一张直接补足其输入或验证面的卡。`grilling-decision-tree` 的明示同意门、`self-improvement-loop` 的触发门和所有授权／写入所有权门不可被组合关系继承或绕过。把三张以上卡串成流程前，必须先证明新增卡减少的关键未知高于判断税；否则退回一张主卡或普通路径。

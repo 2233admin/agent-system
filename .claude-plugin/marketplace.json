@@ -28,7 +28,7 @@
     },
     {
       "name": "adaptive-problem-solving",
-      "version": "0.2.12",
+      "version": "0.2.13",
       "source": "./plugins/adaptive-problem-solving"
     },
     {
@@ -38,7 +38,7 @@
     },
     {
       "name": "skill-appraisal",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "source": "./plugins/skill-appraisal"
     },
     {

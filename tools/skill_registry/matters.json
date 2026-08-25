@@ -15,6 +15,18 @@
 
   "displayNameNote": "组的中文名只用于人读表面（资产面、对话）；机器名保持 kebab-case ASCII——三端按名路由，且 .cap 要求稳定机器 id、路径、命令与配置键保持规范形式。bmad 与 openspec 是上游产品专名，不译：译了会让人对不上上游文档与 release notes。Codex 端的对应显示名在各 skill 的 agents/openai.yaml 的 interface.display_name。",
 
+  "assemblyAuthority": {
+    "comment": "装配面是绝对权威：每个装配显式声明它要哪些 Skill，没声明的就不存在。这是白名单，不是黑名单——黑名单只排除已知的坏的，上游下次新增就自动漏进来；白名单则新增默认不存在，要进必须显式加。资产面（本文件与 registry.md）只登记仓库里有什么，不决定任一装配里有什么；两者不得互相冒充。",
+    "declaredBy": {
+      "cap": ".cap/profiles/*.toml 的 [skills] allow——已是白名单",
+      "configs": "stable_config_revision.skills_json——已是白名单",
+      "omp": "skills.includeSkills 白名单。不要用 ignoredSkills 黑名单：OMP 的 skills.enable{Pi,Claude,Agents,Codex}{User,Project} 默认全 true，目录里有什么就加载什么，黑名单堵不住上游新增。"
+    },
+    "impliesFor": "跨组的能力重叠优先在装配层解决，不在资产层退役。两个组各自都合理、只是不该同时出现在同一个装配里时，正确处置是让该装配只声明其中一个——退役会把另一个装配也一起废掉。",
+    "confirmedAt": "2026-08-25",
+    "confirmedBy": "负责人"
+  },
+
   "formNote": "组不是 OMP plugin。2026-08-24 实测（omp v18.0.3）：OMP 的 skill 与 plugin 是两套独立机制。skill 走目录约定加选择开关——skills.enable{Pi,Claude,Agents,Codex}{User,Project}、skills.customDirectories、skills.includeSkills、skills.ignoredSkills；plugin 走 npm 包加 TS/JS extension（导出 factory 的代码模块），install grilling 解析到 registry.npmjs.org 返回 404，install/link 按路径报 package.json not found。因此本仓的 Skill 资产不走 plugin 道。组是本仓自己的概念，OMP 侧的投影是 customDirectories 加 includeSkills，由 configs 在启动时装配——没有任何东西被安装。版本、来源与更新触发 OMP 完全不提供，必须由本文件与 configs 承担。",
 
   "originKinds": {
