@@ -32,6 +32,13 @@
 - 需要 Windows／PowerShell GitHub 多行 Markdown 或 Windows 长路径／文件锁知识时，主动按名运行 `python tools/knowledge_action_trigger/action_trigger.py --action github-multiline-markdown` 或 `--action windows-path-or-file-lock`，再按需读取返回的当前知识源。
 - 这是可查询工具，不自动触发、注入或挂 Hook；也可直接按名读取 `_archive/knowledge/windows-powershell-multiline-transfer.md` 或 `_archive/knowledge/windows-agent-ops.md`。查询不扩大合同、权限或产品决定。
 
+## 代码注释语言
+
+- 本仓新增或实质修改的代码注释一律用中文写，包括行内注释、块注释和文档注释（如 TypeScript 的 JSDoc、Python 的 docstring）。
+- 代码标识符、类型名、路径、SQL／PRAGMA 语句、错误码、测试名和外部专名保持原文，不翻译；中文只用于解释性的散文部分。
+- 这条只约束新增与实质修改的注释，不授权对既有英文注释做批量重写——碰到哪段就顺手把哪段改成中文，不为改注释单独开工。
+- 提交信息本身的语言不受此约束。
+
 ## Git / PR 约定
 
 - `gh pr create`/`gh pr edit` 的标题和正文默认使用中文（提交信息本身的语言不受此约束）。
