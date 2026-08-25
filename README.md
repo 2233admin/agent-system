@@ -9,7 +9,7 @@
 - `entrypoints/`：项目入口；`authority/`、`knowledge/` 已于 2026-08-23 物理归档至 `_archive/`（见下方"文件职责"），不再是当前政策或知识权威来源；
 - `contracts/`：合同 Schema、样例、捕获／回执工具和验证；
 - `plugins/`、`.agents/` 与 `.claude-plugin/`：可安装 Plugin／Skill 和双端 Marketplace；
-- `.cap/`：显式 profile、prompt 和 capability 声明；
+- `.cap/`：此前的显式 profile、prompt 和 capability 声明；已于 Epic 4（Story 4.7，2026-08-24）安全退役并从仓库删除，功能由 `packages/control-plane/` 承接；`plugins/skill-imports.toml` 承接了原 `.cap/skill-imports.toml` 的当前默认装配声明；
 - `src/agent_system/`：此前唯一的 profile、CAP 与 OMP Python 实现，已废弃并于 2026-08-23 物理归档至 `_archive/src/agent_system/`；CAP／OMP 装配改由 `packages/control-plane/`（TypeScript/Bun）承接。
 
 迁移中的 immutable source head、目标路径和历史保留策略记录在 [`work/records/2026-08-19-agent-system-consolidation/provenance.json`](work/records/2026-08-19-agent-system-consolidation/provenance.json)。目录尚未迁入不表示对应源仓可以归档；静态、集成、回滚和所需真实客户端门全部通过后才切换入口。

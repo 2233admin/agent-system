@@ -1,0 +1,8 @@
+# 当前默认装配：本仓 `plugins/` 中哪些 Skill 会被显式纳入默认装配，而不只是
+# Marketplace 可安装资产。此前由 `.cap/skill-imports.toml` 声明；`.cap/` 已于
+# Epic 4（Story 4.7）退役，本文件承接同一份声明，内容未变。
+version = 1
+
+[[imports]]
+name = "grilling"
+source = "plugins/grilling/skills/grilling"

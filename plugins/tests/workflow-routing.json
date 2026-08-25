@@ -1,5 +1,5 @@
 {
-  "comment": "当前 Plugin／Skill 资产清单、路由边、生命周期、分层成本与可执行场景。plugins/ 与 Marketplace 表示可发布／可安装资产；当前 profile 装配只由 .cap/skill-imports.toml 决定。",
+  "comment": "当前 Plugin／Skill 资产清单、路由边、生命周期、分层成本与可执行场景。plugins/ 与 Marketplace 表示可发布／可安装资产；当前 profile 装配只由 plugins/skill-imports.toml 决定。",
   "edgeKinds": {
     "drive": "段调用：调用方把当前工作交给目标 Skill 完成那一段，并等待它的段结果。它转移的是执行，不是生命周期决定权——生命周期状态只由 lifecycle.owner 决定，因此非 owner 拥有 drive 边不构成第二个状态机。drive 边必须构成有向无环图。",
     "return": "把段结果交回生命周期决定者。它不是新的调用，因此不参与环判定；但只允许指向 driver。",
@@ -260,7 +260,7 @@
     }
   },
   "complexityBudget": {
-    "comment": "当前 13 个 Skill 不留数量余量；新增必须同时退役一个现有 Skill 或取得负责人窄例外。plugins/ 资产数量不等于 profile 自动装配，当前装配只读 .cap/skill-imports.toml。运行上下文成本继续分为 L1 description、L2 SKILL.md 与递归 L3 references；维护复杂度递归计量 L2+L3。",
+    "comment": "当前 13 个 Skill 不留数量余量；新增必须同时退役一个现有 Skill 或取得负责人窄例外。plugins/ 资产数量不等于 profile 自动装配，当前装配只读 plugins/skill-imports.toml。运行上下文成本继续分为 L1 description、L2 SKILL.md 与递归 L3 references；维护复杂度递归计量 L2+L3。",
     "maxSkills": 13,
     "exceptions": [
       {
