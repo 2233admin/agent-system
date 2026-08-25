@@ -1,0 +1,6 @@
+interface:
+  display_name: "Skill 鉴别"
+  short_description: "判定一个 Skill 组该不该收，并留下复核依据"
+
+policy:
+  allow_implicit_invocation: true

@@ -1,6 +1,6 @@
 interface:
-  display_name: "Orchestrated Collaboration"
-  short_description: "Coordinate bounded multi-Agent and multi-Session work"
+  display_name: "多席协作"
+  short_description: "写入所有权、派发合同与独立验收"
 
 policy:
   allow_implicit_invocation: true

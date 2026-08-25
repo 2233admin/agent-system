@@ -104,6 +104,12 @@
       "return": [
         "issue-workflow"
       ]
+    },
+    "skill-appraisal": {
+      "plugin": "skill-appraisal",
+      "drive": [
+        "skill-maintenance"
+      ]
     }
   },
   "skillLifecycle": {
@@ -186,6 +192,12 @@
         "minimalRecheck": "对一个 PR 读取当前 head、Draft 状态、审查、required checks、冲突、mergeability 和评论作者类型，确认整合判断字段仍可获得。",
         "lastVerified": "2026-08-15",
         "suspect": false
+      },
+      "skill-appraisal": {
+        "invalidatedWhen": "组作为判定单位的前提变化：装配层不再按组声明能力（configs 的 stable_config_revision.skills_json 或 OMP 的 skills.customDirectories／includeSkills 语义改变），使「判定一个组」不再对应任何可装配的单位；或来源三分（own／fork／vendor）的判据——是否允许本地改动——不再能机械验证。",
+        "minimalRecheck": "① 读 tools/skill_registry/matters.json 的 formNote，确认其中记录的 OMP 实测结论（skill 走目录约定与 includeSkills，plugin 走 npm 包）仍与 omp config 中 skills.* 键一致。② 对任意一个 fork 组跑一次它自己的最少复核步骤，确认零改动仍可机械判定。两步都通过则本 Skill 的五门与复核路径继续成立。",
+        "lastVerified": "2026-08-24",
+        "suspect": false
       }
     }
   },
@@ -256,31 +268,42 @@
         "forYou": "按当前 head 验收、修复、转 ready 或合并 GitHub PR，并区分检查、审查和授权。",
         "whenToUse": "已有 PR 需要整合、Draft 转 ready、处理审查／CI／冲突或执行明确合并授权时。",
         "workingSignals": "回执绑定当前 head，列出 checks、review、merge state、授权来源和合并后复核。"
+      },
+      "skill-appraisal": {
+        "forYou": "判定一个 Skill 组该不该收、归哪些事项、替代谁，并留下下次复核的最小步骤。",
+        "whenToUse": "有候选组要决定收不收、怀疑与现有组重复、需要定组的事项归属，或已收组到了复核节拍时。",
+        "workingSignals": "给出的是判定与证据，不是安装动作；每次判定都带失效条件和下次最少复核步骤，下一轮不用重判。"
       }
     }
   },
   "complexityBudget": {
-    "comment": "当前 13 个 Skill 不留数量余量；新增必须同时退役一个现有 Skill 或取得负责人窄例外。plugins/ 资产数量不等于 profile 自动装配，当前装配只读 .cap/skill-imports.toml。运行上下文成本继续分为 L1 description、L2 SKILL.md 与递归 L3 references；维护复杂度递归计量 L2+L3。",
-    "maxSkills": 13,
-    "exceptions": [
-      {
-        "dimension": "maxSkills",
-        "from": 12,
-        "to": 13,
-        "authorizedBy": "https://github.com/zaurakworks/agent-control/issues/57",
-        "scope": "新增一个独立 skill-maintenance；不授权未来继续提高任何上限"
-      }
-    ],
-    "baseline": {
-      "observedAt": "2026-08-15",
-      "skills": 12,
-      "maxSkills": 12
-    },
+    "comment": "运行上下文成本分为 L1 description、L2 SKILL.md 与递归 L3 references；维护复杂度递归计量 L2+L3。这些计量继续有效并由 CI 实测。数量门已于 2026-08-24 退役，见 retiredSkillCountGate；当前不存在任何 Skill 数量上限。",
     "retiredCorpusGate": {
       "reportedUtf8Bytes": 208420,
       "maxUtf8Bytes": 209000,
       "retiredBy": "https://github.com/zaurakworks/agent-plugins/issues/16",
       "reason": "只读取 references 顶层 Markdown，漏计嵌套方法卡；同时把 L2、L3 和维护面混成一个运行上下文预算"
+    },
+    "retiredSkillCountGate": {
+      "reportedMaxSkills": 13,
+      "retiredBy": "https://github.com/zaurakworks/agent-system/pull/168",
+      "retiredAt": "2026-08-24",
+      "reason": "该门按 plugins/ 的资产数量计，却以运行上下文成本为理由。两者并不等价——门自己的旧说明就写着「plugins/ 资产数量不等于 profile 自动装配，当前装配只读 .cap/skill-imports.toml」，而该文件当时只引入 1 个（grilling）：13 个资产对应 1 个被装配。在 profile／config 装配的模型下，仓库里有多少资产不决定任一会话的上下文成本，因此数量上限拦不到它声称要拦的东西，只会把新增能力挡在门外。真正按运行成本计的门是 descriptionBudget（每项 1000 UTF-8 字节，三端实测），它逐项生效且与资产总数无关，继续保留。",
+      "replacedBy": "限制若有必要，属于装配层而非资产层：profile 的 [skills] allow 闭包、.cap/skill-imports.toml，以及 configs 的配置修订（stable_config_revision.skills_json）。OMP 侧对应 skills.includeSkills 与 ignoredSkills。本仓当前不在装配层设置数量上限，需要时由负责人在该层显式声明。",
+      "supersededExceptions": [
+        {
+          "dimension": "maxSkills",
+          "from": 12,
+          "to": 13,
+          "authorizedBy": "https://github.com/zaurakworks/agent-control/issues/57",
+          "scope": "新增一个独立 skill-maintenance；不授权未来继续提高任何上限"
+        }
+      ],
+      "supersededBaseline": {
+        "observedAt": "2026-08-15",
+        "skills": 12,
+        "maxSkills": 12
+      }
     }
   },
   "pluginVersions": {
@@ -291,7 +314,8 @@
     "orchestrated-collaboration": "0.2.7",
     "adaptive-problem-solving": "0.2.12",
     "resource-observability": "0.2.4",
-    "github-collaboration": "0.3.18"
+    "github-collaboration": "0.3.18",
+    "skill-appraisal": "0.1.0"
   },
   "descriptionBudget": {
     "comment": "2026-08-11 用同一份 1906 UTF-8 字节描述对普通 Codex、Orca Codex 与 Claude Code 运行面目录做回显；两种 Codex 均在句中截断，Claude 完整可见。共同机械门取低于三端实测可见前缀的 1000 UTF-8 字节；70-D 已消费，adaptive-problem-solving 也必须满足共同门。",

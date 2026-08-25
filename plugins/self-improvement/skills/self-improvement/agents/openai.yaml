@@ -1,6 +1,6 @@
 interface:
-  display_name: "Self Improvement"
-  short_description: "Turn corrections into bounded Agent behavior improvements"
+  display_name: "自我改进"
+  short_description: "把一次纠正变成系统改进并选对承载面"
 
 policy:
   allow_implicit_invocation: true

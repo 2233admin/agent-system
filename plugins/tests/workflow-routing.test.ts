@@ -46,15 +46,23 @@ type Config = {
   };
   complexityBudget: {
     comment: string;
-    maxSkills: number;
-    exceptions: Array<{
-      dimension: 'maxSkills';
-      from: number;
-      to: number;
-      authorizedBy: string;
-      scope: string;
-    }>;
-    baseline: { observedAt: string; skills: number; maxSkills: number };
+    // 数量门已于 2026-08-24 退役：它按资产数量计却以运行上下文成本为理由，
+    // 而资产数量不等于装配数量。退役记录本身受下方断言保护，不得被静默恢复。
+    retiredSkillCountGate: {
+      reportedMaxSkills: number;
+      retiredBy: string;
+      retiredAt: string;
+      reason: string;
+      replacedBy: string;
+      supersededExceptions: Array<{
+        dimension: 'maxSkills';
+        from: number;
+        to: number;
+        authorizedBy: string;
+        scope: string;
+      }>;
+      supersededBaseline: { observedAt: string; skills: number; maxSkills: number };
+    };
     retiredCorpusGate: {
       reportedUtf8Bytes: number;
       maxUtf8Bytes: number;
@@ -298,14 +306,34 @@ for (const [skill, entry] of Object.entries(config.skillLifecycle.entries)) {
   }
 }
 
-assert.equal(config.complexityBudget.maxSkills, declared.length, '数量门必须收紧到当前 Skill 数，不留增长余量');
-assert.ok(config.complexityBudget.comment.includes(`当前 ${declared.length} 个 Skill 不留数量余量`), '数量门说明必须记录当前基线');
-assert.ok(config.complexityBudget.comment.includes('当前装配只读 .cap/skill-imports.toml'), '数量门必须区分资产清单与 profile 装配');
-assert.deepEqual(config.complexityBudget.baseline, {
+// 数量门已退役。这里断言的是"退役记录完整且不可静默撤销"，而不是任何数量上限：
+// 被替代的例外与基线必须原样保留，退役理由与替代去向必须写明，且不得偷偷加回 maxSkills。
+assert.ok(
+  !('maxSkills' in config.complexityBudget),
+  'Skill 数量门已于 2026-08-24 退役，不得重新引入 maxSkills；限制若有必要属于装配层',
+);
+const retiredCount = config.complexityBudget.retiredSkillCountGate;
+assert.equal(retiredCount.reportedMaxSkills, 13);
+assert.equal(retiredCount.retiredBy, 'https://github.com/zaurakworks/agent-system/pull/168');
+assert.equal(retiredCount.retiredAt, '2026-08-24');
+assert.ok(
+  retiredCount.reason.includes('资产数量不等于'),
+  '退役理由必须写明资产数量与装配数量不等价——那是它被退役的唯一依据',
+);
+assert.ok(
+  retiredCount.replacedBy.includes('装配层'),
+  '退役记录必须写明限制若有必要该落在哪一层，否则等于无条件放开',
+);
+assert.deepEqual(retiredCount.supersededBaseline, {
   observedAt: '2026-08-15',
   skills: 12,
   maxSkills: 12,
 });
+assert.equal(retiredCount.supersededExceptions.length, 1);
+assert.equal(
+  retiredCount.supersededExceptions[0].authorizedBy,
+  'https://github.com/zaurakworks/agent-control/issues/57',
+);
 assert.equal(config.complexityBudget.retiredCorpusGate.retiredBy, 'https://github.com/zaurakworks/agent-plugins/issues/16');
 assert.equal(config.descriptionBudget.unit, 'utf8-bytes');
 assert.equal(
@@ -337,12 +365,23 @@ for (const marker of [
 ]) {
   assert.ok(overviewText.includes(marker), `选型面缺少分层事实「${marker}」`);
 }
+const CN_NUMERALS: Record<number, string> = {
+  6: '六',
+  7: '七',
+  8: '八',
+  9: '九',
+  10: '十',
+};
+
 // ---------- 4. README 当前入口与装配边界 ----------
 const readme = read(join(repoRoot, 'README.md'));
 const overviewLines = readme.split('\n').filter((line) => line.includes('仓库目前包含'));
 assert.equal(overviewLines.length, 1, 'README 必须有且只有一句当前版本总览');
 const currentOverview = overviewLines[0];
-assert.ok(currentOverview.includes('八个可安装 Plugin'), 'README 当前总览必须说明 8 个 Plugin');
+assert.ok(
+  currentOverview.includes(`${CN_NUMERALS[pluginNames.length] ?? pluginNames.length}个可安装 Plugin`),
+  `README 当前总览必须说明 ${pluginNames.length} 个 Plugin`,
+);
 for (const [plugin, version] of Object.entries(config.pluginVersions)) {
   assert.ok(currentOverview.includes(`\`${plugin}\` \`${version}\``), `README 当前总览缺少 ${plugin} ${version}`);
 }
