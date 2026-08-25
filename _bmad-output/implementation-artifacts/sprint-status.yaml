@@ -29,7 +29,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 # - Retrospective appends its action items to action_items; the status view surfaces open ones
 generated: 08-22-2026 00:00
-last_updated: 08-24-2026 20:05
+last_updated: 08-24-2026 21:40
 project: agent-system
 project_key: NOKEY
 tracking_system: file-system
@@ -160,8 +160,12 @@ action_items:
       ，但 fd6f7fab（PR #145）+ a8560f1（PR #148）已完整落地并合并到 46049d3。刷新 epic-2-context.md
       对应措辞为已完成状态（可重跑 compile-epic-context 或手动编辑）。"
     owner: "repo owner / 下一次 compile-epic-context 运行"
-    status: open
+    status: done
     ref: "_bmad-output/implementation-artifacts/epic-2-retro-2026-08-23.md"
+    note: "2026-08-24 手动编辑 epic-2-context.md 修正（未重跑 compile-epic-context）：第 12 行
+      Story 2.2 条目改为「已随 a8560f1 / PR #148 落地并合并到 46049d3，无残留待办」；第 34 行
+      「这是本 Epic 当前唯一待落地的行为修正点」改为落地记录。三个引用 commit 已逐个核实存在
+      （fd6f7fa correct-course 定稿、a8560f1 实现、46049d3 合并 PR #148）。"
   - id: "epic-2-retro-item-2-release-workflow-defect-class-no-guard"
     epic: 2
     action: "Story 2.1 的两个真实缺陷（gh release create 误用不存在的 --clobber 参数，commit ccae699；编译产物下

@@ -252,6 +252,66 @@ MVP-FR10：Epic 1 / Story 1.2 — OMP-only 与未来 adapter 边界。
 
 > **2026-08-23 一致性提示：** 上一条 AC 写于 Claude Code/Codex 均未激活时。Epic 4（2026-08-23 裁决激活）已经给 Claude Code 建立正式 adapter，Codex 仍按原样不支持。Epic 4 交付后，本 Story 描述的“Claude Code 返回不支持”这一具体行为会被 Epic 4 的 Story 4.1～4.3 取代；本条 AC 按 correct-course 惯例保留原文不删（可追溯 Epic 1 当时的真实交付范围），不在本轮改写——按范围约定本轮只处理 Epic 4，不修改 Epic 1 正文。
 
+## Epic 2：控制面发布与自更新
+
+`configs` 以 Bun 编译的独立可执行文件分平台发布；进程启动时后台静默检查新版本，通过固定发布端点 + 完整性校验后原地自更新，失败静默降级不阻塞本次启动，成功替换后打印一行提示，不上报任何遥测。
+
+> **2026-08-24 事后补记：** 本节与下面的 Epic 3 各 Story 小节是补写的。Epic 2／3 此前只在上方 `## Epic List` 里各有一段范围描述，正文写的是"具体 Story 与验收标准由后续细化产出"，而实际交付走的是 `_bmad-output/implementation-artifacts/spec-*.md`（`bmad-build` 的 spec 流程），Story 从未回写进 epics.md。后果不只是文档缺一块：`sprint_plan.py generate` 以 epics.md 为准重建计划，这 5 条 Story 在 epics.md 里无对应标题，会被当作 orphan 丢弃（实测 `dropped_orphans` 命中全部 5 条、状态均为 `done`）。因此这里补的是**标题与索引**，把 sprint-status.yaml 的键重新锚定回 epics.md；每个 Story 的约束与验收标准仍以对应 `spec-*.md`（`frozen-after-approval`）为准，不在此处重建一份可能与之漂移的副本。
+
+### Story 2.1：打包与发布流水线
+
+作为需要在多台机器上安装 `configs` 的个人实践者，
+我希望 `configs` 以分平台的独立可执行文件发布到 GitHub Releases 并带校验和，
+以便我无需 clone 源码或安装 Bun 就能装上，也让自更新有可验证的固定端点。
+
+**覆盖 AD：** AD-2、AD-15
+
+**验收标准来源：** `_bmad-output/implementation-artifacts/spec-2-1-打包与发布流水线.md`（status: done）
+
+### Story 2.2：自更新客户端
+
+作为已经装上某个版本 `configs` 的个人实践者，
+我希望它在启动时自行检查并原地更新到新版本，
+以便我不必手动重新下载；且检查失败时绝不打扰我或拖慢本次启动。
+
+**覆盖 AD：** AD-15
+
+**验收标准来源：** `_bmad-output/implementation-artifacts/spec-2-2-自更新客户端.md`（status: done）。2026-08-23 的 correct-course（`sprint-change-proposal-2026-08-23-configs-self-update-visible-success.md`）把"成功路径也必须可见"补为独立规则，已随 PR #148 落地。
+
+## Epic 3：配置供应与装配
+
+`configs` 支持把 Agent 会话内已裁决的候选写成可持久化的稳定配置修订，并让用户看清一条修订的装配来源与替代关系。装配（写入）与使用（Epic 1 的看／选／用）保持两个不同的能力面。
+
+### Story 3.1：建立新配置修订（configs establish）
+
+作为完成了一轮配置调查与裁决的个人实践者，
+我希望把裁决结果写成一条新的稳定配置修订，
+以便装配结果能真正进入产品、被 Epic 1 的查看与启动路径读到。
+
+**覆盖：** SPEC.md CAP-2（建立部分）；PRD FR-1～FR-4
+
+**验收标准来源：** `_bmad-output/implementation-artifacts/spec-3-1-建立新配置修订-configs-establish.md`（status: done），另有 `spec-3-1-code-review-fixes.md` 记录其审查修复轮。
+
+### Story 3.2：修订现有配置（configs revise）
+
+作为已经有一条稳定配置的个人实践者，
+我希望追加一条替代旧修订的新修订，并在替代目标已被别人替代时得到明确的类型化拒绝，
+以便配置能持续演进，而并发或重复替代不会以裸 SQLite 错误泄漏。
+
+**覆盖：** SPEC.md CAP-2（修订部分）；PRD FR-1～FR-4
+
+**验收标准来源：** `_bmad-output/implementation-artifacts/spec-3-2-修订现有配置-configs-revise.md`（status: done）
+
+### Story 3.3：查看装配来源与替代链
+
+作为要在多条修订之间做选择的个人实践者，
+我希望 `configs show` 显示每条能力引用的来源与内容指纹、这条修订的触发类别与证据引用，以及它替代了谁、又被谁替代，
+以便我判断一条修订的内容从哪来、在演进链上处于什么位置。
+
+**覆盖：** SPEC.md CAP-1（来源可见部分）
+
+**验收标准来源：** `_bmad-output/implementation-artifacts/spec-3-3-查看装配来源与替代链-configs-source.md`（status: done）
+
 ## Epic 4：装配并激活 Claude Code 客户端
 
 用户可以让本产品把已存在的装配意图（Instructions/Skills/MCP 引用）交付给 Claude Code，边界是宿主原生可强制执行的权限/工具/MCP 硬控制，不是 prompt 文字软约束；交付方式复用 Architecture Spine AD-19 的窄端口（probe → plan → launch/resume → interpret）与 AD-20 的会话模型（fresh target 复用 OMP 同款单次确认生命周期，already-running session target 诚实返回 `requires-restart`），最终按固定三步顺序取代现有 `.cap/`。Codex CLI 因缺乏真实装配证据（`.cap/runtime/` 无 `codex.toml`）不在本 Epic 范围内，继续按 Architecture Spine AD-1 的 2026-08-23 澄清保持非目标。
@@ -425,7 +485,9 @@ MVP-FR10：Epic 1 / Story 1.2 — OMP-only 与未来 adapter 边界。
 **Then** CLI 显示失败发生阶段、受影响能力、已知原因与恢复动作（复用既有 `renderQueryFailure`/`renderLaunchFailure` 渲染约定）
 **And** 不伪造成功，不静默降级为"已装配"。
 
-### Story 4.7（原 Story 4.6）：退役 `.cap/` 本体
+### Story 4.7：退役 `.cap/` 本体
+
+> **编号沿革：** 本 Story 原编号为 4.6；2026-08-24 架构重新编号退役顺序（新增 Story 4.5b／4.6 后顺延）时改为 4.7。此前这句说明写在标题里（`### Story 4.7（原 Story 4.6）：退役 .cap/ 本体`），导致 `sprint_plan.py` 从标题派生出的键是 `4-7-原-story-4-6-退役-cap-本体`，与 sprint-status.yaml 里已有的 `4-7-退役-cap-本体` 对不上——`generate` 会同时新建一条 backlog 键、并把已有的 done 键当 orphan 丢弃。移到正文即可两边一致。
 
 作为维护本仓 Agent System 的负责人，
 我希望在确认新 adapter 已功能对等 `.cap` 后才移除 `.cap/`，
