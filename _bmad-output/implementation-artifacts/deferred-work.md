@@ -74,6 +74,7 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-2-2-自更新客户端.md`
   summary: 自更新客户端没有任何退出开关（如 `CONFIGS_NO_SELF_UPDATE` 环境变量或 `--no-self-update` 参数）、没有检查节流/缓存（每次调用都实打一次未认证 GitHub API，限额 60 次/小时/IP）、失败时没有可选的调试/verbose 日志（`checkAndApply` 整体静默吞掉所有错误，用户和维护者都无从诊断"自更新为什么不生效"）。
   evidence: blind-hunter 审查层（两轮）独立发现。均为合理的运维/可诊断性增强，但 spec 的 `Boundaries & Constraints`/`Never` 明确要求"任一步失败都不得输出到 stdout/stderr/TUI"且"成功和失败都不在正常输出中提示"，加开关/日志需要先决定是否、如何在不违反这条约束的前提下开一个显式 opt-in 例外，属于需要负责人裁决的产品/安全边界问题，不在本次范围内顺手加。
+  resolution (Issue #153，2026-08-24，部分解决): "没有检查节流/缓存"一项已落地——检查改为每台机器每 24 小时最多一次（`adapters/self-update/check-state.ts` 的 `SELF_UPDATE_CHECK_COOLDOWN_MS` + `$HOME/.agent-system-state/control-plane/self-update.json` 时间戳），未认证 GitHub API 限额（60 次/小时/IP）不再可能被一个终端的正常使用打满。"退出开关"与"可诊断日志"两项仍未解决，仍需负责人裁决是否开例外。
 
 - source_spec: `_bmad-output/implementation-artifacts/spec-2-2-自更新客户端.md`
   summary: `replaceBinary` 成功更新后产生的 `<execPath>.<旧版本号>.bak` 文件永不清理，多次更新后无限累积；且两次 `rename`（旧文件→`.bak`、临时文件→`execPath`）之间仍有极小非原子窗口——若第二次 rename 失败，`execPath` 会彻底缺失且无自动回滚，只能从 `.bak` 手动恢复；另外没有并发保护，两个同时运行的 `configs` 进程可能同时触发自更新并竞争同一个 `execPath`/`<execPath>.download` 临时文件。
@@ -106,6 +107,7 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-configs-self-update-visible-success.md`
   summary: `checkAndApply` 在每次编译二进制的进程启动时都会跑，两个几乎同时启动的 `configs` 进程可能对同一个 `execPath` 竞争 `replaceBinary` 的写入/重命名——这是 Story 2.2 就存在的既有竞态，本次改动只是让成功提示打印出来后，这个竞态第一次变得"外部可观察"（比如两个进程都打印了更新提示，或其中一个悄悄拿到 `null`）。
   evidence: blind-hunter 审查层（自更新可见提示这轮）发现。竞态本身不是本次改动引入的，只是可见度变了；修复需要引入跨进程锁或去重机制，是需要额外设计判断的加固方向，不是本次可无争议机械修的 patch。
+  resolution (Issue #153，2026-08-24，缓解未根治): 检查不再发生在每次进程启动，而是由前台命令按 24 小时冷却期派发一个后台进程，且冷却时间戳在派发前写盘——两个几乎同时启动的 `configs` 只有一个会派发检查器，竞态窗口从"每次调用"缩小到"冷却期边界上的并发调用"。跨进程锁仍未引入，理论竞态仍在。
 
 - source_spec: `_bmad-output/implementation-artifacts/spec-3-1-code-review-fixes.md`
   summary: `configs establish`（`cli/index.ts:497` 与 `config-revision-writer.ts:46`）对同一个 candidate 对象完整跑了两遍 `parseCandidateRevision` 校验，前一次的结果被直接丢弃，只为了在开库/跑迁移之前提前失败。

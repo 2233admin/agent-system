@@ -29,7 +29,7 @@ baseline_commit: 'ec5f8206225a7e06c0bfd90db47ea5eeb1647e1c'
 
 **Ask First:** 实现与单元测试全部完成后，若要用一次真实的 `configs-v*` tag 推送做端到端验证（下载并替换真实二进制）——这会在仓库公开创建一次 GitHub Release，是可见、不易撤销的动作——必须先问负责人确认，不主动推送（沿用 Story 2.1 同款约束；截至本次规划仓库尚无任何已发布 Release）。
 
-**Never:** 不做代码签名/公证校验（沿用 Story 2.1 对 AD-15"签名或哈希二选一"选哈希的裁决）；不触碰或影响 OMP 自身版本升级路径（capability probe/adapter fixtures/smoke 门不变）；不引入 daemon、常驻进程或轮询定时器——检查只在进程启动这一次性时点内联发生；不持久化更新历史或版本决定到 SQLite 或磁盘（`.bak` 文件本身除外）。
+**Never:**（下方"不引入 daemon…"一条已被 Issue #153 改写，见本节末尾的修订说明）不做代码签名/公证校验（沿用 Story 2.1 对 AD-15"签名或哈希二选一"选哈希的裁决）；不触碰或影响 OMP 自身版本升级路径（capability probe/adapter fixtures/smoke 门不变）；不引入 daemon、常驻进程或轮询定时器——检查只在进程启动这一次性时点内联发生；不持久化更新历史或版本决定到 SQLite 或磁盘（`.bak` 文件本身除外）。
 
 ## I/O & Edge-Case Matrix
 
@@ -42,6 +42,17 @@ baseline_commit: 'ec5f8206225a7e06c0bfd90db47ea5eeb1647e1c'
 | 校验失败 | 下载字节 SHA256 与 `SHA256SUMS.txt` 不一致 | 不替换本地文件 | 静默丢弃，不重试 |
 | 网络请求失败或超时 | release 元数据或资产下载失败/超时 | 不替换本地文件 | 静默丢弃，不重试 |
 | 平台不受支持 | `process.platform`/`arch` 不在四个已发布资产命名规则内 | 不下载、不替换 | 静默丢弃 |
+
+
+### 修订：检查时机与节流（Issue #153，负责人 2026-08-24 明确激活）
+
+负责人通过 [Issue #153](https://github.com/zaurakworks/agent-system/issues/153) 明确重新协商了本节两条约束，改写范围仅限"何时检查、是否阻塞、是否记时间戳"，**不改变**端点、完整性校验、`.bak` 回滚、零遥测、失败静默降级、`CONFIGS_VERSION === 'dev'` 完全跳过这些约束：
+
+- 原 Always"不得阻塞或延迟当前命令"在实现上并未成立——检查是 `await` 在任何子命令分发之前的，实测 `configs --version` 因此多花约 1s，网络差时最坏可达约 65s。现改为：前台命令**不得**发起或等待任何自更新网络请求；检查由前台派发一个 stdio 全丢弃的独立后台进程（`configs --self-update-worker`）完成，其结果只影响**下一次**调用。
+- 原 Never"不引入 daemon、常驻进程或轮询定时器——检查只在进程启动这一次性时点内联发生；不持久化更新历史或版本决定到 SQLite 或磁盘"改为：仍然不引入 daemon、常驻进程或轮询定时器（后台检查器是一次性短命进程，做完即退出），但允许持久化一个最小调度状态文件 `$HOME/.agent-system-state/control-plane/self-update.json`，只含"上次检查时间戳"与"待播报的已装版本号"两个字段；它是可丢弃的调度缓存，损坏或缺失一律退化为"现在就检查"，不作为任何产品决定的真源，也不记录更新历史。
+- 由此新增的节流：每台机器每 24 小时最多检查一次（`SELF_UPDATE_CHECK_COOLDOWN_MS`），同时消化 deferred-work 里"每次调用都实打一次未认证 GitHub API"一条。
+- 成功提示的时机随之改变：后台替换成功后不再在当次调用打印，而是由**第一个真正运行到该新版本**的前台调用打印（因此 i18n 文案从"（下次启动生效）"改为"（当前已生效）"）；`--version` 仍不打印且不消耗该提示（保留 `release-configs.yml` 冒烟测试依赖的"单行裸版本号"契约）。
+- 自更新后立刻重启替换后二进制的行为（`buildSelfUpdateRestartArgv`）随之删除：它的唯一目的就是让更新在当次调用生效，而 Issue #153 明确接受"本次仍用旧版本跑完，下一次调用才生效"。
 
 </frozen-after-approval>
 
@@ -76,6 +87,8 @@ baseline_commit: 'ec5f8206225a7e06c0bfd90db47ea5eeb1647e1c'
 - Given 写入新二进制的临时文件失败（如磁盘满），when 检查，then 原 `execPath` 处的文件内容和权限完全不变，不存在旧文件已被改名但新文件未写入的中间态。
 
 ## Spec Change Log
+
+- **Issue #153（2026-08-24，负责人明确激活）：** 自更新检查从"每次调用前台同步 `await`"改为"前台按 24 小时冷却期派发独立后台进程，结果只影响下一次调用"。改动落在 `cli/index.ts`（`reportPendingSelfUpdateNotice`/`scheduleSelfUpdateCheck`/`runSelfUpdateWorker` 三个导出函数 + `import.meta.main` 分发）、新增 `adapters/self-update/check-state.ts` 与 `cli/self-update-state-path.ts`、i18n 文案与三个测试文件；`GithubReleaseUpdater` 本体（端点、超时、校验、`.bak`、fail-closed）一行未动。frozen 段的两条相关约束由负责人在 Issue 中重新协商，详见上方"修订：检查时机与节流"。删除 `reportSelfUpdateResult`/`buildSelfUpdateRestartArgv` 及其测试（前者被 `reportPendingSelfUpdateNotice` 取代，后者的"当次生效"目的被 Issue 明确放弃）。
 
 - **触发发现（bad_spec，review_loop_iteration 1）：** 三个独立审查视角（Blind Hunter、Edge Case Hunter、Verification Gap Reviewer）交叉证实同一根因——`checkAndApply` 用"tag 与 `CONFIGS_VERSION` 是否不同"判定"有更新"，而不是"是否更新"。Verification Gap Reviewer 给出了具体、可复现的场景：`.github/workflows/release-configs.yml` 的"Smoke-test compiled binary"步骤在新 Release 真正创建之前，用新版本号编译并运行 `dist/configs-linux-x64`；此时 `GET /releases/latest` 仍返回上一个已发布版本，纯"不等"判定会误判为"有更新"，触发下载并用旧版本覆盖刚编译出的新二进制，进而把陈旧二进制发布到正式 Release。Blind Hunter/Edge Case Hunter 独立指出同一比较逻辑还允许任意"版本不同"（含更旧的 latest release）触发降级。另外两个关联发现一并折入本次修订：(a) `fetchWithTimeout` 的 `clearTimeout` 在 `fetch()` resolve（只拿到响应头）时就执行，未覆盖后续的响应体读取，一个响应头正常但响应体卡住的连接会无限期挂起，违反 Always 约束"网络请求必须带边界超时，不得无限等待"；(b) `replaceBinary` 先 `rename` 旧二进制再 `writeFile` 新内容，若 `writeFile`/`chmod` 在 rename 之后失败，`execPath` 处于"旧文件已消失、新文件未就位"的中间态，导致下次启动直接失败。
 - **已修订：** Design Notes 新增"`isNewerVersion` 判定 + fail-closed"、"超时覆盖到响应体读完为止"、"先写临时文件再两次 rename"三条设计决策；Code Map 新增 `version-compare.ts` 文件条目，并更新 `github-release-updater.ts`/测试文件条目描述这三处修订；Tasks & Acceptance 新增对应任务行与两条系统级验收标准。`Intent`/`Boundaries & Constraints`/`I/O & Edge-Case Matrix`（frozen 部分）未改动——"有新版本"场景的产品意图本就蕴含"更新"而非"不同"，此次只是修正非 frozen 区域里对该意图的错误技术实现假设。

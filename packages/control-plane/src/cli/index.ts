@@ -12,6 +12,8 @@
  * `src/adapters/sources/cap-fs.ts` for why).
  */
 
+import { spawn } from 'node:child_process';
+
 import type { ClientId } from '../domain/client';
 import { resolveClientSupport } from '../domain/client';
 import type { LaunchPlan } from '../domain/activation';
@@ -23,6 +25,7 @@ import { BunOmpCapabilityProbe } from '../adapters/omp/capability-probe';
 import { FsLaunchContextWriter } from '../adapters/launch-context/fs-launch-context-writer';
 import { FsClaudeLaunchContextWriter } from '../adapters/launch-context/fs-claude-launch-context-writer';
 import { GithubReleaseUpdater } from '../adapters/self-update/github-release-updater';
+import { isCheckDue, readSelfUpdateState, writeSelfUpdateState } from '../adapters/self-update/check-state';
 import { BunClaudeProcessPort } from '../adapters/clients/claude/process-port';
 import { BunClaudeCapabilityProbe } from '../adapters/clients/claude/capability-probe';
 import { compileClaudeAssemblyManifest } from '../adapters/clients/claude/assembly-manifest';
@@ -39,6 +42,7 @@ import type {
   ClaudeInvocationDirPort,
   ClaudeLaunchContextWriter,
   ClaudeProcessPort,
+  SelfUpdatePort,
 } from '../application/ports';
 import {
   ConfigNotFoundError,
@@ -87,6 +91,7 @@ import {
 } from '../application/claude-launch';
 import { readYesNo } from './confirm-prompt';
 import { defaultDbPath } from './db-path';
+import { defaultSelfUpdateStatePath } from './self-update-state-path';
 import { t } from './i18n';
 import { CONFIGS_VERSION } from './version';
 import {
@@ -1089,75 +1094,169 @@ export async function main(argv: readonly string[], overrides: CliOverrides = {}
 export { InvalidTransitionError, LaunchPlanNotFoundError, StaleConfirmationError, UnsupportedClientError };
 
 /**
- * Decides whether to surface `GithubReleaseUpdater.checkAndApply`'s result
- * and, if so, prints it -- pulled out of the `import.meta.main` block below
- * (which never runs under `bun test`, see `tests/cli/version.test.ts`) so
- * this decision has its own direct test coverage instead of relying on the
- * process entry point.
+ * Prints the "an update already landed" notice, if one is pending -- the
+ * visible half of the background self-update flow (Issue #153). Pulled out
+ * of the `import.meta.main` block below (which never runs under `bun test`,
+ * see `tests/cli/version.test.ts`) so this decision has its own direct test
+ * coverage instead of relying on the process entry point.
  *
- * Two reasons a non-`null` `updatedVersion` still must not print:
+ * Only prints when the pending version is the version *this* process is
+ * running: the background checker replaces the binary on disk, so the
+ * notice is truthful ("已更新到 vX，当前已生效") exactly once the user has
+ * actually launched the replacement. A pending version that does not match
+ * (the replacement happened while this older process was already running)
+ * stays pending for the next launch rather than being announced early.
+ *
+ * Two things must still not print:
  * - `argv[0] === '--version'`: `main()` intercepts `--version` into a
  *   single bare version-number line, byte-for-byte compared by
  *   `release-configs.yml`'s smoke test (`actual="$(./dist/... --version)"`).
- *   The running process is still the pre-replacement code, so it would
- *   print the *old* version right after claiming an update -- prepending
- *   any other line here would also just break that contract outright. This
- *   is the only subcommand suppressed; every other subcommand still prints
- *   normally.
+ *   The notice is left pending, not dropped, so the next ordinary
+ *   subcommand still shows it.
  * - Printing itself can fail (e.g. `EPIPE` if stdout was already closed by
  *   the time this runs) -- caught and silently discarded right here, not
  *   left to the outer `import.meta.main` try/catch, so a failed print can
  *   never get misreported as `unexpectedFailure` and abort the command the
- *   user actually invoked.
+ *   user actually invoked. The notice is cleared regardless: a notice that
+ *   could not be printed is not worth re-attempting forever.
  */
-export function reportSelfUpdateResult(updatedVersion: string | null, argv: readonly string[]): void {
-  if (updatedVersion === null || argv[0] === '--version') {
+export function reportPendingSelfUpdateNotice(params: {
+  readonly statePath: string;
+  readonly currentVersion: string;
+  readonly argv: readonly string[];
+}): void {
+  if (params.argv[0] === '--version') {
     return;
   }
+  const state = readSelfUpdateState(params.statePath);
+  if (state.pendingNoticeVersion === null || state.pendingNoticeVersion !== params.currentVersion) {
+    return;
+  }
+  writeSelfUpdateState(params.statePath, { ...state, pendingNoticeVersion: null });
   try {
-    console.log(t('selfUpdate.updated', { version: updatedVersion }));
+    console.log(t('selfUpdate.updated', { version: params.currentVersion }));
   } catch {
     // Best-effort only -- see doc comment above.
   }
 }
 
 /**
- * Re-launch the replaced executable with only the user's arguments.
- * Compiled Bun processes expose an embedded entrypoint in `process.argv[1]`;
- * `argv` is already `process.argv.slice(2)`.
+ * Internal argv marker for the detached background checker (Issue #153).
+ * Not a user-facing subcommand: it is intercepted in the `import.meta.main`
+ * block before `main()`/`runTui()` ever see it, and the only thing that
+ * ever passes it is `spawnSelfUpdateWorker` below.
  */
-export function buildSelfUpdateRestartArgv(argv: readonly string[]): string[] {
-  return [process.execPath, ...argv];
+export const SELF_UPDATE_WORKER_ARG = '--self-update-worker';
+
+/**
+ * Starts the checker as a *detached* child with all three stdio streams
+ * discarded, then `unref()`s it: the foreground command neither waits for
+ * it nor lets it write into its own output, and the child outlives this
+ * process (verified on Windows/Bun; a plain attached child would also
+ * catch the terminal's Ctrl+C).
+ */
+function spawnSelfUpdateWorker(): void {
+  const child = spawn(process.execPath, [SELF_UPDATE_WORKER_ARG], {
+    detached: true,
+    stdio: 'ignore',
+    windowsHide: true,
+  });
+  child.unref();
+}
+
+/**
+ * Decides whether this invocation starts a background self-update check,
+ * and starts it if so. Returns whether a checker was started (for tests --
+ * nothing on the foreground path cares).
+ *
+ * Synchronous and non-blocking by construction: it reads/writes one small
+ * local file and hands the network work to a separate process. That is the
+ * whole point of Issue #153 -- before, every single invocation (including
+ * `configs --version`) paid for a synchronous GitHub API request, ~1s
+ * typically and up to the boundary timeouts (5s metadata + 2x30s assets)
+ * on a bad network, before the user's actual command started running.
+ *
+ * `lastCheckedAtMs` is stamped *before* spawning, so two invocations
+ * racing at the cooldown boundary do not both spawn a checker; a failed
+ * stamp write means the throttle would not hold, so no checker is started
+ * this time (the next invocation retries).
+ */
+export function scheduleSelfUpdateCheck(params: {
+  readonly statePath: string;
+  readonly nowMs: number;
+  readonly cooldownMs?: number;
+  readonly spawnWorker?: () => void;
+}): boolean {
+  try {
+    const state = readSelfUpdateState(params.statePath);
+    if (!isCheckDue(state, params.nowMs, params.cooldownMs)) {
+      return false;
+    }
+    if (!writeSelfUpdateState(params.statePath, { ...state, lastCheckedAtMs: params.nowMs })) {
+      return false;
+    }
+    (params.spawnWorker ?? spawnSelfUpdateWorker)();
+    return true;
+  } catch {
+    // Self-update scheduling must never affect the command the user
+    // actually invoked -- same fail-closed-and-silent contract as
+    // `GithubReleaseUpdater.checkAndApply` itself.
+    return false;
+  }
+}
+
+/**
+ * The detached child's whole job: run the one check-download-verify-replace
+ * pass, then record the outcome for the *next* foreground invocation to act
+ * on. Prints nothing (its stdio is discarded anyway) and never throws.
+ *
+ * `lastCheckedAtMs` is refreshed on completion so the cooldown is measured
+ * from when the check finished, not from when a possibly long download
+ * started.
+ */
+export async function runSelfUpdateWorker(params: {
+  readonly statePath: string;
+  readonly currentVersion: string;
+  readonly nowMs?: number;
+  readonly updater?: SelfUpdatePort;
+}): Promise<void> {
+  try {
+    const updater = params.updater ?? new GithubReleaseUpdater();
+    const updatedVersion = await updater.checkAndApply(params.currentVersion);
+    const state = readSelfUpdateState(params.statePath);
+    writeSelfUpdateState(params.statePath, {
+      lastCheckedAtMs: params.nowMs ?? Date.now(),
+      pendingNoticeVersion: updatedVersion ?? state.pendingNoticeVersion,
+    });
+  } catch {
+    // Never throws -- see doc comment above.
+  }
 }
 
 if (import.meta.main) {
   try {
     const argv = process.argv.slice(2);
 
-    // Story 2.2 (revised by correct-course 2026-08-23): a one-time,
-    // inline, best-effort self-update check -- only ever runs against a
-    // compiled release binary (never a source/test run, which always
-    // reports `CONFIGS_VERSION === 'dev'`), and never throws
-    // (`GithubReleaseUpdater.checkAndApply`'s own top-level try/catch).
-    // Whether/what to print from its result is `reportSelfUpdateResult`'s
-    // decision (see its doc comment for the `--version`/print-failure
-    // exceptions), not this block's. `main()`/`runTui()` themselves stay
-    // unaware of self-update entirely.
+    // Story 2.2, revised by Issue #153: the self-update check no longer
+    // runs inline on the foreground path. This process either *is* the
+    // detached background checker (first branch), or it starts one at most
+    // once per cooldown window and immediately goes on to run the user's
+    // command (second branch) -- whatever the checker finds only takes
+    // effect on a later launch, which was already the case before (the
+    // running process keeps its already-loaded code either way).
+    if (argv[0] === SELF_UPDATE_WORKER_ARG) {
+      await runSelfUpdateWorker({ statePath: defaultSelfUpdateStatePath(), currentVersion: CONFIGS_VERSION });
+      process.exit(0);
+    }
+
+    // Only ever against a compiled release binary -- a source/test run
+    // always reports `CONFIGS_VERSION === 'dev'` and neither checks nor
+    // spawns anything. `main()`/`runTui()` themselves stay unaware of
+    // self-update entirely.
     if (CONFIGS_VERSION !== 'dev') {
-      const updatedVersion = await new GithubReleaseUpdater().checkAndApply(CONFIGS_VERSION);
-      reportSelfUpdateResult(updatedVersion, argv);
-      if (updatedVersion !== null && argv[0] !== '--version') {
-        // The running process still has the pre-update code loaded. Start the
-        // replaced binary before entering TUI/subcommand code; otherwise the
-        // first invocation after an update can reproduce the old bug once.
-        const replacement = Bun.spawn(buildSelfUpdateRestartArgv(argv), {
-          cwd: process.cwd(),
-          env: process.env,
-          stdio: ['inherit', 'inherit', 'inherit'],
-        });
-        const exitCode = await replacement.exited;
-        process.exit(exitCode);
-      }
+      const statePath = defaultSelfUpdateStatePath();
+      reportPendingSelfUpdateNotice({ statePath, currentVersion: CONFIGS_VERSION, argv });
+      scheduleSelfUpdateCheck({ statePath, nowMs: Date.now() });
     }
 
     // `[DELTA]` IA first layer: zero-arg + interactive TTY (both stdin and

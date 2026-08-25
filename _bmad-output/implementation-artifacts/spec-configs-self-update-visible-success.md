@@ -37,6 +37,12 @@ baseline_commit: '1e162bb18a5649626499d733d07a0288591c81ac'
 | 已是最新版本 | tag 版本不新于当前 | 返回 `null`，不打印，命令继续 | N/A |
 | dev/无 release/平台不支持/校验失败/网络失败 | 各自条件 | 返回 `null`，不打印，命令继续 | 静默丢弃（既有行为不变）|
 
+### 修订：提示时机（Issue #153，负责人 2026-08-24 明确激活）
+
+自更新检查改为后台执行后（详见 `spec-2-2-自更新客户端.md` 的同名修订说明），本节"由 `import.meta.main` 在 `checkAndApply` 返回非 `null` 时立刻打印"的机制被取代：后台检查器把装好的版本号记进调度状态文件，改由**第一个真正运行到该版本**的前台调用打印（`reportPendingSelfUpdateNotice`，取代已删除的 `reportSelfUpdateResult`）。因此 i18n 文案从"（下次启动生效）/(takes effect next launch)"改为"（当前已生效）/(now in effect)"——打印时该版本确实已经是当前运行的版本。
+
+未变的部分：一行、只在成功时出现、失败路径完全静默、打印自带 try/catch 吞掉 EPIPE、`--version` 不打印（且提示继续保留到下一个普通子命令，不被吞掉）、adapter 本身不写 stdout。
+
 </frozen-after-approval>
 
 ## Code Map

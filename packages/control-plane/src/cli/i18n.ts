@@ -151,7 +151,7 @@ const zh: Dict = {
     'configs revise：--supersedes 指向的修订 "{revisionId}" 属于配置 "{actual}"，与候选内容的配置 "{expected}" 不一致；未写入任何内容。',
   'revise.supersedesConflict': 'configs revise：--supersedes 指向的修订 "{revisionId}" 已被另一条修订替代；未写入任何内容。',
 
-  'selfUpdate.updated': 'configs：已更新到 v{version}（下次启动生效）',
+  'selfUpdate.updated': 'configs：已更新到 v{version}（当前已生效）',
 };
 
 const en: Dict = {
@@ -272,7 +272,7 @@ const en: Dict = {
     'configs revise: supersedes target revision "{revisionId}" belongs to configuration "{actual}", which does not match the candidate\'s configuration "{expected}"; nothing was written.',
   'revise.supersedesConflict': 'configs revise: supersedes target revision "{revisionId}" has already been superseded by another revision; nothing was written.',
 
-  'selfUpdate.updated': 'configs: updated to v{version} (takes effect next launch)',
+  'selfUpdate.updated': 'configs: updated to v{version} (now in effect)',
 };
 
 const DICTS: Record<Lang, Dict> = { zh, en };
