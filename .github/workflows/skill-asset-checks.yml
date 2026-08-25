@@ -9,8 +9,13 @@ name: Skill asset checks
 # "两份相同"之上。历史上有过只改一边的先例（137aeb0，已于 2026-08-24 回退），
 # 少改一边会静默分叉且没有任何机制会发现。
 #
-# 去重本身留给 configs 的 client adapter（Epic 4）——一个源投影到各客户端才是
-# 架构上的归宿；在那之前先保证不分叉。
+# 去重不是「等 Epic 4」就能拿到的。2026-08-24 核实：Epic 4 的 Claude adapter 只把
+# 已在磁盘上的 skill 目录物化进它自己启动的 fresh 会话（content-materializer.ts 的
+# resolveSourcePath 直接返回 sourceRef 路径、再 cp -r），它既不获取 skill 本体，也
+# 够不到原生启动的会话——AD-20 的 2026-08-24 澄清已定论：这两份是 Claude Code／Codex
+# 从 git 跟踪文件原生发现的，与本产品渲染管线无关。真正缺的是上游的「供给 + 分发」
+# 能力面，当前无任何 Epic 覆盖，记在 #173。在它落地并通过 parity 验证之前，两份都
+# 必须保持被跟踪，本检查继续防分叉。
 
 on:
   pull_request:
