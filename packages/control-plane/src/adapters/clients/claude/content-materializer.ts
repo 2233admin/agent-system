@@ -24,6 +24,7 @@ import path from 'node:path';
 
 import { isKnown } from '../../../domain/facts';
 import type { CapabilityReference, StableConfigRevision } from '../../../domain/config';
+import { defaultSupplyRoot, describeSupplyRefRejection, validateSupplyRelativeRef } from '../../../cli/supply-root';
 import { writeToSameDirTempFile } from '../../system/atomic-write';
 
 const MATERIALIZED_DIR_NAME = 'materialized';
@@ -68,12 +69,42 @@ function sanitizePathSegment(name: string): string {
   return cleaned.length > 0 ? cleaned : '_';
 }
 
-/** `sourceRef` resolved to a real path, or the reason it could not be (Unknown Fact -- honest, never a placeholder). */
-function resolveSourcePath(reference: CapabilityReference): { readonly path: string } | { readonly reason: string } {
+/**
+ * `[Story 3.4]` *解析侧*把一条 `sourceRef` 变成真实路径的唯一入口——也是
+ * 每次启动时强制执行跨机器可移植性裁定的地方。
+ *
+ * **裁定内容（AD-22 的开放歧义，就此关闭）：** `sourceRef` 只有一种合法形态
+ * ——**库内相对 POSIX 路径**。它对 `supplyRoot` 解析（`cli/supply-root.ts` 中
+ * 全仓共用的那个 `defaultSupplyRoot()`），而这个根是本机配置，永远不随修订
+ * 走。正因为如此，同一条修订才能在两台各自以不同绝对位置复现第三方 Skill 字节
+ * 的机器上都可用（AD-22）：机器差异完全由根承担。绝对路径——以及一切退化形态
+ * ——一律直接拒绝，而不是留作兼容通道，因为「存在第二种被接受的形态」本身*就是*
+ * AD-22 判为 critical 的那个歧义（而且没有任何真实数据用得上它：真实库里的
+ * `sourceRef` 条条都是 `Unknown`）。
+ *
+ * 根覆盖的两种部署场景（本仓自我开发用 `CONTROL_PLANE_SUPPLY_ROOT`；发行版
+ * `configs` 用户走 `$HOME` 默认值）只在 `defaultSupplyRoot()` 处写一次。判定
+ * 规则本身也只活一份，在 `validateSupplyRelativeRef()` 里——本模块刻意不留副本，
+ * 这样产出侧（`adapters/sources/cap-fs.ts`、Story 3.5 的供给命令）就不可能与
+ * 本侧接受的形态漂移开。
+ *
+ * 非法一律 fail-closed（AD-10）：该引用被记为失败，绝不静默跳过；而且原因文本
+ * 恒含原始 `sourceRef` 与当时生效的根——「无门可指根因」正是本 Story 要修的
+ * 那个问题。
+ */
+function resolveSourcePath(
+  reference: CapabilityReference,
+  supplyRoot: string,
+): { readonly path: string } | { readonly reason: string } {
   if (!isKnown(reference.sourceRef)) {
     return { reason: `sourceRef 未知：${reference.sourceRef.reason}` };
   }
-  return { path: reference.sourceRef.value };
+  const value = reference.sourceRef.value;
+  const verdict = validateSupplyRelativeRef(value, supplyRoot);
+  if (!verdict.ok) {
+    return { reason: describeSupplyRefRejection(value, supplyRoot, verdict.why) };
+  }
+  return { path: verdict.path };
 }
 
 /** AD-9's same-directory temp-file-then-rename discipline (shares its temp-write primitive with `adapters/self-update/github-release-updater.ts`'s `replaceBinary` -- see `writeToSameDirTempFile`): no reader ever observes a half-written file. */
@@ -83,7 +114,10 @@ async function writeFileAtomic(filePath: string, content: string): Promise<void>
   await rename(tempPath, filePath);
 }
 
-async function materializeInstructions(references: readonly CapabilityReference[]): Promise<ClaudeMaterializedInstructions> {
+async function materializeInstructions(
+  references: readonly CapabilityReference[],
+  supplyRoot: string,
+): Promise<ClaudeMaterializedInstructions> {
   if (references.length === 0) {
     return { appendSystemPromptText: null, failures: [] };
   }
@@ -92,7 +126,7 @@ async function materializeInstructions(references: readonly CapabilityReference[
   const texts: string[] = [];
 
   for (const reference of references) {
-    const resolved = resolveSourcePath(reference);
+    const resolved = resolveSourcePath(reference, supplyRoot);
     if ('reason' in resolved) {
       failures.push({ name: reference.name, reason: resolved.reason });
       continue;
@@ -116,7 +150,11 @@ async function materializeInstructions(references: readonly CapabilityReference[
  * successfully-resolved skill under `skills/<name>/` (the whole source
  * directory -- SKILL.md and any attachments, not just SKILL.md itself).
  */
-async function materializeSkills(references: readonly CapabilityReference[], invocationDir: string): Promise<ClaudeMaterializedSkills> {
+async function materializeSkills(
+  references: readonly CapabilityReference[],
+  invocationDir: string,
+  supplyRoot: string,
+): Promise<ClaudeMaterializedSkills> {
   if (references.length === 0) {
     return { pluginDirPath: null, failures: [] };
   }
@@ -127,7 +165,7 @@ async function materializeSkills(references: readonly CapabilityReference[], inv
   let anySucceeded = false;
 
   for (const reference of references) {
-    const resolved = resolveSourcePath(reference);
+    const resolved = resolveSourcePath(reference, supplyRoot);
     if ('reason' in resolved) {
       failures.push({ name: reference.name, reason: resolved.reason });
       continue;
@@ -167,7 +205,11 @@ async function materializeSkills(references: readonly CapabilityReference[], inv
 }
 
 /** Each successfully-resolved MCP reference's file content is parsed as JSON and keyed by its reference `name` under the native `mcpServers` object. */
-async function materializeMcp(references: readonly CapabilityReference[], invocationDir: string): Promise<ClaudeMaterializedMcp> {
+async function materializeMcp(
+  references: readonly CapabilityReference[],
+  invocationDir: string,
+  supplyRoot: string,
+): Promise<ClaudeMaterializedMcp> {
   if (references.length === 0) {
     return { mcpConfigPath: null, failures: [] };
   }
@@ -176,7 +218,7 @@ async function materializeMcp(references: readonly CapabilityReference[], invoca
   const mcpServers: Record<string, unknown> = {};
 
   for (const reference of references) {
-    const resolved = resolveSourcePath(reference);
+    const resolved = resolveSourcePath(reference, supplyRoot);
     if ('reason' in resolved) {
       failures.push({ name: reference.name, reason: resolved.reason });
       continue;
@@ -215,10 +257,14 @@ export async function materializeClaudeContent(
   revision: StableConfigRevision,
   invocationDir: string,
 ): Promise<ClaudeContentMaterializationResult> {
+  // `[Story 3.4]` 供给根在这里**只快照一次**，然后向下传，绝不在每个引用处
+  // 重读。下面三组是 `Promise.all` 并发的：一旦重读，`CONTROL_PLANE_SUPPLY_ROOT`
+  // 在调用中途被改动，*同一条*修订的不同引用就会落在不同的根上。
+  const supplyRoot = defaultSupplyRoot();
   const [instructions, skills, mcp] = await Promise.all([
-    materializeInstructions(revision.instructions),
-    materializeSkills(revision.skills, invocationDir),
-    materializeMcp(revision.mcp, invocationDir),
+    materializeInstructions(revision.instructions, supplyRoot),
+    materializeSkills(revision.skills, invocationDir, supplyRoot),
+    materializeMcp(revision.mcp, invocationDir, supplyRoot),
   ]);
   return { instructions, skills, mcp };
 }

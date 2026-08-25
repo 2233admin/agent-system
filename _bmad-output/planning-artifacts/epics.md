@@ -312,6 +312,26 @@ MVP-FR10：Epic 1 / Story 1.2 — OMP-only 与未来 adapter 边界。
 
 **验收标准来源：** `_bmad-output/implementation-artifacts/spec-3-3-查看装配来源与替代链-configs-source.md`（status: done）
 
+### Story 3.4：裁定并落地 sourceRef 的跨机器可移植性语义
+
+作为要在多台机器上使用同一批稳定配置的个人实践者，
+我希望一条配置修订不绑死在某台机器的绝对路径上，
+以便同一条修订在每台机器上都能解析到本机那份供给库里的真实内容。
+
+**覆盖：** AD-22 退役第 (1) 步显式要求「必须一并裁定 `sourceRef` 的跨机器可移植性语义」这一开放项；AD-21 的解析侧语义
+
+**验收标准来源：** `_bmad-output/implementation-artifacts/spec-3-4-sourceref-跨机器可移植性语义.md`
+
+### Story 3.5：从 Skill 供给库产出配置修订候选（configs supply）
+
+作为要把一批 Skill 装配进配置的个人实践者，
+我希望按组声明白名单就能得到一份候选，而不是手写几十条来源引用，
+以便装配能规模化，而不是靠人逐条抄路径。
+
+**覆盖：** Epic 3 正文「选择数据源导入原始资产」的供应半边；`#173` 记录的供给能力缺口，AD-22 退役第 (1) 步的其余部分
+
+**验收标准来源：** 待 `bmad-build` 产出（当前记于 `_bmad-output/implementation-artifacts/deferred-work.md`）
+
 ## Epic 4：装配并激活 Claude Code 客户端
 
 用户可以让本产品把已存在的装配意图（Instructions/Skills/MCP 引用）交付给 Claude Code，边界是宿主原生可强制执行的权限/工具/MCP 硬控制，不是 prompt 文字软约束；交付方式复用 Architecture Spine AD-19 的窄端口（probe → plan → launch/resume → interpret）与 AD-20 的会话模型（fresh target 复用 OMP 同款单次确认生命周期，already-running session target 诚实返回 `requires-restart`），最终按固定三步顺序取代现有 `.cap/`。Codex CLI 因缺乏真实装配证据（`.cap/runtime/` 无 `codex.toml`）不在本 Epic 范围内，继续按 Architecture Spine AD-1 的 2026-08-23 澄清保持非目标。

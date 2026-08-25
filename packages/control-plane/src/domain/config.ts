@@ -43,6 +43,17 @@ export interface CapabilityReference {
   readonly name: string;
   readonly sourceCategory: Fact<SourceCategory>;
   readonly summary: Fact<string>;
+  /**
+   * `[Story 3.4]` 当它是 `Known` 时，值是一条**库内相对 POSIX 路径**——只能是
+   * 这一种。绝不是绝对路径，绝不含反斜杠，绝不带盘符前缀，也绝不是
+   * `''`/`'.'`/`..` 这类逃逸形态。位置中属于本机的那一半是供给根
+   * （`cli/supply-root.ts` 中全仓共用的 `defaultSupplyRoot()`，可用
+   * `CONTROL_PLANE_SUPPLY_ROOT` 覆盖），它刻意永不进入修订：正因如此，一条修订
+   * 才能在另一台以不同绝对路径复现了同样第三方字节的机器上被物化（AD-22）。规则
+   * 只活在一个地方，即 `cli/supply-root.ts` 的 `validateSupplyRelativeRef`；解析侧
+   * （`adapters/clients/claude/content-materializer.ts`）对违反者 fail-closed
+   * （AD-10），产出侧则用同一个谓词当场自检，而不是产出一个注定稍后被拒的形态。
+   */
   readonly sourceRef: Fact<string>;
   readonly contentFingerprint: Fact<string>;
 }

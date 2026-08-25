@@ -132,3 +132,31 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-3-1-code-review-fixes.md`
   summary: `tests/contracts/repository.test.ts` 新增的 `withTempDbPath` helper 与 `tests/contracts/config-revision-writer.test.ts` 已有的 `withTempDb` 几乎逐字重复（新增处的注释自己也写"Same convention as..."），应抽成一个共享测试工具而不是逐文件复制；`tests/integration/cli-establish.test.ts` 新增的真实双进程并发测试用 `Promise.all([procA.exited, procB.exited])` 等待退出，没有 `finally`/超时清理——如果测试超时或某个 promise reject，另一个已 spawn 的 `bun` 子进程不会被杀掉，可能残留。
   evidence: blind-hunter 审查层（Story 3.1 code-review-fixes 这轮）发现。均为测试基础设施质量问题，不影响当前测试的正确性或本轮 4 条 correctness 修复本身，只在测试超时/失败这类少见路径下才会体现（进程残留），本轮不顺手处理。
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-3-4-sourceref-跨机器可移植性语义.md`
+  summary: `configs supply` 子命令本体——按 `<supplyRoot>/<组>/skills/<skill>/` 目录约定扫描供给库，把显式声明的组白名单变成候选 JSON 打到 stdout，由既有 `establish` 消费（新增 `src/adapters/sources/supply-fs.ts` 扫描器与目录 sha256 指纹、三个类型化错误、`parseSupply` 与 CLI 分派、zh／en i18n、九场景集成测试）。
+  evidence: 与 Story 3.4 同属一个意图，但拆分后各自可独立交付且**必须按序**。3.4（sourceRef 相对根解析）当前不存在任何相对 sourceRef，是行为等价的使能改动，可单独验证；本条若先落地，会产出带相对 sourceRef 的修订而物化侧仍按绝对路径解析，结果是按 AD-10 静默全量降级——正是 AD-22 判为 critical 的失败模式。原合并 spec 估算 2441 tokens（阈值 1600，已做过一轮结构性压缩），负责人 2026-08-25 选择 [S] 拆分、先做 3.4。本条紧接其后作为 Story 3.5。
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-3-4-sourceref-跨机器可移植性语义.md`
+  summary: 供给根的收敛判定是纯词法的（`path.resolve` + `path.relative`），根内的符号链接／win32 junction 指向根外时能通过全部五条规则，`cp --recursive` 随后把根外内容拷进 invocation 目录。
+  evidence: 第二轮 blind-hunter 与 edge-case-hunter 独立报出。属实但**本次改动是收窄而非放宽**——Story 3.4 之前任意绝对路径都被无条件放行，现在只剩「根内相对 + 符号链接」这一条窄缝。彻底封堵需要 `realpath` 并把 `validateSupplyRelativeRef` 变成异步（它目前是纯同步谓词，被三处同步调用点共用），属独立的加固改动。
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-3-4-sourceref-跨机器可移植性语义.md`
+  summary: 写路径不校验 `sourceRef` 形态——`application/establish.ts:163` 仍只用 `isString`，`configs establish`／`revise` 可以持久化一条永远无法启动的非法 `sourceRef`，错误要到 `configs use` 时才 fail-closed 暴露。
+  evidence: 三个审查层均提及。本 Story 冻结区 Never 明确写了「不改 schema 或写端口」，是负责人锁定的范围切分（校验集中在解析侧一处，供给侧归 Story 3.5）。Story 3.5 落地供给命令时应一并把 `validateSupplyRelativeRef` 接到写边界。
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-3-4-sourceref-跨机器可移植性语义.md`
+  summary: `application/claude-launch.ts` 的 `resolveContentGroupDelivery` 在 `required === false`（可选／degraded）分支返回 `blocked: null` 并丢弃 failure reasons——而那串文本是唯一携带非法 `sourceRef` 与生效根的地方，用户只看到通用的 `skills-content-not-materialized-in-fresh-launch`。
+  evidence: 第二轮 blind-hunter 报出。本 Story 冻结区要求 `degraded`（可选）情形也须给出含值与根的原因，但 `claude-launch.ts` 不在本 Story 的 Code Map 范围内，改它属于扩大改动面；已有的 P9 测试只覆盖 required 分支。
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-3-4-sourceref-跨机器可移植性语义.md`
+  summary: `cli/render.ts:94` 现在打印裸的库内相对 `sourceRef`，没有任何根的上下文——`configs show` 的装配来源输出比本 Story 之前更难据以行动（此前是可直接使用的绝对路径）。
+  evidence: 第二轮 blind-hunter 与 edge-case-hunter 独立报出（后者标为 deletion-kind、confidence low）。属真实的可观察性回退，但渲染层不在本 Story 范围；合理修法是在修订渲染里显示一次当时生效的供给根，或提供一个能回答「现在的根是什么」的入口。
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-3-4-sourceref-跨机器可移植性语义.md`
+  summary: 库内相对路径没有规范形式——`skills/a`、`./skills/a`、`skills//a`、`skills/./a`、`skills/a/` 全部合法且解析到同一位置，同一个引用因此有多种字符串编码，`configs compare` 之类的按字符串比较不稳定。
+  evidence: 第二轮 blind-hunter 报出。`validateSupplyRelativeRef` 已经返回一个规范化后的 `ref` 字段（`path.relative` 的结果转 POSIX），基础设施已就位；缺的是在写入侧强制使用它，而写入侧改动被本 Story 的 Never 排除。
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-3-4-sourceref-跨机器可移植性语义.md`
+  summary: `src/cli/supply-root.ts` 放在 `cli/` 却没有任何 CLI 消费者（唯一 importer 是 adapter），且它经 `process.env` 向 adapter 引入了隐式全局态——该 adapter 的其他协作者都是注入的 port，这也是五个测试文件现在都要保存／恢复环境变量的原因。
+  evidence: 两轮 blind-hunter 均报出。仓内有 `cli/db-path` 被四个 adapter import 的先例，故不构成异常，但 `db-path` 确实有 CLI 消费者、本模块没有。可选修法：迁到 `src/config/` 或把 `supplyRoot` 提升为 `ClaudeContentMaterializerPort` 的参数（该模块已经接受 `invocationDir` 作参数），在组合根接线。
